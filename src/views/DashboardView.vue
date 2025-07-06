@@ -163,7 +163,7 @@
           <div class="budget-list">
             <div 
               v-for="budget in activeBudgets" 
-              :key="budget.budget.id"
+              :key="budget.id"
               class="budget-item"
             >
               <div class="budget-header">
@@ -174,7 +174,7 @@
                   {{ budget.category_name }}
                 </div>
                 <div class="budget-amount">
-                  ¥{{ formatAmount(budget.spent) }} / ¥{{ formatAmount(budget.budget.amount) }}
+                  ¥{{ formatAmount(budget.spent) }} / ¥{{ formatAmount(budget.amount) }}
                 </div>
               </div>
               <div class="budget-progress-bar">
@@ -252,8 +252,14 @@ const activeBudgets = computed(() => {
 const trendChartOption = computed(() => {
   const data = store.monthlyStats.slice(0, parseInt(trendPeriod.value))
   return {
+    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
+      backgroundColor: '#2a2a2a',
+      borderColor: '#404040',
+      textStyle: {
+        color: '#ffffff'
+      },
       formatter: (params: any) => {
         let result = `${params[0].axisValue}<br/>`
         params.forEach((param: any) => {
@@ -263,7 +269,10 @@ const trendChartOption = computed(() => {
       }
     },
     legend: {
-      data: ['收入', '支出']
+      data: ['收入', '支出'],
+      textStyle: {
+        color: '#ffffff'
+      }
     },
     grid: {
       left: '3%',
@@ -273,12 +282,41 @@ const trendChartOption = computed(() => {
     },
     xAxis: {
       type: 'category',
-      data: data.map(item => item.month).reverse()
+      data: data.map(item => item.month).reverse(),
+      axisLine: {
+        lineStyle: {
+          color: '#404040'
+        }
+      },
+      axisTick: {
+        lineStyle: {
+          color: '#404040'
+        }
+      },
+      axisLabel: {
+        color: '#b0b0b0'
+      }
     },
     yAxis: {
       type: 'value',
+      axisLine: {
+        lineStyle: {
+          color: '#404040'
+        }
+      },
+      axisTick: {
+        lineStyle: {
+          color: '#404040'
+        }
+      },
       axisLabel: {
+        color: '#b0b0b0',
         formatter: (value: number) => `¥${formatAmount(value)}`
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#404040'
+        }
       }
     },
     series: [
@@ -308,13 +346,22 @@ const pieChartOption = computed(() => {
   }))
   
   return {
+    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
+      backgroundColor: '#2a2a2a',
+      borderColor: '#404040',
+      textStyle: {
+        color: '#ffffff'
+      },
       formatter: '{a} <br/>{b}: ¥{c} ({d}%)'
     },
     legend: {
       orient: 'vertical',
-      left: 'left'
+      left: 'left',
+      textStyle: {
+        color: '#ffffff'
+      }
     },
     series: [
       {
@@ -324,13 +371,15 @@ const pieChartOption = computed(() => {
         avoidLabelOverlap: false,
         label: {
           show: false,
-          position: 'center'
+          position: 'center',
+          color: '#ffffff'
         },
         emphasis: {
           label: {
             show: true,
             fontSize: '16',
-            fontWeight: 'bold'
+            fontWeight: 'bold',
+            color: '#ffffff'
           }
         },
         labelLine: {
@@ -394,7 +443,7 @@ onMounted(async () => {
 
 <style scoped>
 .dashboard {
-  width: 100%;
+  color: #ffffff;
 }
 
 .stats-cards {
@@ -406,11 +455,13 @@ onMounted(async () => {
   border-radius: 12px;
   overflow: hidden;
   transition: all 0.3s ease;
+  background: #2a2a2a;
+  border: 1px solid #404040;
 }
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
 }
 
 .stat-content {
@@ -456,14 +507,14 @@ onMounted(async () => {
 
 .stat-label {
   font-size: 14px;
-  color: #909399;
+  color: #b0b0b0;
   margin-bottom: 4px;
 }
 
 .stat-value {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: #ffffff;
 }
 
 .stat-value.negative {
@@ -476,12 +527,15 @@ onMounted(async () => {
 
 .chart-card {
   height: 400px;
+  background: #2a2a2a;
+  border: 1px solid #404040;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  color: #ffffff;
 }
 
 .chart-container {
@@ -501,6 +555,8 @@ onMounted(async () => {
 .recent-transactions,
 .budget-progress {
   height: 500px;
+  background: #2a2a2a;
+  border: 1px solid #404040;
 }
 
 .transactions-list,
@@ -514,7 +570,7 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #404040;
 }
 
 .transaction-item:last-child {
@@ -534,7 +590,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(64, 158, 255, 0.1);
+  background: rgba(64, 158, 255, 0.2);
   margin-right: 12px;
 }
 
@@ -545,13 +601,13 @@ onMounted(async () => {
 .transaction-desc {
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: #ffffff;
   margin-bottom: 2px;
 }
 
 .transaction-date {
   font-size: 12px;
-  color: #909399;
+  color: #b0b0b0;
 }
 
 .transaction-amount {
@@ -570,8 +626,9 @@ onMounted(async () => {
 .budget-item {
   margin-bottom: 20px;
   padding: 16px;
-  background: #f8f9fa;
+  background: #1a1a1a;
   border-radius: 8px;
+  border: 1px solid #404040;
 }
 
 .budget-header {
@@ -585,6 +642,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   font-weight: 500;
+  color: #ffffff;
 }
 
 .category-icon {
@@ -594,7 +652,7 @@ onMounted(async () => {
 
 .budget-amount {
   font-size: 14px;
-  color: #606266;
+  color: #b0b0b0;
 }
 
 .budget-progress-bar {
@@ -624,6 +682,29 @@ onMounted(async () => {
   height: 200px;
 }
 
+/* 滚动条样式 */
+.transactions-list::-webkit-scrollbar,
+.budget-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.transactions-list::-webkit-scrollbar-track,
+.budget-list::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 3px;
+}
+
+.transactions-list::-webkit-scrollbar-thumb,
+.budget-list::-webkit-scrollbar-thumb {
+  background: #606060;
+  border-radius: 3px;
+}
+
+.transactions-list::-webkit-scrollbar-thumb:hover,
+.budget-list::-webkit-scrollbar-thumb:hover {
+  background: #808080;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .stat-content {
@@ -647,7 +728,11 @@ onMounted(async () => {
   .recent-transactions,
   .budget-progress {
     height: auto;
-    min-height: 300px;
+  }
+  
+  .transactions-list,
+  .budget-list {
+    max-height: 300px;
   }
 }
 </style> 

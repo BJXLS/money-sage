@@ -120,7 +120,7 @@ onMounted(() => {
             <h3>{{ getPageTitle() }}</h3>
           </div>
           <div class="header-right">
-            <el-button type="primary" @click="showAddTransaction = true">
+            <el-button @click="showAddTransaction = true" class="add-record-btn">
               <el-icon><Plus /></el-icon>
               记一笔
             </el-button>
@@ -313,6 +313,32 @@ onMounted(() => {
   color: #ffffff;
 }
 
+.add-record-btn {
+  background: #606060;
+  border: 1px solid #707070;
+  color: #ffffff;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.add-record-btn:hover {
+  background: #707070;
+  border-color: #808080;
+  color: #ffffff;
+}
+
+.add-record-btn:focus {
+  background: #707070;
+  border-color: #808080;
+  color: #ffffff;
+}
+
+.add-record-btn .el-icon {
+  margin-right: 4px;
+}
+
 .page-content {
   padding: 24px;
   min-height: calc(100vh - 88px);
@@ -471,6 +497,26 @@ body {
 .el-button--small:hover {
   background: #606060;
   border-color: #808080;
+}
+
+/* 记一笔按钮特殊样式 */
+:deep(.add-record-btn) {
+  background: #606060 !important;
+  border: 1px solid #707070 !important;
+  color: #ffffff !important;
+  font-weight: 500;
+}
+
+:deep(.add-record-btn:hover) {
+  background: #707070 !important;
+  border-color: #808080 !important;
+  color: #ffffff !important;
+}
+
+:deep(.add-record-btn:focus) {
+  background: #707070 !important;
+  border-color: #808080 !important;
+  color: #ffffff !important;
 }
 
 .el-empty__description {

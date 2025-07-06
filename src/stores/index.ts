@@ -10,6 +10,7 @@ export interface Category {
   icon?: string
   color?: string
   type: 'income' | 'expense'
+  parent_id?: number | null
   is_system: boolean
   created_at: string
   updated_at: string
@@ -90,6 +91,26 @@ export const useAppStore = defineStore('app', () => {
   const expenseCategories = computed(() => 
     categories.value.filter(cat => cat.type === 'expense')
   )
+
+  // 大类（顶级分类）
+  const parentCategories = computed(() => 
+    categories.value.filter(cat => !cat.parent_id)
+  )
+
+  // 收入大类
+  const parentIncomeCategories = computed(() => 
+    categories.value.filter(cat => cat.type === 'income' && !cat.parent_id)
+  )
+
+  // 支出大类
+  const parentExpenseCategories = computed(() => 
+    categories.value.filter(cat => cat.type === 'expense' && !cat.parent_id)
+  )
+
+  // 获取指定大类下的小类
+  const getSubCategories = (parentId: number) => {
+    return categories.value.filter(cat => cat.parent_id === parentId)
+  }
   
   const currentMonthIncome = computed(() => {
     const currentMonth = dayjs().format('YYYY-MM')
@@ -136,6 +157,7 @@ export const useAppStore = defineStore('app', () => {
     icon?: string
     color?: string
     type: 'income' | 'expense'
+    parent_id?: number | null
   }) => {
     try {
       const result = await invoke<number>('create_category', { category: categoryData })
@@ -352,6 +374,10 @@ export const useAppStore = defineStore('app', () => {
     // 计算属性
     incomeCategories,
     expenseCategories,
+    parentCategories,
+    parentIncomeCategories,
+    parentExpenseCategories,
+    getSubCategories,
     currentMonthIncome,
     currentMonthExpense,
     currentMonthBalance,

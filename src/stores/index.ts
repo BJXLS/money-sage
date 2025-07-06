@@ -3,6 +3,22 @@ import { ref, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import dayjs from 'dayjs'
 
+// 类型声明
+declare global {
+  interface Window {
+    __TAURI__?: any;
+  }
+}
+
+// 安全的 invoke 包装函数
+const safeInvoke = async <T = any>(command: string, args?: any): Promise<T | null> => {
+  if (!window.__TAURI__) {
+    console.warn(`Not in Tauri environment, skipping invoke call: ${command}`)
+    return null
+  }
+  return await invoke<T>(command, args)
+}
+
 // 类型定义
 export interface Category {
   id: number
@@ -132,8 +148,8 @@ export const useAppStore = defineStore('app', () => {
   const fetchCategories = async () => {
     try {
       loading.value = true
-      const result = await invoke<Category[]>('get_categories')
-      categories.value = result
+      const result = await safeInvoke<Category[]>('get_categories')
+      categories.value = result || []
     } catch (error) {
       console.error('获取分类失败:', error)
       throw error
@@ -144,8 +160,8 @@ export const useAppStore = defineStore('app', () => {
   
   const fetchCategoriesByType = async (type: 'income' | 'expense') => {
     try {
-      const result = await invoke<Category[]>('get_categories_by_type', { categoryType: type })
-      return result
+      const result = await safeInvoke<Category[]>('get_categories_by_type', { categoryType: type })
+      return result || []
     } catch (error) {
       console.error('获取分类失败:', error)
       throw error
@@ -160,9 +176,11 @@ export const useAppStore = defineStore('app', () => {
     parent_id?: number | null
   }) => {
     try {
-      const result = await invoke<number>('create_category', { category: categoryData })
-      await fetchCategories() // 重新获取分类列表
-      return result
+      const result = await safeInvoke<number>('create_category', { category: categoryData })
+      if (result !== null) {
+        await fetchCategories() // 重新获取分类列表
+      }
+      return result || 0
     } catch (error) {
       console.error('创建分类失败:', error)
       throw error
@@ -171,8 +189,10 @@ export const useAppStore = defineStore('app', () => {
   
   const deleteCategory = async (id: number) => {
     try {
-      await invoke('delete_category', { id })
-      await fetchCategories() // 重新获取分类列表
+      const result = await safeInvoke('delete_category', { id })
+      if (result !== null) {
+        await fetchCategories() // 重新获取分类列表
+      }
     } catch (error) {
       console.error('删除分类失败:', error)
       throw error
@@ -182,11 +202,11 @@ export const useAppStore = defineStore('app', () => {
   const fetchTransactions = async (limit?: number, offset?: number) => {
     try {
       loading.value = true
-      const result = await invoke<TransactionWithCategory[]>('get_transactions', { 
+      const result = await safeInvoke<TransactionWithCategory[]>('get_transactions', { 
         limit: limit || pageSize.value, 
         offset: offset || (currentPage.value - 1) * pageSize.value 
       })
-      transactions.value = result
+      transactions.value = result || []
     } catch (error) {
       console.error('获取交易记录失败:', error)
       throw error
@@ -220,10 +240,12 @@ export const useAppStore = defineStore('app', () => {
     note?: string
   }) => {
     try {
-      const result = await invoke<number>('create_transaction', { transaction: transactionData })
-      await fetchTransactions() // 重新获取交易记录
-      await fetchMonthlyStats() // 更新统计数据
-      return result
+      const result = await safeInvoke<number>('create_transaction', { transaction: transactionData })
+      if (result !== null) {
+        await fetchTransactions() // 重新获取交易记录
+        await fetchMonthlyStats() // 更新统计数据
+      }
+      return result || 0
     } catch (error) {
       console.error('创建交易记录失败:', error)
       throw error
@@ -261,8 +283,8 @@ export const useAppStore = defineStore('app', () => {
   
   const fetchMonthlyStats = async (months = 6) => {
     try {
-      const result = await invoke<MonthlyStats[]>('get_monthly_stats', { months })
-      monthlyStats.value = result
+      const result = await safeInvoke<MonthlyStats[]>('get_monthly_stats', { months })
+      monthlyStats.value = result || []
     } catch (error) {
       console.error('获取月度统计失败:', error)
       throw error
@@ -271,13 +293,13 @@ export const useAppStore = defineStore('app', () => {
   
   const fetchCategoryStats = async (startDate: string, endDate: string, type: 'income' | 'expense') => {
     try {
-      const result = await invoke<CategoryStats[]>('get_category_stats', {
+      const result = await safeInvoke<CategoryStats[]>('get_category_stats', {
         startDate,
         endDate,
         transactionType: type
       })
-      categoryStats.value = result
-      return result
+      categoryStats.value = result || []
+      return result || []
     } catch (error) {
       console.error('获取分类统计失败:', error)
       throw error
@@ -286,8 +308,8 @@ export const useAppStore = defineStore('app', () => {
   
   const fetchBudgets = async () => {
     try {
-      const result = await invoke<BudgetProgress[]>('get_budgets')
-      budgets.value = result
+      const result = await safeInvoke<BudgetProgress[]>('get_budgets')
+      budgets.value = result || []
     } catch (error) {
       console.error('获取预算失败:', error)
       throw error

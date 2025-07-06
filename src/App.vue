@@ -12,9 +12,14 @@ import AddTransactionDialog from './components/AddTransactionDialog.vue'
 const store = useAppStore()
 const activeMenu = ref('dashboard')
 const showAddTransaction = ref(false)
+const isCollapsed = ref(false)
 
 const handleMenuSelect = (key: string) => {
   activeMenu.value = key
+}
+
+const toggleSidebar = () => {
+  isCollapsed.value = !isCollapsed.value
 }
 
 const getPageTitle = () => {
@@ -46,47 +51,55 @@ onMounted(() => {
   <div class="app-container">
     <el-container>
       <!-- 侧边栏 -->
-      <el-aside width="240px" class="sidebar">
+      <el-aside :width="isCollapsed ? '64px' : '240px'" class="sidebar" :class="{ 'is-collapsed': isCollapsed }">
         <div class="logo">
-          <h2>📊 MoneyNote</h2>
+          <el-icon class="logo-icon" :size="24"><Files /></el-icon>
+          <h2 v-show="!isCollapsed" class="logo-text">MoneyNote</h2>
+        </div>
+        
+        <!-- 汉堡菜单按钮 -->
+        <div class="collapse-btn" @click="toggleSidebar">
+          <el-icon><Menu /></el-icon>
         </div>
         
         <el-menu
           :default-active="activeMenu"
           class="sidebar-menu"
           @select="handleMenuSelect"
-          background-color="#2a2a2a"
+          background-color="transparent"
           text-color="#b0b0b0"
-          active-text-color="#404040"
+          active-text-color="#ffffff"
+          :collapse="isCollapsed"
+          :collapse-transition="false"
         >
           <el-menu-item index="dashboard">
-            <el-icon><HomeFilled /></el-icon>
-            <span>仪表盘</span>
+            <el-icon><TrendCharts /></el-icon>
+            <template #title>仪表盘</template>
           </el-menu-item>
           
           <el-menu-item index="transactions">
-            <el-icon><List /></el-icon>
-            <span>记账</span>
+            <el-icon><DocumentAdd /></el-icon>
+            <template #title>记账</template>
           </el-menu-item>
           
           <el-menu-item index="categories">
             <el-icon><Grid /></el-icon>
-            <span>分类管理</span>
+            <template #title>分类管理</template>
           </el-menu-item>
           
           <el-menu-item index="budget">
-            <el-icon><TrendCharts /></el-icon>
-            <span>预算设置</span>
+            <el-icon><Setting /></el-icon>
+            <template #title>预算设置</template>
           </el-menu-item>
           
           <el-menu-item index="statistics">
             <el-icon><DataAnalysis /></el-icon>
-            <span>数据分析</span>
+            <template #title>数据分析</template>
           </el-menu-item>
           
           <el-menu-item index="import-export">
             <el-icon><Upload /></el-icon>
-            <span>导入导出</span>
+            <template #title>导入导出</template>
           </el-menu-item>
         </el-menu>
       </el-aside>
@@ -96,6 +109,14 @@ onMounted(() => {
         <!-- 顶部操作栏 -->
         <div class="header-bar">
           <div class="header-left">
+            <div class="search-container">
+              <el-input 
+                placeholder="搜索交易记录..." 
+                prefix-icon="Search"
+                class="search-input"
+                clearable
+              />
+            </div>
             <h3>{{ getPageTitle() }}</h3>
           </div>
           <div class="header-right">
@@ -146,44 +167,114 @@ onMounted(() => {
 .sidebar {
   background: #2a2a2a;
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.sidebar.is-collapsed {
+  width: 64px !important;
 }
 
 .logo {
+  display: flex;
+  align-items: center;
   padding: 20px;
-  text-align: center;
   border-bottom: 1px solid #404040;
+  min-height: 64px;
 }
 
-.logo h2 {
+.logo-icon {
+  color: #ffffff;
+  margin-right: 12px;
+}
+
+.logo-text {
   color: #ffffff;
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+  transition: opacity 0.3s ease;
+}
+
+.sidebar.is-collapsed .logo-text {
+  opacity: 0;
+}
+
+.collapse-btn {
+  position: absolute;
+  top: 20px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #404040;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 10;
+}
+
+.collapse-btn:hover {
+  background: #606060;
+}
+
+.collapse-btn .el-icon {
+  color: #ffffff;
+  font-size: 16px;
 }
 
 .sidebar-menu {
   border: none;
-  background: #2a2a2a;
+  background: transparent;
+  padding-top: 12px;
 }
 
 .sidebar-menu .el-menu-item {
-  height: 56px;
-  line-height: 56px;
-  border-radius: 0;
-  margin: 0;
+  height: 48px;
+  line-height: 48px;
+  margin: 0 12px 4px 12px;
+  border-radius: 8px;
   color: #b0b0b0;
   transition: all 0.3s ease;
+  position: relative;
 }
 
 .sidebar-menu .el-menu-item:hover {
-  background-color: #3a3a3a !important;
-  color: #ffffff !important;
+  background: #3a3a3a;
+  color: #ffffff;
 }
 
 .sidebar-menu .el-menu-item.is-active {
-  background-color: #404040 !important;
-  color: #ffffff !important;
-  border-right: 3px solid #409eff;
+  background: #404040;
+  color: #ffffff;
+}
+
+.sidebar-menu .el-menu-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 24px;
+  background: #409eff;
+  border-radius: 0 2px 2px 0;
+}
+
+.sidebar-menu .el-menu-item .el-icon {
+  margin-right: 12px;
+  font-size: 20px;
+}
+
+.sidebar.is-collapsed .sidebar-menu .el-menu-item {
+  justify-content: center;
+  margin: 0 8px 4px 8px;
+}
+
+.sidebar.is-collapsed .sidebar-menu .el-menu-item .el-icon {
+  margin-right: 0;
 }
 
 .main-content {
@@ -199,6 +290,20 @@ onMounted(() => {
   background: #2a2a2a;
   border-bottom: 1px solid #404040;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.search-container {
+  width: 300px;
+}
+
+.search-input {
+  width: 100%;
 }
 
 .header-left h3 {
@@ -217,10 +322,35 @@ onMounted(() => {
 /* 全局样式重置 */
 :deep(.el-menu-item) {
   font-size: 14px;
+  font-weight: 500;
 }
 
 :deep(.el-menu-item .el-icon) {
-  margin-right: 8px;
+  color: inherit;
+}
+
+:deep(.el-menu--collapse .el-menu-item .el-icon) {
+  margin-right: 0;
+}
+
+:deep(.search-input .el-input__wrapper) {
+  background: #404040;
+  border: 1px solid #606060;
+  border-radius: 24px;
+  padding: 0 16px;
+}
+
+:deep(.search-input .el-input__inner) {
+  color: #ffffff;
+  font-size: 14px;
+}
+
+:deep(.search-input .el-input__inner::placeholder) {
+  color: #b0b0b0;
+}
+
+:deep(.search-input .el-input__prefix) {
+  color: #b0b0b0;
 }
 </style>
 

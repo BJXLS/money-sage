@@ -9,7 +9,6 @@ declare module 'vue' {
   export interface GlobalComponents {
     AddTransactionDialog: typeof import('./src/components/AddTransactionDialog.vue')['default']
     EditTransactionDialog: typeof import('./src/components/EditTransactionDialog.vue')['default']
-    ElButtonGroup: typeof import('element-plus/es')['ElButtonGroup']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElButtonGroup: typeof import('element-plus/es')['ElButtonGroup']

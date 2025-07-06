@@ -9,6 +9,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AddTransactionDialog: typeof import('./src/components/AddTransactionDialog.vue')['default']
     EditTransactionDialog: typeof import('./src/components/EditTransactionDialog.vue')['default']
+    ElButtonGroup: typeof import('element-plus/es')['ElButtonGroup']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElCard: typeof import('element-plus/es')['ElCard']
@@ -34,5 +35,6 @@ declare module 'vue' {
     ElTable: typeof import('element-plus/es')['ElTable']
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTag: typeof import('element-plus/es')['ElTag']
+    ElTimePicker: typeof import('element-plus/es')['ElTimePicker']
   }
 }

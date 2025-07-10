@@ -31,8 +31,23 @@ async fn create_category(state: State<'_, DatabaseState>, category: NewCategory)
 }
 
 #[tauri::command]
+async fn update_category(state: State<'_, DatabaseState>, id: i64, category: UpdateCategory) -> Result<(), String> {
+    state.db.update_category(id, &category).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn delete_category(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
     state.db.delete_category(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_parent_categories(state: State<'_, DatabaseState>, category_type: String) -> Result<Vec<Category>, String> {
+    state.db.get_parent_categories(&category_type).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_sub_categories(state: State<'_, DatabaseState>, parent_id: i64) -> Result<Vec<Category>, String> {
+    state.db.get_sub_categories(parent_id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -259,7 +274,10 @@ pub fn run() {
             get_categories,
             get_categories_by_type,
             create_category,
+            update_category,
             delete_category,
+            get_parent_categories,
+            get_sub_categories,
             get_transactions,
             get_transactions_by_date_range,
             create_transaction,

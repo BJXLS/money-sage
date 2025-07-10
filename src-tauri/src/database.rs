@@ -25,15 +25,37 @@ impl Database {
         sqlx::query(r#"
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
                 icon TEXT,
                 color TEXT,
                 type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+                parent_id INTEGER,
                 is_system INTEGER DEFAULT 0,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE
             )
         "#).execute(pool).await?;
+
+        // 检查并添加 parent_id 字段（用于数据库迁移）
+        let columns_result = sqlx::query("PRAGMA table_info(categories)")
+            .fetch_all(pool)
+            .await?;
+        
+        let has_parent_id = columns_result.iter().any(|row| {
+            let column_name: String = row.get("name");
+            column_name == "parent_id"
+        });
+        
+        if !has_parent_id {
+            println!("添加 parent_id 字段到 categories 表");
+            sqlx::query("ALTER TABLE categories ADD COLUMN parent_id INTEGER")
+                .execute(pool)
+                .await?;
+            
+            // 添加外键约束（注意：SQLite 的 ALTER TABLE 不支持添加外键，所以我们跳过这步）
+            // 在新创建的表中，外键约束已经在 CREATE TABLE 中定义
+        }
 
         // 创建交易记录表
         sqlx::query(r#"
@@ -71,6 +93,8 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_categories_type ON categories(type)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_budgets_period ON budgets(start_date, end_date)").execute(pool).await?;
 
@@ -104,8 +128,8 @@ impl Database {
 
             for (name, icon, color, category_type) in categories {
                 sqlx::query(r#"
-                    INSERT OR IGNORE INTO categories (name, icon, color, type, is_system, created_at, updated_at) 
-                    VALUES (?, ?, ?, ?, 1, ?, ?)
+                    INSERT OR IGNORE INTO categories (name, icon, color, type, parent_id, is_system, created_at, updated_at) 
+                    VALUES (?, ?, ?, ?, NULL, 1, ?, ?)
                 "#)
                 .bind(name)
                 .bind(icon)
@@ -145,19 +169,76 @@ impl Database {
 
     pub async fn create_category(&self, category: &NewCategory) -> Result<i64> {
         let result = sqlx::query(
-            "INSERT INTO categories (name, icon, color, type, created_at, updated_at) 
-             VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO categories (name, icon, color, type, parent_id, created_at, updated_at) 
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&category.name)
         .bind(&category.icon)
         .bind(&category.color)
         .bind(&category.r#type)
+        .bind(&category.parent_id)
         .bind(Utc::now())
         .bind(Utc::now())
         .execute(&self.pool)
         .await?;
         
         Ok(result.last_insert_rowid())
+    }
+
+    pub async fn update_category(&self, id: i64, category: &UpdateCategory) -> Result<()> {
+        // 检查是否为系统分类
+        let existing_category = sqlx::query("SELECT is_system FROM categories WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
+            
+        if let Some(row) = existing_category {
+            let is_system: bool = row.get("is_system");
+            if is_system {
+                return Err(anyhow::anyhow!("不能修改系统分类"));
+            }
+        } else {
+            return Err(anyhow::anyhow!("分类不存在"));
+        }
+
+        // 简化的更新方法 - 只更新提供的字段
+        if let Some(name) = &category.name {
+            sqlx::query("UPDATE categories SET name = ?, updated_at = ? WHERE id = ?")
+                .bind(name)
+                .bind(Utc::now())
+                .bind(id)
+                .execute(&self.pool)
+                .await?;
+        }
+        
+        if let Some(icon) = &category.icon {
+            sqlx::query("UPDATE categories SET icon = ?, updated_at = ? WHERE id = ?")
+                .bind(icon)
+                .bind(Utc::now())
+                .bind(id)
+                .execute(&self.pool)
+                .await?;
+        }
+        
+        if let Some(color) = &category.color {
+            sqlx::query("UPDATE categories SET color = ?, updated_at = ? WHERE id = ?")
+                .bind(color)
+                .bind(Utc::now())
+                .bind(id)
+                .execute(&self.pool)
+                .await?;
+        }
+        
+        if let Some(parent_id) = &category.parent_id {
+            sqlx::query("UPDATE categories SET parent_id = ?, updated_at = ? WHERE id = ?")
+                .bind(parent_id)
+                .bind(Utc::now())
+                .bind(id)
+                .execute(&self.pool)
+                .await?;
+        }
+        
+        Ok(())
     }
 
     pub async fn delete_category(&self, id: i64) -> Result<()> {
@@ -174,13 +255,23 @@ impl Database {
             }
         }
         
-        // 检查是否有关联的交易记录
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions WHERE category_id = ?")
+        // 检查是否有子分类
+        let sub_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE parent_id = ?")
             .bind(id)
             .fetch_one(&self.pool)
             .await?;
             
-        if count > 0 {
+        if sub_count > 0 {
+            return Err(anyhow::anyhow!("该分类下有子分类，无法删除"));
+        }
+        
+        // 检查是否有关联的交易记录
+        let transaction_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions WHERE category_id = ?")
+            .bind(id)
+            .fetch_one(&self.pool)
+            .await?;
+            
+        if transaction_count > 0 {
             return Err(anyhow::anyhow!("该分类下有交易记录，无法删除"));
         }
         
@@ -190,6 +281,28 @@ impl Database {
             .await?;
             
         Ok(())
+    }
+
+    pub async fn get_parent_categories(&self, category_type: &str) -> Result<Vec<Category>> {
+        let categories = sqlx::query_as::<_, Category>(
+            "SELECT * FROM categories WHERE type = ? AND parent_id IS NULL ORDER BY is_system DESC, name ASC"
+        )
+        .bind(category_type)
+        .fetch_all(&self.pool)
+        .await?;
+        
+        Ok(categories)
+    }
+
+    pub async fn get_sub_categories(&self, parent_id: i64) -> Result<Vec<Category>> {
+        let categories = sqlx::query_as::<_, Category>(
+            "SELECT * FROM categories WHERE parent_id = ? ORDER BY is_system DESC, name ASC"
+        )
+        .bind(parent_id)
+        .fetch_all(&self.pool)
+        .await?;
+        
+        Ok(categories)
     }
 
     // 交易记录相关方法

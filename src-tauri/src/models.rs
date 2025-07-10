@@ -9,6 +9,7 @@ pub struct Category {
     pub icon: Option<String>,
     pub color: Option<String>,
     pub r#type: String, // 'income' or 'expense'
+    pub parent_id: Option<i64>,
     pub is_system: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -20,6 +21,15 @@ pub struct NewCategory {
     pub icon: Option<String>,
     pub color: Option<String>,
     pub r#type: String,
+    pub parent_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateCategory {
+    pub name: Option<String>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub parent_id: Option<Option<i64>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

@@ -382,8 +382,14 @@ const saveParentCategory = async () => {
     saving.value = true
     
     if (editingParent.value) {
-      // 更新大类（需要实现updateCategory方法）
-      ElMessage.info('更新功能开发中...')
+      // 更新大类
+      await store.updateCategory(editingParent.value.id, {
+        name: parentForm.value.name,
+        icon: parentForm.value.icon,
+        color: parentForm.value.color,
+        parent_id: null
+      })
+      ElMessage.success('更新大类成功')
     } else {
       // 添加大类
       await store.createCategory({
@@ -419,8 +425,14 @@ const saveSubCategory = async () => {
     saving.value = true
     
     if (editingSub.value) {
-      // 更新小类（需要实现updateCategory方法）
-      ElMessage.info('更新功能开发中...')
+      // 更新小类
+      await store.updateCategory(editingSub.value.id, {
+        name: subForm.value.name,
+        icon: subForm.value.icon,
+        color: subForm.value.color,
+        parent_id: selectedParentId.value
+      })
+      ElMessage.success('更新小类成功')
     } else {
       // 添加小类
       await store.createCategory({
@@ -517,6 +529,7 @@ onMounted(() => {
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   height: calc(100vh - 200px);
+  min-height: 500px;
 }
 
 .parent-categories-card,
@@ -526,6 +539,7 @@ onMounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .card-header {
@@ -534,6 +548,9 @@ onMounted(() => {
   align-items: center;
   color: #ffffff;
   font-weight: 600;
+  padding: 16px;
+  border-bottom: 1px solid #404040;
+  flex-shrink: 0;
 }
 
 .add-btn {
@@ -550,7 +567,8 @@ onMounted(() => {
 .categories-list {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 0;
+  padding: 12px 16px;
+  min-height: 0;
 }
 
 .category-item {

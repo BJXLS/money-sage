@@ -12,11 +12,13 @@ declare global {
 
 // 安全的 invoke 包装函数
 const safeInvoke = async <T = any>(command: string, args?: any): Promise<T | null> => {
-  if (!window.__TAURI__) {
-    console.warn(`Not in Tauri environment, skipping invoke call: ${command}`)
+  try {
+    // 直接尝试调用 invoke，如果失败了再处理
+    return await invoke<T>(command, args)
+  } catch (error) {
+    console.warn(`Failed to invoke ${command}:`, error)
     return null
   }
-  return await invoke<T>(command, args)
 }
 
 // 类型定义
@@ -150,6 +152,7 @@ export const useAppStore = defineStore('app', () => {
       loading.value = true
       const result = await safeInvoke<Category[]>('get_categories')
       categories.value = result || []
+      console.log('获取到的分类数据:', categories.value)
     } catch (error) {
       console.error('获取分类失败:', error)
       throw error
@@ -176,13 +179,30 @@ export const useAppStore = defineStore('app', () => {
     parent_id?: number | null
   }) => {
     try {
+      console.log('创建分类数据:', categoryData)
       const result = await safeInvoke<number>('create_category', { category: categoryData })
-      if (result !== null) {
-        await fetchCategories() // 重新获取分类列表
-      }
+      console.log('创建分类结果:', result)
+      // 总是刷新数据，无论是否在 Tauri 环境中
+      await fetchCategories()
       return result || 0
     } catch (error) {
       console.error('创建分类失败:', error)
+      throw error
+    }
+  }
+
+  const updateCategory = async (id: number, categoryData: {
+    name?: string
+    icon?: string
+    color?: string
+    parent_id?: number | null
+  }) => {
+    try {
+      const result = await safeInvoke('update_category', { id, category: categoryData })
+      // 总是刷新数据，无论是否在 Tauri 环境中
+      await fetchCategories()
+    } catch (error) {
+      console.error('更新分类失败:', error)
       throw error
     }
   }
@@ -190,9 +210,8 @@ export const useAppStore = defineStore('app', () => {
   const deleteCategory = async (id: number) => {
     try {
       const result = await safeInvoke('delete_category', { id })
-      if (result !== null) {
-        await fetchCategories() // 重新获取分类列表
-      }
+      // 总是刷新数据，无论是否在 Tauri 环境中
+      await fetchCategories()
     } catch (error) {
       console.error('删除分类失败:', error)
       throw error
@@ -408,6 +427,7 @@ export const useAppStore = defineStore('app', () => {
     fetchCategories,
     fetchCategoriesByType,
     createCategory,
+    updateCategory,
     deleteCategory,
     fetchTransactions,
     fetchTransactionsByDateRange,

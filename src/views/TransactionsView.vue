@@ -70,7 +70,7 @@
     <!-- 记账对话框 -->
     <el-dialog
       v-model="showRecordDialog"
-      title="记账"
+      :title="editingTransactionId ? '编辑记录' : '记账'"
       width="500px"
       :before-close="handleDialogClose"
       class="record-dialog"
@@ -129,23 +129,65 @@
             </el-col>
             <el-col :span="12">
               <el-form-item label="分类">
-                <el-select
-                  v-model="transactionForm.categoryId"
-                  placeholder="选择分类"
-                  class="category-select"
-                >
-                  <el-option
-                    v-for="category in availableCategories"
-                    :key="category.id"
-                    :label="category.name"
-                    :value="category.id"
+                <div class="category-tree-select" ref="categorySelectRef">
+                  <div 
+                    class="category-display" 
+                    @click="toggleCategoryPanel"
+                    :class="{ 'active': showCategoryPanel }"
                   >
-                    <div class="category-option">
-                      <span class="category-icon">{{ category.icon || '💰' }}</span>
-                      <span>{{ category.name }}</span>
+                    <div v-if="selectedCategory" class="selected-category">
+                      <span class="category-icon" :style="{ color: selectedCategory.color }">
+                        {{ selectedCategory.icon || '💰' }}
+                      </span>
+                      <span>{{ selectedCategory.name }}</span>
                     </div>
-                  </el-option>
-                </el-select>
+                    <span v-else class="placeholder">选择分类</span>
+                    <el-icon class="arrow-icon" :class="{ 'rotate': showCategoryPanel }">
+                      <ArrowDown />
+                    </el-icon>
+                  </div>
+                  
+                  <div v-if="showCategoryPanel" class="category-panel">
+                    <div class="parent-categories">
+                      <div 
+                        v-for="parentCategory in availableParentCategories" 
+                        :key="parentCategory.id"
+                        class="parent-category-item"
+                        @mouseenter="setHoveredParent(parentCategory.id)"
+                        @click="selectCategory(parentCategory)"
+                      >
+                        <span class="category-icon" :style="{ color: parentCategory.color }">
+                          {{ parentCategory.icon || '📁' }}
+                        </span>
+                        <span class="category-name">{{ parentCategory.name }}</span>
+                        <el-icon class="arrow-right">
+                          <ArrowRight />
+                        </el-icon>
+                      </div>
+                    </div>
+                    
+                    <div class="sub-categories">
+                      <template v-if="hoveredSubCategories.length > 0">
+                        <div 
+                          v-for="subCategory in hoveredSubCategories" 
+                          :key="subCategory.id"
+                          class="sub-category-item"
+                          @click="selectCategory(subCategory)"
+                        >
+                          <span class="category-icon" :style="{ color: subCategory.color }">
+                            {{ subCategory.icon || '📋' }}
+                          </span>
+                          <span class="category-name">{{ subCategory.name }}</span>
+                        </div>
+                      </template>
+                      <div v-else class="sub-categories-placeholder">
+                        <span class="placeholder-text">
+                          {{ hoveredParentId ? '没有小类' : '请选择左侧大类' }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </el-form-item>
             </el-col>
           </el-row>
@@ -193,7 +235,7 @@
           <el-button @click="handleDialogClose" size="large">取消</el-button>
           <el-button type="primary" @click="saveTransaction" size="large">
             <el-icon><Money /></el-icon>
-            保存记录
+            {{ editingTransactionId ? '更新记录' : '保存记录' }}
           </el-button>
         </div>
 
@@ -215,8 +257,30 @@
                   <div class="record-time">{{ formatTime(record.created_at) }}</div>
                 </div>
               </div>
-              <div class="record-amount" :class="record.type">
-                {{ record.type === 'income' ? '+' : '-' }}¥{{ formatAmount(record.amount) }}
+              <div class="record-right">
+                <div class="record-amount" :class="record.type">
+                  {{ record.type === 'income' ? '+' : '-' }}¥{{ formatAmount(record.amount) }}
+                </div>
+                <div class="record-actions">
+                  <el-button 
+                    @click="editTransaction(record)" 
+                    type="primary" 
+                    size="small" 
+                    text
+                    class="action-btn"
+                  >
+                    <el-icon><Edit /></el-icon>
+                  </el-button>
+                  <el-button 
+                    @click="deleteTransaction(record.id)" 
+                    type="danger" 
+                    size="small" 
+                    text
+                    class="action-btn"
+                  >
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
               </div>
             </div>
             <div v-if="dailyTransactions.length === 0" class="no-records">
@@ -230,9 +294,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { ArrowLeft, ArrowRight, Money } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, ArrowRight, ArrowDown, Money, Edit, Delete } from '@element-plus/icons-vue'
 import { useAppStore } from '../stores'
 import dayjs from 'dayjs'
 
@@ -243,6 +307,14 @@ const currentDate = ref(dayjs())
 const selectedDate = ref(dayjs().format('YYYY-MM-DD'))
 const viewMode = ref<'day' | 'week' | 'month'>('month')
 const showRecordDialog = ref(false)
+
+// 分类选择相关
+const showCategoryPanel = ref(false)
+const hoveredParentId = ref<number | null>(null)
+const categorySelectRef = ref()
+
+// 编辑相关
+const editingTransactionId = ref<number | null>(null)
 
 // 交易表单
 const transactionForm = ref({
@@ -268,6 +340,20 @@ const selectedDateText = computed(() => {
 
 const availableCategories = computed(() => {
   return store.categories.filter(cat => cat.type === transactionForm.value.type)
+})
+
+const availableParentCategories = computed(() => {
+  return store.categories.filter(cat => cat.type === transactionForm.value.type && !cat.parent_id)
+})
+
+const selectedCategory = computed(() => {
+  if (!transactionForm.value.categoryId) return null
+  return store.categories.find(cat => cat.id === transactionForm.value.categoryId)
+})
+
+const hoveredSubCategories = computed(() => {
+  if (!hoveredParentId.value) return []
+  return store.categories.filter(cat => cat.parent_id === hoveredParentId.value)
 })
 
 const dailyTransactions = computed(() => {
@@ -352,6 +438,7 @@ const selectDate = (date: string) => {
 }
 
 const resetForm = () => {
+  editingTransactionId.value = null
   transactionForm.value = {
     type: 'expense',
     amount: '',
@@ -373,18 +460,32 @@ const saveTransaction = async () => {
     return
   }
 
-  const transaction = {
-    type: transactionForm.value.type,
-    amount: parseFloat(transactionForm.value.amount),
-    category_id: transactionForm.value.categoryId,
-    date: selectedDate.value,
-    description: transactionForm.value.note,
-    note: transactionForm.value.note
-  }
-
   try {
-    await store.createTransaction(transaction)
-    ElMessage.success('记录保存成功')
+    if (editingTransactionId.value) {
+      // 更新现有交易
+      const updateData = {
+        type: transactionForm.value.type,
+        amount: parseFloat(transactionForm.value.amount),
+        category_id: transactionForm.value.categoryId,
+        date: selectedDate.value,
+        description: transactionForm.value.note,
+        note: transactionForm.value.note
+      }
+      await store.updateTransaction(editingTransactionId.value, updateData)
+      ElMessage.success('记录更新成功')
+    } else {
+      // 创建新交易
+      const transaction = {
+        type: transactionForm.value.type,
+        amount: parseFloat(transactionForm.value.amount),
+        category_id: transactionForm.value.categoryId,
+        date: selectedDate.value,
+        description: transactionForm.value.note,
+        note: transactionForm.value.note
+      }
+      await store.createTransaction(transaction)
+      ElMessage.success('记录保存成功')
+    }
     handleDialogClose()
   } catch (error) {
     ElMessage.error('保存失败，请重试')
@@ -402,9 +503,72 @@ const formatTime = (dateTime: string) => {
   return dayjs(dateTime).format('HH:mm')
 }
 
+// 分类选择相关方法
+const toggleCategoryPanel = () => {
+  showCategoryPanel.value = !showCategoryPanel.value
+  if (!showCategoryPanel.value) {
+    hoveredParentId.value = null
+  }
+}
+
+const setHoveredParent = (parentId: number) => {
+  hoveredParentId.value = parentId
+}
+
+const selectCategory = (category: any) => {
+  transactionForm.value.categoryId = category.id
+  showCategoryPanel.value = false
+  hoveredParentId.value = null
+}
+
+// 点击外部关闭面板
+const handleClickOutside = (event: MouseEvent) => {
+  if (categorySelectRef.value && !categorySelectRef.value.contains(event.target as Node)) {
+    showCategoryPanel.value = false
+    hoveredParentId.value = null
+  }
+}
+
 onMounted(() => {
   store.fetchTransactions()
   store.fetchCategories()
+  document.addEventListener('click', handleClickOutside)
+})
+
+// 编辑交易记录
+const editTransaction = (transaction: any) => {
+  editingTransactionId.value = transaction.id
+  transactionForm.value = {
+    type: transaction.type,
+    amount: transaction.amount.toString(),
+    categoryId: transaction.category_id,
+    account: '现金', // 默认值，因为原数据可能没有account字段
+    time: formatTime(transaction.created_at),
+    note: transaction.description || transaction.note || ''
+  }
+  showRecordDialog.value = true
+}
+
+// 删除交易记录
+const deleteTransaction = async (id: number) => {
+  try {
+    await ElMessageBox.confirm('确定要删除这条记录吗？', '确认删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    await store.deleteTransaction(id)
+    ElMessage.success('删除成功')
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败，请重试')
+    }
+  }
+}
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -574,6 +738,149 @@ onMounted(() => {
   color: #f56c6c;
 }
 
+/* 分类树选择器样式 */
+.category-tree-select {
+  position: relative;
+  width: 100%;
+}
+
+.category-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #1a1a1a;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.category-display:hover {
+  border-color: #606060;
+}
+
+.category-display.active {
+  border-color: #409eff;
+}
+
+.selected-category {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ffffff;
+}
+
+.placeholder {
+  color: #b0b0b0;
+}
+
+.arrow-icon {
+  transition: transform 0.3s ease;
+}
+
+.arrow-icon.rotate {
+  transform: rotate(180deg);
+}
+
+.category-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  background: #1a1a1a;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  max-height: 300px;
+  overflow: hidden;
+  margin-top: 4px;
+  width: 400px;
+}
+
+.parent-categories {
+  width: 200px;
+  border-right: 1px solid #404040;
+  overflow-y: auto;
+}
+
+.sub-categories {
+  width: 200px;
+  overflow-y: auto;
+}
+
+.parent-category-item,
+.sub-category-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.parent-category-item:hover,
+.sub-category-item:hover {
+  background: #2a2a2a;
+}
+
+.parent-category-item .category-name,
+.sub-category-item .category-name {
+  flex: 1;
+  margin-left: 8px;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.parent-category-item .category-icon,
+.sub-category-item .category-icon {
+  font-size: 16px;
+}
+
+.arrow-right {
+  color: #b0b0b0;
+  font-size: 12px;
+}
+
+/* 滚动条样式 */
+.parent-categories::-webkit-scrollbar,
+.sub-categories::-webkit-scrollbar {
+  width: 6px;
+}
+
+.parent-categories::-webkit-scrollbar-track,
+.sub-categories::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 3px;
+}
+
+.parent-categories::-webkit-scrollbar-thumb,
+.sub-categories::-webkit-scrollbar-thumb {
+  background: #606060;
+  border-radius: 3px;
+}
+
+.parent-categories::-webkit-scrollbar-thumb:hover,
+.sub-categories::-webkit-scrollbar-thumb:hover {
+  background: #808080;
+}
+
+.sub-categories-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  color: #b0b0b0;
+}
+
+.placeholder-text {
+  font-size: 14px;
+  color: #b0b0b0;
+}
+
 .summary-item.balance .amount {
   color: #409eff;
 }
@@ -621,6 +928,18 @@ onMounted(() => {
   align-items: center;
   padding: 12px 0;
   border-bottom: 1px solid #404040;
+  transition: all 0.3s ease;
+}
+
+.record-item:hover {
+  background: #3a3a3a;
+  margin: 0 -12px;
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.record-item:hover .record-actions {
+  opacity: 1;
 }
 
 .record-item:last-child {
@@ -630,6 +949,13 @@ onMounted(() => {
 .record-left {
   display: flex;
   align-items: center;
+  flex: 1;
+}
+
+.record-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .record-icon {
@@ -663,6 +989,25 @@ onMounted(() => {
 
 .record-amount.expense {
   color: #f56c6c;
+}
+
+.record-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.action-btn {
+  padding: 4px 8px !important;
+  border: none !important;
+}
+
+/* 移动端显示操作按钮 */
+@media (max-width: 768px) {
+  .record-actions {
+    opacity: 1;
+  }
 }
 
 .no-records {

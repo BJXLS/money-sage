@@ -62,7 +62,6 @@
                 type="primary" 
                 size="small" 
                 text
-                :disabled="category.is_system"
               >
                 <el-icon><Edit /></el-icon>
               </el-button>
@@ -71,7 +70,6 @@
                 type="danger" 
                 size="small" 
                 text
-                :disabled="category.is_system"
               >
                 <el-icon><Delete /></el-icon>
               </el-button>
@@ -121,7 +119,6 @@
                 type="primary" 
                 size="small" 
                 text
-                :disabled="category.is_system"
               >
                 <el-icon><Edit /></el-icon>
               </el-button>
@@ -130,7 +127,6 @@
                 type="danger" 
                 size="small" 
                 text
-                :disabled="category.is_system"
               >
                 <el-icon><Delete /></el-icon>
               </el-button>
@@ -528,8 +524,8 @@ onMounted(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
-  height: calc(100vh - 200px);
-  min-height: 500px;
+  height: calc(100vh - 160px);
+  min-height: 600px;
 }
 
 .parent-categories-card,
@@ -567,8 +563,10 @@ onMounted(() => {
 .categories-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 16px;
   min-height: 0;
+  max-height: calc(100vh - 260px);
 }
 
 .category-item {
@@ -682,24 +680,30 @@ onMounted(() => {
 /* 滚动条样式 */
 .categories-list::-webkit-scrollbar,
 .icon-grid::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 .categories-list::-webkit-scrollbar-track,
 .icon-grid::-webkit-scrollbar-track {
   background: #1a1a1a;
-  border-radius: 3px;
+  border-radius: 4px;
+  margin: 2px;
 }
 
 .categories-list::-webkit-scrollbar-thumb,
 .icon-grid::-webkit-scrollbar-thumb {
   background: #606060;
-  border-radius: 3px;
+  border-radius: 4px;
+  border: 1px solid #404040;
 }
 
 .categories-list::-webkit-scrollbar-thumb:hover,
 .icon-grid::-webkit-scrollbar-thumb:hover {
   background: #808080;
+}
+
+.categories-list::-webkit-scrollbar-corner {
+  background: #1a1a1a;
 }
 
 /* 响应式设计 */

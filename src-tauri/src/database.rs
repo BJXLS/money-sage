@@ -57,37 +57,165 @@ impl Database {
             // 在新创建的表中，外键约束已经在 CREATE TABLE 中定义
         }
 
-        // 创建交易记录表
-        sqlx::query(r#"
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date DATE NOT NULL,
-                type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
-                amount DECIMAL(10, 2) NOT NULL,
-                category_id INTEGER NOT NULL,
-                description TEXT,
-                note TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (category_id) REFERENCES categories(id)
-            )
-        "#).execute(pool).await?;
+        // 检查 transactions 表是否存在以及 amount 列的类型
+        let table_exists = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name='transactions'")
+            .fetch_optional(pool)
+            .await?;
+        
+        if let Some(_) = table_exists {
+            // 检查 amount 列的类型
+            let columns_result = sqlx::query("PRAGMA table_info(transactions)")
+                .fetch_all(pool)
+                .await?;
+            
+            let amount_column = columns_result.iter().find(|row| {
+                let column_name: String = row.get("name");
+                column_name == "amount"
+            });
+            
+            if let Some(column) = amount_column {
+                let column_type: String = column.get("type");
+                if column_type.to_uppercase().contains("DECIMAL") || column_type.to_uppercase().contains("INTEGER") {
+                    println!("需要迁移 transactions 表的 amount 列类型");
+                    
+                    // 备份现有数据
+                    sqlx::query("CREATE TABLE transactions_backup AS SELECT * FROM transactions")
+                        .execute(pool)
+                        .await?;
+                    
+                    // 删除原表
+                    sqlx::query("DROP TABLE transactions")
+                        .execute(pool)
+                        .await?;
+                    
+                    // 重新创建表
+                    sqlx::query(r#"
+                        CREATE TABLE transactions (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            date DATE NOT NULL,
+                            type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+                            amount REAL NOT NULL,
+                            category_id INTEGER NOT NULL,
+                            description TEXT,
+                            note TEXT,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (category_id) REFERENCES categories(id)
+                        )
+                    "#).execute(pool).await?;
+                    
+                    // 恢复数据
+                    sqlx::query(r#"
+                        INSERT INTO transactions (id, date, type, amount, category_id, description, note, created_at, updated_at)
+                        SELECT id, date, type, CAST(amount AS REAL), category_id, description, note, created_at, updated_at
+                        FROM transactions_backup
+                    "#).execute(pool).await?;
+                    
+                    // 删除备份表
+                    sqlx::query("DROP TABLE transactions_backup")
+                        .execute(pool)
+                        .await?;
+                    
+                    println!("transactions 表迁移完成");
+                }
+            }
+        } else {
+            // 创建新的 transactions 表
+            sqlx::query(r#"
+                CREATE TABLE transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date DATE NOT NULL,
+                    type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+                    amount REAL NOT NULL,
+                    category_id INTEGER NOT NULL,
+                    description TEXT,
+                    note TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (category_id) REFERENCES categories(id)
+                )
+            "#).execute(pool).await?;
+        }
 
-        // 创建预算表
-        sqlx::query(r#"
-            CREATE TABLE IF NOT EXISTS budgets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category_id INTEGER NOT NULL,
-                amount DECIMAL(10, 2) NOT NULL,
-                period_type TEXT NOT NULL DEFAULT 'monthly' CHECK (period_type IN ('weekly', 'monthly', 'yearly')),
-                start_date DATE NOT NULL,
-                end_date DATE,
-                is_active INTEGER DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (category_id) REFERENCES categories(id)
-            )
-        "#).execute(pool).await?;
+        // 检查 budgets 表是否存在以及 amount 列的类型
+        let budget_table_exists = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name='budgets'")
+            .fetch_optional(pool)
+            .await?;
+        
+        if let Some(_) = budget_table_exists {
+            // 检查 amount 列的类型
+            let columns_result = sqlx::query("PRAGMA table_info(budgets)")
+                .fetch_all(pool)
+                .await?;
+            
+            let amount_column = columns_result.iter().find(|row| {
+                let column_name: String = row.get("name");
+                column_name == "amount"
+            });
+            
+            if let Some(column) = amount_column {
+                let column_type: String = column.get("type");
+                if column_type.to_uppercase().contains("DECIMAL") || column_type.to_uppercase().contains("INTEGER") {
+                    println!("需要迁移 budgets 表的 amount 列类型");
+                    
+                    // 备份现有数据
+                    sqlx::query("CREATE TABLE budgets_backup AS SELECT * FROM budgets")
+                        .execute(pool)
+                        .await?;
+                    
+                    // 删除原表
+                    sqlx::query("DROP TABLE budgets")
+                        .execute(pool)
+                        .await?;
+                    
+                    // 重新创建表
+                    sqlx::query(r#"
+                        CREATE TABLE budgets (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            category_id INTEGER NOT NULL,
+                            amount REAL NOT NULL,
+                            period_type TEXT NOT NULL DEFAULT 'monthly' CHECK (period_type IN ('weekly', 'monthly', 'yearly')),
+                            start_date DATE NOT NULL,
+                            end_date DATE,
+                            is_active INTEGER DEFAULT 1,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (category_id) REFERENCES categories(id)
+                        )
+                    "#).execute(pool).await?;
+                    
+                    // 恢复数据
+                    sqlx::query(r#"
+                        INSERT INTO budgets (id, category_id, amount, period_type, start_date, end_date, is_active, created_at, updated_at)
+                        SELECT id, category_id, CAST(amount AS REAL), period_type, start_date, end_date, is_active, created_at, updated_at
+                        FROM budgets_backup
+                    "#).execute(pool).await?;
+                    
+                    // 删除备份表
+                    sqlx::query("DROP TABLE budgets_backup")
+                        .execute(pool)
+                        .await?;
+                    
+                    println!("budgets 表迁移完成");
+                }
+            }
+        } else {
+            // 创建新的 budgets 表
+            sqlx::query(r#"
+                CREATE TABLE budgets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category_id INTEGER NOT NULL,
+                    amount REAL NOT NULL,
+                    period_type TEXT NOT NULL DEFAULT 'monthly' CHECK (period_type IN ('weekly', 'monthly', 'yearly')),
+                    start_date DATE NOT NULL,
+                    end_date DATE,
+                    is_active INTEGER DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (category_id) REFERENCES categories(id)
+                )
+            "#).execute(pool).await?;
+        }
 
         // 创建索引
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)").execute(pool).await?;
@@ -186,18 +314,13 @@ impl Database {
     }
 
     pub async fn update_category(&self, id: i64, category: &UpdateCategory) -> Result<()> {
-        // 检查是否为系统分类
-        let existing_category = sqlx::query("SELECT is_system FROM categories WHERE id = ?")
+        // 检查分类是否存在
+        let existing_category = sqlx::query("SELECT id FROM categories WHERE id = ?")
             .bind(id)
             .fetch_optional(&self.pool)
             .await?;
             
-        if let Some(row) = existing_category {
-            let is_system: bool = row.get("is_system");
-            if is_system {
-                return Err(anyhow::anyhow!("不能修改系统分类"));
-            }
-        } else {
+        if existing_category.is_none() {
             return Err(anyhow::anyhow!("分类不存在"));
         }
 
@@ -242,19 +365,6 @@ impl Database {
     }
 
     pub async fn delete_category(&self, id: i64) -> Result<()> {
-        // 检查是否为系统分类
-        let category = sqlx::query("SELECT is_system FROM categories WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?;
-            
-        if let Some(row) = category {
-            let is_system: bool = row.get("is_system");
-            if is_system {
-                return Err(anyhow::anyhow!("不能删除系统分类"));
-            }
-        }
-        
         // 检查是否有子分类
         let sub_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE parent_id = ?")
             .bind(id)
@@ -427,8 +537,8 @@ impl Database {
             r#"
             SELECT 
                 strftime('%Y-%m', date) as month,
-                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0.0 END), 0.0) as income,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0.0 END), 0.0) as expense
             FROM transactions 
             WHERE date >= date('now', '-' || ? || ' months')
             GROUP BY strftime('%Y-%m', date)
@@ -458,7 +568,7 @@ impl Database {
 
     pub async fn get_category_stats(&self, start_date: &NaiveDate, end_date: &NaiveDate, transaction_type: &str) -> Result<Vec<CategoryStats>> {
         let total: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE date BETWEEN ? AND ? AND type = ?"
+            "SELECT COALESCE(SUM(amount), 0.0) FROM transactions WHERE date BETWEEN ? AND ? AND type = ?"
         )
         .bind(start_date)
         .bind(end_date)
@@ -470,7 +580,7 @@ impl Database {
             r#"
             SELECT 
                 c.id as category_id, c.name as category_name, c.icon as category_icon, c.color as category_color,
-                COALESCE(SUM(t.amount), 0) as amount
+                COALESCE(SUM(t.amount), 0.0) as amount
             FROM categories c
             LEFT JOIN transactions t ON c.id = t.category_id AND t.date BETWEEN ? AND ? AND t.type = ?
             WHERE c.type = ?
@@ -513,7 +623,7 @@ impl Database {
                 b.id, b.category_id, b.amount, b.period_type, b.start_date, b.end_date, b.is_active,
                 b.created_at, b.updated_at,
                 c.name as category_name, c.icon as category_icon, c.color as category_color,
-                COALESCE(SUM(t.amount), 0) as spent
+                COALESCE(SUM(t.amount), 0.0) as spent
             FROM budgets b
             JOIN categories c ON b.category_id = c.id
             LEFT JOIN transactions t ON b.category_id = t.category_id 

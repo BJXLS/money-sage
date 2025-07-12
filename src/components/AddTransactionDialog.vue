@@ -500,6 +500,9 @@ onUnmounted(() => {
   align-items: center;
   padding: 12px 0;
   border-bottom: 1px solid #404040;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .record-item:last-child {
@@ -518,12 +521,17 @@ onUnmounted(() => {
 
 .record-info {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .record-desc {
   font-size: 14px;
   color: #ffffff;
   margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .record-time {
@@ -534,6 +542,9 @@ onUnmounted(() => {
 .record-amount {
   font-size: 16px;
   font-weight: 600;
+  flex-shrink: 0;
+  min-width: 80px;
+  text-align: right;
 }
 
 .record-amount.income {

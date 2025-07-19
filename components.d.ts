@@ -7,6 +7,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AddBudgetDialog: typeof import('./src/components/AddBudgetDialog.vue')['default']
     AddTransactionDialog: typeof import('./src/components/AddTransactionDialog.vue')['default']
     EditTransactionDialog: typeof import('./src/components/EditTransactionDialog.vue')['default']
     ElAside: typeof import('element-plus/es')['ElAside']
@@ -30,6 +31,9 @@ declare module 'vue' {
     ElProgress: typeof import('element-plus/es')['ElProgress']
     ElRow: typeof import('element-plus/es')['ElRow']
     ElSelect: typeof import('element-plus/es')['ElSelect']
+    ElSwitch: typeof import('element-plus/es')['ElSwitch']
+    ElTable: typeof import('element-plus/es')['ElTable']
+    ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTag: typeof import('element-plus/es')['ElTag']
   }
 }

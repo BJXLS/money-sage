@@ -39,6 +39,7 @@ pub struct Transaction {
     pub r#type: String, // 'income' or 'expense'
     pub amount: f64,
     pub category_id: i64,
+    pub budget_id: Option<i64>, // 关联的预算ID
     pub description: Option<String>,
     pub note: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -51,6 +52,7 @@ pub struct NewTransaction {
     pub r#type: String,
     pub amount: f64,
     pub category_id: i64,
+    pub budget_id: Option<i64>,
     pub description: Option<String>,
     pub note: Option<String>,
 }
@@ -61,6 +63,7 @@ pub struct UpdateTransaction {
     pub r#type: Option<String>,
     pub amount: Option<f64>,
     pub category_id: Option<i64>,
+    pub budget_id: Option<Option<i64>>,
     pub description: Option<String>,
     pub note: Option<String>,
 }
@@ -68,9 +71,11 @@ pub struct UpdateTransaction {
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Budget {
     pub id: i64,
+    pub name: String,
     pub category_id: i64,
     pub amount: f64,
-    pub period_type: String, // 'weekly', 'monthly', 'yearly'
+    pub budget_type: String, // 'time' or 'event'
+    pub period_type: String, // 'weekly', 'monthly', 'yearly' for time budgets
     pub start_date: NaiveDate,
     pub end_date: Option<NaiveDate>,
     pub is_active: bool,
@@ -80,8 +85,10 @@ pub struct Budget {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NewBudget {
+    pub name: String,
     pub category_id: i64,
     pub amount: f64,
+    pub budget_type: String,
     pub period_type: String,
     pub start_date: NaiveDate,
     pub end_date: Option<NaiveDate>,
@@ -95,6 +102,7 @@ pub struct TransactionWithCategory {
     pub r#type: String,
     pub amount: f64,
     pub category_id: i64,
+    pub budget_id: Option<i64>,
     pub description: Option<String>,
     pub note: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -103,6 +111,8 @@ pub struct TransactionWithCategory {
     pub category_name: String,
     pub category_icon: Option<String>,
     pub category_color: Option<String>,
+    // Budget fields (optional)
+    pub budget_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -127,8 +137,10 @@ pub struct CategoryStats {
 pub struct BudgetProgress {
     // Budget fields
     pub id: i64,
+    pub name: String,
     pub category_id: i64,
     pub amount: f64,
+    pub budget_type: String,
     pub period_type: String,
     pub start_date: NaiveDate,
     pub end_date: Option<NaiveDate>,

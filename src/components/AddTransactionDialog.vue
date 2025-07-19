@@ -124,6 +124,60 @@
           </el-col>
         </el-row>
 
+        <!-- 事件预算选择 (仅支出时显示) -->
+        <el-row v-if="form.type === 'expense'" :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="事件预算">
+              <el-select
+                v-model="form.budget_id"
+                placeholder="选择事件预算（可选）"
+                class="budget-select"
+                clearable
+                filterable
+              >
+                <el-option
+                  v-for="budget in store.eventBudgets"
+                  :key="budget.id"
+                  :label="budget.name"
+                  :value="budget.id"
+                >
+                  <div class="budget-option">
+                    <div class="budget-info">
+                      <span class="budget-name">{{ budget.name }}</span>
+                      <span class="budget-category">{{ budget.category_name }}</span>
+                    </div>
+                    <div class="budget-amount">
+                      <span class="budget-limit">预算 ¥{{ formatAmount(budget.amount) }}</span>
+                      <span class="budget-remaining" :class="{ 'over-budget': budget.remaining < 0 }">
+                        剩余 ¥{{ formatAmount(budget.remaining) }}
+                      </span>
+                    </div>
+                  </div>
+                </el-option>
+              </el-select>
+              <div v-if="selectedBudget" class="budget-preview">
+                <div class="preview-header">
+                  <span class="preview-title">{{ selectedBudget.name }}</span>
+                  <span class="preview-category">{{ selectedBudget.category_name }}</span>
+                </div>
+                <div class="preview-progress">
+                  <div class="progress-info">
+                    <span>已用 ¥{{ formatAmount(selectedBudget.spent) }}</span>
+                    <span>/ ¥{{ formatAmount(selectedBudget.amount) }}</span>
+                  </div>
+                  <div class="progress-bar-preview">
+                    <div 
+                      class="progress-fill-preview" 
+                      :style="{ width: `${Math.min(selectedBudget.percentage, 100)}%` }"
+                      :class="{ 'over-budget': selectedBudget.percentage > 100 }"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="账户">
@@ -234,6 +288,7 @@ const form = reactive({
   type: 'expense' as 'income' | 'expense',
   amount: '',
   category_id: null as number | null,
+  budget_id: null as number | null,
   account: '现金',
   time: '11:05',
   note: '',
@@ -268,6 +323,11 @@ const hoveredSubCategories = computed(() => {
   return store.categories.filter(cat => cat.parent_id === hoveredParentId.value)
 })
 
+const selectedBudget = computed(() => {
+  if (!form.budget_id) return null
+  return store.eventBudgets.find(budget => budget.id === form.budget_id)
+})
+
 const dailyTransactions = computed(() => {
   return store.transactions.filter(t => 
     dayjs(t.date).format('YYYY-MM-DD') === form.date
@@ -293,6 +353,7 @@ const dailyStats = computed(() => {
 // 监听类型变化，重置分类选择
 watch(() => form.type, () => {
   form.category_id = null
+  form.budget_id = null // 重置预算选择
   showCategoryPanel.value = false
   hoveredParentId.value = null
 })
@@ -313,6 +374,7 @@ const resetForm = () => {
   form.type = 'expense'
   form.amount = ''
   form.category_id = null
+  form.budget_id = null
   form.account = '现金'
   form.time = '11:05'
   form.note = ''
@@ -335,6 +397,7 @@ const handleSubmit = async () => {
     type: form.type,
     amount: parseFloat(form.amount),
     category_id: form.category_id,
+    budget_id: form.budget_id,
     date: form.date,
     description: form.note,
     note: form.note
@@ -733,6 +796,113 @@ onUnmounted(() => {
   background: #808080;
 }
 
+/* 事件预算选择样式 */
+.budget-select {
+  width: 100%;
+}
+
+.budget-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.budget-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.budget-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.budget-category {
+  font-size: 12px;
+  color: #b0b0b0;
+}
+
+.budget-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.budget-limit {
+  font-size: 12px;
+  color: #67c23a;
+}
+
+.budget-remaining {
+  font-size: 12px;
+  color: #409eff;
+}
+
+.budget-remaining.over-budget {
+  color: #f56c6c;
+}
+
+.budget-preview {
+  margin-top: 12px;
+  padding: 16px;
+  background: #404040;
+  border-radius: 8px;
+  border: 1px solid #606060;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.preview-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.preview-category {
+  font-size: 12px;
+  color: #b0b0b0;
+}
+
+.preview-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #b0b0b0;
+}
+
+.progress-bar-preview {
+  width: 100%;
+  height: 6px;
+  background: #2a2a2a;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill-preview {
+  height: 100%;
+  background: #409eff;
+  transition: width 0.3s ease;
+}
+
+.progress-fill-preview.over-budget {
+  background: #f56c6c;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .daily-summary {
@@ -742,6 +912,16 @@ onUnmounted(() => {
   
   .type-buttons {
     flex-direction: column;
+  }
+  
+  .budget-option {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .budget-amount {
+    align-items: flex-start;
   }
 }
 </style> 

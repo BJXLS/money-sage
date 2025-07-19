@@ -51,6 +51,36 @@
           </el-option>
         </el-select>
       </el-form-item>
+
+      <!-- 事件预算选择 (仅支出时显示) -->
+      <el-form-item v-if="form.type === 'expense'" label="事件预算">
+        <el-select
+          v-model="form.budget_id"
+          placeholder="选择事件预算（可选）"
+          style="width: 100%"
+          clearable
+          filterable
+        >
+          <el-option
+            v-for="budget in store.eventBudgets"
+            :key="budget.id"
+            :label="budget.name"
+            :value="budget.id"
+          >
+            <div class="budget-option">
+              <div class="budget-info">
+                <span class="budget-name">{{ budget.name }}</span>
+                <span class="budget-category">{{ budget.category_name }}</span>
+              </div>
+              <div class="budget-amount">
+                <span class="budget-remaining" :class="{ 'over-budget': budget.remaining < 0 }">
+                  剩余 ¥{{ formatAmount(budget.remaining) }}
+                </span>
+              </div>
+            </div>
+          </el-option>
+        </el-select>
+      </el-form-item>
       
       <el-form-item label="日期" prop="date">
         <el-date-picker
@@ -123,6 +153,7 @@ const form = reactive({
   type: 'expense' as 'income' | 'expense',
   amount: '',
   category_id: null as number | null,
+  budget_id: null as number | null,
   date: dayjs().format('YYYY-MM-DD'),
   description: '',
   note: ''
@@ -166,6 +197,7 @@ watch(() => props.transaction, (transaction) => {
     form.type = transaction.type as 'income' | 'expense'
     form.amount = transaction.amount.toString()
     form.category_id = transaction.category_id
+    form.budget_id = transaction.budget_id || null
     form.date = transaction.date
     form.description = transaction.description || ''
     form.note = transaction.note || ''
@@ -179,6 +211,7 @@ watch(dialogVisible, (visible) => {
     form.type = props.transaction.type as 'income' | 'expense'
     form.amount = props.transaction.amount.toString()
     form.category_id = props.transaction.category_id
+    form.budget_id = props.transaction.budget_id || null
     form.date = props.transaction.date
     form.description = props.transaction.description || ''
     form.note = props.transaction.note || ''
@@ -190,8 +223,16 @@ watch(dialogVisible, (visible) => {
 })
 
 // 方法
+const formatAmount = (amount: number) => {
+  return Math.abs(amount).toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+}
+
 const handleTypeChange = () => {
   form.category_id = null
+  form.budget_id = null
 }
 
 const handleClose = () => {
@@ -211,6 +252,7 @@ const handleSubmit = async () => {
       type: form.type,
       amount: parseFloat(form.amount),
       category_id: form.category_id!,
+      budget_id: form.budget_id,
       date: form.date,
       description: form.description || undefined,
       note: form.note || undefined
@@ -247,6 +289,47 @@ const handleSubmit = async () => {
 
 :deep(.el-radio-button__inner) {
   padding: 8px 20px;
+}
+
+/* 预算选择样式 */
+.budget-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.budget-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.budget-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.budget-category {
+  font-size: 12px;
+  color: #b0b0b0;
+}
+
+.budget-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.budget-remaining {
+  font-size: 12px;
+  color: #409eff;
+}
+
+.budget-remaining.over-budget {
+  color: #f56c6c;
 }
 
 :deep(.el-input-number) {

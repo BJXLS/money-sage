@@ -40,6 +40,7 @@ export interface Transaction {
   type: 'income' | 'expense'
   amount: number
   category_id: number
+  budget_id?: number | null
   description?: string
   note?: string
   created_at: string
@@ -50,12 +51,15 @@ export interface TransactionWithCategory extends Transaction {
   category_name: string
   category_icon?: string
   category_color?: string
+  budget_name?: string
 }
 
 export interface Budget {
   id: number
+  name: string
   category_id: number
   amount: number
+  budget_type: 'time' | 'event'
   period_type: 'weekly' | 'monthly' | 'yearly'
   start_date: string
   end_date?: string
@@ -144,6 +148,11 @@ export const useAppStore = defineStore('app', () => {
   
   const currentMonthBalance = computed(() => {
     return currentMonthIncome.value - currentMonthExpense.value
+  })
+
+  // 获取事件预算列表
+  const eventBudgets = computed(() => {
+    return budgets.value.filter(budget => budget.budget_type === 'event' && budget.is_active)
   })
   
   // Actions
@@ -255,6 +264,7 @@ export const useAppStore = defineStore('app', () => {
     type: 'income' | 'expense'
     amount: number
     category_id: number
+    budget_id?: number | null
     description?: string
     note?: string
   }) => {
@@ -276,6 +286,7 @@ export const useAppStore = defineStore('app', () => {
     type?: 'income' | 'expense'
     amount?: number
     category_id?: number
+    budget_id?: number | null
     description?: string
     note?: string
   }) => {
@@ -336,8 +347,10 @@ export const useAppStore = defineStore('app', () => {
   }
   
   const createBudget = async (budgetData: {
+    name: string
     category_id: number
     amount: number
+    budget_type: 'time' | 'event'
     period_type: 'weekly' | 'monthly' | 'yearly'
     start_date: string
     end_date?: string
@@ -422,6 +435,7 @@ export const useAppStore = defineStore('app', () => {
     currentMonthIncome,
     currentMonthExpense,
     currentMonthBalance,
+    eventBudgets,
     
     // Actions
     fetchCategories,

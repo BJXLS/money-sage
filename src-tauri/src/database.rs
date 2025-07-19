@@ -73,10 +73,20 @@ impl Database {
                 column_name == "amount"
             });
             
+            // 检查是否有 budget_id 字段
+            let has_budget_id = columns_result.iter().any(|row| {
+                let column_name: String = row.get("name");
+                column_name == "budget_id"
+            });
+            
             if let Some(column) = amount_column {
                 let column_type: String = column.get("type");
-                if column_type.to_uppercase().contains("DECIMAL") || column_type.to_uppercase().contains("INTEGER") {
-                    println!("需要迁移 transactions 表的 amount 列类型");
+                let needs_migration = column_type.to_uppercase().contains("DECIMAL") || 
+                                    column_type.to_uppercase().contains("INTEGER") ||
+                                    !has_budget_id;
+                                    
+                if needs_migration {
+                    println!("需要迁移 transactions 表结构");
                     
                     // 备份现有数据
                     sqlx::query("CREATE TABLE transactions_backup AS SELECT * FROM transactions")
@@ -96,18 +106,20 @@ impl Database {
                             type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
                             amount REAL NOT NULL,
                             category_id INTEGER NOT NULL,
+                            budget_id INTEGER,
                             description TEXT,
                             note TEXT,
                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                            FOREIGN KEY (category_id) REFERENCES categories(id)
+                            FOREIGN KEY (category_id) REFERENCES categories(id),
+                            FOREIGN KEY (budget_id) REFERENCES budgets(id)
                         )
                     "#).execute(pool).await?;
                     
                     // 恢复数据
                     sqlx::query(r#"
-                        INSERT INTO transactions (id, date, type, amount, category_id, description, note, created_at, updated_at)
-                        SELECT id, date, type, CAST(amount AS REAL), category_id, description, note, created_at, updated_at
+                        INSERT INTO transactions (id, date, type, amount, category_id, budget_id, description, note, created_at, updated_at)
+                        SELECT id, date, type, CAST(amount AS REAL), category_id, NULL, description, note, created_at, updated_at
                         FROM transactions_backup
                     "#).execute(pool).await?;
                     
@@ -128,11 +140,13 @@ impl Database {
                     type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
                     amount REAL NOT NULL,
                     category_id INTEGER NOT NULL,
+                    budget_id INTEGER,
                     description TEXT,
                     note TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (category_id) REFERENCES categories(id)
+                    FOREIGN KEY (category_id) REFERENCES categories(id),
+                    FOREIGN KEY (budget_id) REFERENCES budgets(id)
                 )
             "#).execute(pool).await?;
         }
@@ -172,8 +186,10 @@ impl Database {
                     sqlx::query(r#"
                         CREATE TABLE budgets (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name TEXT NOT NULL,
                             category_id INTEGER NOT NULL,
                             amount REAL NOT NULL,
+                            budget_type TEXT NOT NULL DEFAULT 'time' CHECK (budget_type IN ('time', 'event')),
                             period_type TEXT NOT NULL DEFAULT 'monthly' CHECK (period_type IN ('weekly', 'monthly', 'yearly')),
                             start_date DATE NOT NULL,
                             end_date DATE,
@@ -204,8 +220,10 @@ impl Database {
             sqlx::query(r#"
                 CREATE TABLE budgets (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
                     category_id INTEGER NOT NULL,
                     amount REAL NOT NULL,
+                    budget_type TEXT NOT NULL DEFAULT 'time' CHECK (budget_type IN ('time', 'event')),
                     period_type TEXT NOT NULL DEFAULT 'monthly' CHECK (period_type IN ('weekly', 'monthly', 'yearly')),
                     start_date DATE NOT NULL,
                     end_date DATE,
@@ -423,11 +441,13 @@ impl Database {
         let transactions = sqlx::query_as::<_, TransactionWithCategory>(
             r#"
             SELECT 
-                t.id, t.date, t.type, t.amount, t.category_id, t.description, t.note, 
+                t.id, t.date, t.type, t.amount, t.category_id, t.budget_id, t.description, t.note, 
                 t.created_at, t.updated_at,
-                c.name as category_name, c.icon as category_icon, c.color as category_color
+                c.name as category_name, c.icon as category_icon, c.color as category_color,
+                b.name as budget_name
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
+            LEFT JOIN budgets b ON t.budget_id = b.id
             ORDER BY t.date DESC, t.created_at DESC
             LIMIT ? OFFSET ?
             "#
@@ -444,11 +464,13 @@ impl Database {
         let transactions = sqlx::query_as::<_, TransactionWithCategory>(
             r#"
             SELECT 
-                t.id, t.date, t.type, t.amount, t.category_id, t.description, t.note, 
+                t.id, t.date, t.type, t.amount, t.category_id, t.budget_id, t.description, t.note, 
                 t.created_at, t.updated_at,
-                c.name as category_name, c.icon as category_icon, c.color as category_color
+                c.name as category_name, c.icon as category_icon, c.color as category_color,
+                b.name as budget_name
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
+            LEFT JOIN budgets b ON t.budget_id = b.id
             WHERE t.date BETWEEN ? AND ?
             ORDER BY t.date DESC, t.created_at DESC
             "#
@@ -463,13 +485,14 @@ impl Database {
 
     pub async fn create_transaction(&self, transaction: &NewTransaction) -> Result<i64> {
         let result = sqlx::query(
-            "INSERT INTO transactions (date, type, amount, category_id, description, note, created_at, updated_at) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO transactions (date, type, amount, category_id, budget_id, description, note, created_at, updated_at) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&transaction.date)
         .bind(&transaction.r#type)
         .bind(transaction.amount)
         .bind(transaction.category_id)
+        .bind(transaction.budget_id)
         .bind(&transaction.description)
         .bind(&transaction.note)
         .bind(Utc::now())
@@ -499,6 +522,14 @@ impl Database {
         if let Some(category_id) = transaction.category_id {
             query_parts.push(", category_id = ?");
             bindings.push(category_id.to_string());
+        }
+        if let Some(budget_id) = &transaction.budget_id {
+            query_parts.push(", budget_id = ?");
+            if let Some(bid) = budget_id {
+                bindings.push(bid.to_string());
+            } else {
+                bindings.push("NULL".to_string());
+            }
         }
         if let Some(description) = &transaction.description {
             query_parts.push(", description = ?");
@@ -620,7 +651,7 @@ impl Database {
         let budgets = sqlx::query(
             r#"
             SELECT 
-                b.id, b.category_id, b.amount, b.period_type, b.start_date, b.end_date, b.is_active,
+                b.id, b.name, b.category_id, b.amount, b.budget_type, b.period_type, b.start_date, b.end_date, b.is_active,
                 b.created_at, b.updated_at,
                 c.name as category_name, c.icon as category_icon, c.color as category_color,
                 COALESCE(SUM(t.amount), 0.0) as spent
@@ -628,9 +659,12 @@ impl Database {
             JOIN categories c ON b.category_id = c.id
             LEFT JOIN transactions t ON b.category_id = t.category_id 
                 AND t.type = 'expense'
-                AND t.date BETWEEN b.start_date AND COALESCE(b.end_date, date('now'))
+                AND (
+                    (b.budget_type = 'time' AND t.date BETWEEN b.start_date AND COALESCE(b.end_date, date('now')))
+                    OR (b.budget_type = 'event')
+                )
             WHERE b.is_active = 1
-            GROUP BY b.id, b.category_id, b.amount, b.period_type, b.start_date, b.end_date, 
+            GROUP BY b.id, b.name, b.category_id, b.amount, b.budget_type, b.period_type, b.start_date, b.end_date, 
                      b.is_active, b.created_at, b.updated_at, c.name, c.icon, c.color
             ORDER BY b.created_at DESC
             "#
@@ -649,8 +683,10 @@ impl Database {
                 BudgetProgress {
                     // Budget fields
                     id: row.get("id"),
+                    name: row.get("name"),
                     category_id: row.get("category_id"),
                     amount,
+                    budget_type: row.get("budget_type"),
                     period_type: row.get("period_type"),
                     start_date: row.get("start_date"),
                     end_date: row.get("end_date"),
@@ -674,11 +710,13 @@ impl Database {
 
     pub async fn create_budget(&self, budget: &NewBudget) -> Result<i64> {
         let result = sqlx::query(
-            "INSERT INTO budgets (category_id, amount, period_type, start_date, end_date, created_at, updated_at) 
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO budgets (name, category_id, amount, budget_type, period_type, start_date, end_date, created_at, updated_at) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
+        .bind(&budget.name)
         .bind(budget.category_id)
         .bind(budget.amount)
+        .bind(&budget.budget_type)
         .bind(&budget.period_type)
         .bind(&budget.start_date)
         .bind(&budget.end_date)

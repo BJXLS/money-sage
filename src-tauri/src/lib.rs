@@ -161,6 +161,7 @@ async fn import_transactions(
             r#type: transaction_type.to_string(),
             amount,
             category_id,
+            budget_id: None, // CSV导入时暂不关联预算
             description,
             note,
         };

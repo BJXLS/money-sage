@@ -297,6 +297,7 @@ impl Agent for BaseAgent {
         self.config = config;
     }
     
+    // agent入口
     async fn process(&self, input: &str, context: &mut AgentContext) -> Result<AgentResult> {
         // 验证输入
         self.validate_input(input)?;
@@ -370,9 +371,15 @@ impl AgentFactory {
         self.agents.get(name).map(|agent| agent.as_ref())
     }
     
-    /// 获取可变Agent
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut dyn Agent> {
-        self.agents.get_mut(name).map(|agent| agent.as_mut())
+    /// 获取可变Agent（通过移除和重新插入来修改）
+    pub fn take_agent(&mut self, name: &str) -> Option<Box<dyn Agent>> {
+        self.agents.remove(name)
+    }
+    
+    /// 重新插入Agent
+    pub fn insert_agent(&mut self, agent: Box<dyn Agent>) {
+        let name = agent.name().to_string();
+        self.agents.insert(name, agent);
     }
     
     /// 列出所有Agent

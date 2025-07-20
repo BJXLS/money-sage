@@ -208,6 +208,74 @@ async fn export_csv_transactions(state: State<'_, DatabaseState>, file_path: Str
     Ok(())
 }
 
+// 大模型配置相关命令
+#[tauri::command]
+async fn get_llm_config(state: State<'_, DatabaseState>) -> Result<Option<LLMConfig>, String> {
+    state.db.get_llm_config().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn save_llm_config(state: State<'_, DatabaseState>, config: NewLLMConfig) -> Result<i64, String> {
+    state.db.save_llm_config(&config).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn update_llm_config(state: State<'_, DatabaseState>, id: i64, config: UpdateLLMConfig) -> Result<(), String> {
+    state.db.update_llm_config(id, &config).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_llm_config(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
+    state.db.delete_llm_config(id).await.map_err(|e| e.to_string())
+}
+
+// 快速记账文本处理命令
+#[tauri::command]
+async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: String) -> Result<QuickBookingResult, String> {
+    // TODO: 这里是您需要实现的核心逻辑入口
+    // 建议的实现步骤：
+    // 1. 获取当前的LLM配置
+    // 2. 使用AI模型解析文本，提取记账信息
+    // 3. 验证和标准化提取的数据
+    // 4. 批量创建交易记录
+    // 5. 返回处理结果
+    
+    // 临时实现 - 返回示例结果
+    let result = QuickBookingResult {
+        success: false,
+        message: "快速记账功能尚未实现，请等待后续开发".to_string(),
+        processed_transactions: vec![],
+        failed_lines: vec![FailedLine {
+            line_number: 1,
+            original_text: text.clone(),
+            error_reason: "功能开发中，暂不可用".to_string(),
+        }],
+    };
+    
+    Ok(result)
+}
+
+// 辅助函数：解析单行文本为交易记录（供您实现时参考）
+async fn parse_text_line_to_transaction(
+    line: &str, 
+    line_number: usize,
+    db: &Database
+) -> Result<ProcessedTransaction, FailedLine> {
+    // TODO: 实现文本解析逻辑
+    // 建议使用AI模型来解析以下信息：
+    // - 交易类型（收入/支出）
+    // - 金额
+    // - 日期（相对或绝对）
+    // - 分类
+    // - 描述
+    
+    Err(FailedLine {
+        line_number,
+        original_text: line.to_string(),
+        error_reason: "解析功能待实现".to_string(),
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -292,7 +360,12 @@ pub fn run() {
             create_budget,
             delete_budget,
             import_transactions,
-            export_csv_transactions
+            export_csv_transactions,
+            get_llm_config,
+            save_llm_config,
+            update_llm_config,
+            delete_llm_config,
+            process_quick_booking_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

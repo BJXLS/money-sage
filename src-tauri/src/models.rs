@@ -161,4 +161,56 @@ pub struct BudgetProgress {
 pub struct DateRange {
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
+}
+
+// 大模型配置相关结构
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+pub struct LLMConfig {
+    pub id: i64,
+    pub platform: String,
+    pub app_key: String,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NewLLMConfig {
+    pub platform: String,
+    pub app_key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateLLMConfig {
+    pub platform: Option<String>,
+    pub app_key: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+// 快速记账相关结构
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QuickBookingRequest {
+    pub text: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QuickBookingResult {
+    pub success: bool,
+    pub message: String,
+    pub processed_transactions: Vec<ProcessedTransaction>,
+    pub failed_lines: Vec<FailedLine>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProcessedTransaction {
+    pub original_text: String,
+    pub transaction: NewTransaction,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FailedLine {
+    pub line_number: usize,
+    pub original_text: String,
+    pub error_reason: String,
 } 

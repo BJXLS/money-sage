@@ -159,9 +159,10 @@ export const useAppStore = defineStore('app', () => {
   const fetchCategories = async () => {
     try {
       loading.value = true
-      const result = await safeInvoke<Category[]>('get_categories')
+      console.log('正在获取分类数据...')
+      const result = await invoke<Category[]>('get_categories')
+      console.log('获取到的分类数据:', result)
       categories.value = result || []
-      console.log('获取到的分类数据:', categories.value)
     } catch (error) {
       console.error('获取分类失败:', error)
       throw error
@@ -230,13 +231,17 @@ export const useAppStore = defineStore('app', () => {
   const fetchTransactions = async (limit?: number, offset?: number) => {
     try {
       loading.value = true
-      const result = await safeInvoke<TransactionWithCategory[]>('get_transactions', { 
+      console.log('正在获取交易记录...')
+      const result = await invoke<TransactionWithCategory[]>('get_transactions', { 
         limit: limit || pageSize.value, 
         offset: offset || (currentPage.value - 1) * pageSize.value 
       })
+      console.log('获取到的交易记录:', result)
       transactions.value = result || []
     } catch (error) {
       console.error('获取交易记录失败:', error)
+      // 保持现有数据，不要清空
+      // transactions.value = []
       throw error
     } finally {
       loading.value = false

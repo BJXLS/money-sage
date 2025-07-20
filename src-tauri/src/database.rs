@@ -151,69 +151,111 @@ impl Database {
             "#).execute(pool).await?;
         }
 
-        // 检查 budgets 表是否存在以及 amount 列的类型
+        // 检查 budgets 表是否存在以及字段完整性
         let budget_table_exists = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name='budgets'")
             .fetch_optional(pool)
             .await?;
         
         if let Some(_) = budget_table_exists {
-            // 检查 amount 列的类型
+            // 检查表结构
             let columns_result = sqlx::query("PRAGMA table_info(budgets)")
                 .fetch_all(pool)
                 .await?;
+            
+            let has_name = columns_result.iter().any(|row| {
+                let column_name: String = row.get("name");
+                column_name == "name"
+            });
+            
+            let has_budget_type = columns_result.iter().any(|row| {
+                let column_name: String = row.get("name");
+                column_name == "budget_type"
+            });
             
             let amount_column = columns_result.iter().find(|row| {
                 let column_name: String = row.get("name");
                 column_name == "amount"
             });
             
-            if let Some(column) = amount_column {
-                let column_type: String = column.get("type");
-                if column_type.to_uppercase().contains("DECIMAL") || column_type.to_uppercase().contains("INTEGER") {
-                    println!("需要迁移 budgets 表的 amount 列类型");
-                    
-                    // 备份现有数据
-                    sqlx::query("CREATE TABLE budgets_backup AS SELECT * FROM budgets")
-                        .execute(pool)
-                        .await?;
-                    
-                    // 删除原表
-                    sqlx::query("DROP TABLE budgets")
-                        .execute(pool)
-                        .await?;
-                    
-                    // 重新创建表
+            let needs_migration = !has_name || !has_budget_type || 
+                                (amount_column.map(|col| {
+                                    let column_type: String = col.get("type");
+                                    column_type.to_uppercase().contains("DECIMAL") || 
+                                    column_type.to_uppercase().contains("INTEGER")
+                                }).unwrap_or(false));
+            
+            if needs_migration {
+                println!("需要迁移 budgets 表结构，缺少必要字段或数据类型不正确");
+                
+                // 备份现有数据
+                sqlx::query("CREATE TABLE budgets_backup AS SELECT * FROM budgets")
+                    .execute(pool)
+                    .await?;
+                
+                // 删除原表
+                sqlx::query("DROP TABLE budgets")
+                    .execute(pool)
+                    .await?;
+                
+                // 重新创建表
+                sqlx::query(r#"
+                    CREATE TABLE budgets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        category_id INTEGER NOT NULL,
+                        amount REAL NOT NULL,
+                        budget_type TEXT NOT NULL DEFAULT 'time' CHECK (budget_type IN ('time', 'event')),
+                        period_type TEXT NOT NULL DEFAULT 'monthly' CHECK (period_type IN ('weekly', 'monthly', 'yearly')),
+                        start_date DATE NOT NULL,
+                        end_date DATE,
+                        is_active INTEGER DEFAULT 1,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (category_id) REFERENCES categories(id)
+                    )
+                "#).execute(pool).await?;
+                
+                // 恢复数据，处理可能缺失的字段
+                let backup_columns = sqlx::query("PRAGMA table_info(budgets_backup)")
+                    .fetch_all(pool)
+                    .await?;
+                
+                let backup_has_name = backup_columns.iter().any(|row| {
+                    let column_name: String = row.get("name");
+                    column_name == "name"
+                });
+                
+                let backup_has_budget_type = backup_columns.iter().any(|row| {
+                    let column_name: String = row.get("name");
+                    column_name == "budget_type"
+                });
+                
+                if backup_has_name && backup_has_budget_type {
                     sqlx::query(r#"
-                        CREATE TABLE budgets (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            name TEXT NOT NULL,
-                            category_id INTEGER NOT NULL,
-                            amount REAL NOT NULL,
-                            budget_type TEXT NOT NULL DEFAULT 'time' CHECK (budget_type IN ('time', 'event')),
-                            period_type TEXT NOT NULL DEFAULT 'monthly' CHECK (period_type IN ('weekly', 'monthly', 'yearly')),
-                            start_date DATE NOT NULL,
-                            end_date DATE,
-                            is_active INTEGER DEFAULT 1,
-                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                            FOREIGN KEY (category_id) REFERENCES categories(id)
-                        )
-                    "#).execute(pool).await?;
-                    
-                    // 恢复数据
-                    sqlx::query(r#"
-                        INSERT INTO budgets (id, category_id, amount, period_type, start_date, end_date, is_active, created_at, updated_at)
-                        SELECT id, category_id, CAST(amount AS REAL), period_type, start_date, end_date, is_active, created_at, updated_at
+                        INSERT INTO budgets (id, name, category_id, amount, budget_type, period_type, start_date, end_date, is_active, created_at, updated_at)
+                        SELECT id, name, category_id, CAST(amount AS REAL), budget_type, period_type, start_date, end_date, is_active, created_at, updated_at
                         FROM budgets_backup
                     "#).execute(pool).await?;
+                } else {
+                    // 如果备份表缺少字段，使用默认值
+                    let name_field = if backup_has_name { "name" } else { "'预算-' || id" };
+                    let budget_type_field = if backup_has_budget_type { "budget_type" } else { "'time'" };
                     
-                    // 删除备份表
-                    sqlx::query("DROP TABLE budgets_backup")
-                        .execute(pool)
-                        .await?;
+                    let query = format!(r#"
+                        INSERT INTO budgets (id, name, category_id, amount, budget_type, period_type, start_date, end_date, is_active, created_at, updated_at)
+                        SELECT id, {}, category_id, CAST(amount AS REAL), {}, period_type, start_date, end_date, is_active, created_at, updated_at
+                        FROM budgets_backup
+                    "#, name_field, budget_type_field);
                     
-                    println!("budgets 表迁移完成");
+                    sqlx::query(&query).execute(pool).await?;
                 }
+                
+                // 删除备份表
+                sqlx::query("DROP TABLE budgets_backup")
+                    .execute(pool)
+                    .await?;
+                
+                println!("budgets 表迁移完成");
             }
         } else {
             // 创建新的 budgets 表
@@ -235,6 +277,18 @@ impl Database {
             "#).execute(pool).await?;
         }
 
+        // 创建大模型配置表
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS llm_configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                app_key TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
+
         // 创建索引
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)").execute(pool).await?;
@@ -243,6 +297,7 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_budgets_period ON budgets(start_date, end_date)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_configs_platform ON llm_configs(platform)").execute(pool).await?;
 
         Ok(())
     }
@@ -743,13 +798,14 @@ impl Database {
         
         for transaction in transactions {
             let result = sqlx::query(
-                "INSERT INTO transactions (date, type, amount, category_id, description, note, created_at, updated_at) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO transactions (date, type, amount, category_id, budget_id, description, note, created_at, updated_at) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
             )
             .bind(&transaction.date)
             .bind(&transaction.r#type)
             .bind(transaction.amount)
             .bind(transaction.category_id)
+            .bind(transaction.budget_id)
             .bind(&transaction.description)
             .bind(&transaction.note)
             .bind(Utc::now())
@@ -762,5 +818,84 @@ impl Database {
         
         tx.commit().await?;
         Ok(ids)
+    }
+
+    // 大模型配置相关方法
+    pub async fn get_llm_config(&self) -> Result<Option<LLMConfig>> {
+        let config = sqlx::query_as::<_, LLMConfig>(
+            "SELECT * FROM llm_configs WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1"
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        
+        Ok(config)
+    }
+
+    pub async fn save_llm_config(&self, config: &NewLLMConfig) -> Result<i64> {
+        // 先将所有配置设为非活跃状态
+        sqlx::query("UPDATE llm_configs SET is_active = 0, updated_at = ?")
+            .bind(Utc::now())
+            .execute(&self.pool)
+            .await?;
+
+        // 插入新配置
+        let result = sqlx::query(
+            "INSERT INTO llm_configs (platform, app_key, is_active, created_at, updated_at) 
+             VALUES (?, ?, 1, ?, ?)"
+        )
+        .bind(&config.platform)
+        .bind(&config.app_key)
+        .bind(Utc::now())
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await?;
+        
+        Ok(result.last_insert_rowid())
+    }
+
+    pub async fn update_llm_config(&self, id: i64, config: &UpdateLLMConfig) -> Result<()> {
+        let mut query_parts = Vec::new();
+        let mut binds = Vec::new();
+
+        if let Some(platform) = &config.platform {
+            query_parts.push("platform = ?");
+            binds.push(platform.as_str());
+        }
+
+        if let Some(app_key) = &config.app_key {
+            query_parts.push("app_key = ?");
+            binds.push(app_key.as_str());
+        }
+
+        if let Some(is_active) = &config.is_active {
+            query_parts.push("is_active = ?");
+            binds.push(if *is_active { "1" } else { "0" });
+        }
+
+        if !query_parts.is_empty() {
+            query_parts.push("updated_at = ?");
+            let now = Utc::now().to_string();
+            binds.push(&now);
+
+            let query_str = format!("UPDATE llm_configs SET {} WHERE id = ?", query_parts.join(", "));
+            let mut query = sqlx::query(&query_str);
+            
+            for bind in binds {
+                query = query.bind(bind);
+            }
+            query = query.bind(id);
+            
+            query.execute(&self.pool).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn delete_llm_config(&self, id: i64) -> Result<()> {
+        sqlx::query("DELETE FROM llm_configs WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 } 

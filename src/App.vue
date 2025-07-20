@@ -7,11 +7,13 @@ import CategoriesView from './views/CategoriesView.vue'
 import BudgetView from './views/BudgetView.vue'
 import StatisticsView from './views/StatisticsView.vue'
 import ImportExportView from './views/ImportExportView.vue'
-import AddTransactionDialog from './components/AddTransactionDialog.vue'
+import QuickBookingDialog from './components/QuickBookingDialog.vue'
+import LLMConfigDialog from './components/LLMConfigDialog.vue'
 
 const store = useAppStore()
 const activeMenu = ref('dashboard')
-const showAddTransaction = ref(false)
+const showQuickBooking = ref(false)
+const showLLMConfig = ref(false)
 const isCollapsed = ref(false)
 
 const handleMenuSelect = (key: string) => {
@@ -34,11 +36,16 @@ const getPageTitle = () => {
   return titles[activeMenu.value] || '记账本'
 }
 
-const handleTransactionAdded = () => {
-  showAddTransaction.value = false
+const handleQuickBookingSuccess = (data: any) => {
+  showQuickBooking.value = false
   // 重新加载数据
   store.fetchTransactions()
   store.fetchMonthlyStats()
+  console.log('快速记账处理结果:', data)
+}
+
+const handleLLMConfigSaved = () => {
+  showLLMConfig.value = false
 }
 
 onMounted(() => {
@@ -120,9 +127,12 @@ onMounted(() => {
             <h3>{{ getPageTitle() }}</h3>
           </div>
           <div class="header-right">
-            <el-button @click="showAddTransaction = true" class="add-record-btn">
-              <el-icon><Plus /></el-icon>
-              记一笔
+                          <el-button @click="showQuickBooking = true" class="quick-booking-btn">
+                <el-icon><Plus /></el-icon>
+                快速记账
+              </el-button>
+            <el-button @click="showLLMConfig = true" class="llm-config-btn" title="大模型配置">
+              <el-icon><Setting /></el-icon>
             </el-button>
           </div>
         </div>
@@ -150,10 +160,16 @@ onMounted(() => {
       </el-main>
     </el-container>
     
-    <!-- 添加交易对话框 -->
-    <AddTransactionDialog 
-      v-model="showAddTransaction" 
-      @success="handleTransactionAdded"
+    <!-- 快速记账对话框 -->
+    <QuickBookingDialog 
+      v-model="showQuickBooking" 
+      @success="handleQuickBookingSuccess"
+    />
+    
+    <!-- 大模型配置对话框 -->
+    <LLMConfigDialog 
+      v-model="showLLMConfig" 
+      @success="handleLLMConfigSaved"
     />
   </div>
 </template>
@@ -313,7 +329,36 @@ onMounted(() => {
   color: #ffffff;
 }
 
-.add-record-btn {
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.llm-config-btn {
+  background: #404040;
+  border: 1px solid #606060;
+  color: #ffffff;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+  min-width: auto;
+}
+
+.llm-config-btn:hover {
+  background: #606060;
+  border-color: #808080;
+  color: #ffffff;
+}
+
+.llm-config-btn:focus {
+  background: #606060;
+  border-color: #808080;
+  color: #ffffff;
+}
+
+.quick-booking-btn {
   background: #606060;
   border: 1px solid #707070;
   color: #ffffff;
@@ -323,19 +368,19 @@ onMounted(() => {
   transition: all 0.3s ease;
 }
 
-.add-record-btn:hover {
+.quick-booking-btn:hover {
   background: #707070;
   border-color: #808080;
   color: #ffffff;
 }
 
-.add-record-btn:focus {
+.quick-booking-btn:focus {
   background: #707070;
   border-color: #808080;
   color: #ffffff;
 }
 
-.add-record-btn .el-icon {
+.quick-booking-btn .el-icon {
   margin-right: 4px;
 }
 
@@ -513,7 +558,25 @@ body {
   color: #ffffff !important;
 }
 
-:deep(.add-record-btn:focus) {
+:deep(.llm-config-btn:hover) {
+  background: #606060 !important;
+  border-color: #808080 !important;
+  color: #ffffff !important;
+}
+
+:deep(.llm-config-btn:focus) {
+  background: #606060 !important;
+  border-color: #808080 !important;
+  color: #ffffff !important;
+}
+
+:deep(.quick-booking-btn:hover) {
+  background: #707070 !important;
+  border-color: #808080 !important;
+  color: #ffffff !important;
+}
+
+:deep(.quick-booking-btn:focus) {
   background: #707070 !important;
   border-color: #808080 !important;
   color: #ffffff !important;

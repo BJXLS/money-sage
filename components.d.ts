@@ -35,5 +35,7 @@ declare module 'vue' {
     ElTable: typeof import('element-plus/es')['ElTable']
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTag: typeof import('element-plus/es')['ElTag']
+    LLMConfigDialog: typeof import('./src/components/LLMConfigDialog.vue')['default']
+    QuickBookingDialog: typeof import('./src/components/QuickBookingDialog.vue')['default']
   }
 }

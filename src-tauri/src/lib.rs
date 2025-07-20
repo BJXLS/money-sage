@@ -6,6 +6,8 @@ use std::collections::HashMap;
 
 mod models;
 mod database;
+mod utils;
+mod ai;
 
 use database::Database;
 use models::*;

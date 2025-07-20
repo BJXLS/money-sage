@@ -9,6 +9,9 @@ mod database;
 mod utils;
 mod ai;
 
+#[cfg(test)]
+mod tests;
+
 use database::Database;
 use models::*;
 
@@ -232,27 +235,214 @@ async fn delete_llm_config(state: State<'_, DatabaseState>, id: i64) -> Result<(
 // 快速记账文本处理命令
 #[tauri::command]
 async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: String) -> Result<QuickBookingResult, String> {
-    // TODO: 这里是您需要实现的核心逻辑入口
-    // 建议的实现步骤：
-    // 1. 获取当前的LLM配置
-    // 2. 使用AI模型解析文本，提取记账信息
-    // 3. 验证和标准化提取的数据
-    // 4. 批量创建交易记录
-    // 5. 返回处理结果
+    use crate::ai::agent::{QuickNoteAgent, Agent};
     
-    // 临时实现 - 返回示例结果
-    let result = QuickBookingResult {
-        success: false,
-        message: "快速记账功能尚未实现，请等待后续开发".to_string(),
-        processed_transactions: vec![],
-        failed_lines: vec![FailedLine {
-            line_number: 1,
-            original_text: text.clone(),
-            error_reason: "功能开发中，暂不可用".to_string(),
-        }],
+    // 验证输入
+    if text.trim().is_empty() {
+        return Ok(QuickBookingResult {
+            success: false,
+            message: "输入文本不能为空".to_string(),
+            processed_transactions: vec![],
+            failed_lines: vec![],
+        });
+    }
+    
+    // 1. 获取当前的LLM配置
+    let llm_config = match state.db.get_llm_config().await {
+        Ok(Some(config)) => config,
+        Ok(None) => {
+            return Ok(QuickBookingResult {
+                success: false,
+                message: "请先配置大模型平台和API密钥".to_string(),
+                processed_transactions: vec![],
+                failed_lines: vec![],
+            });
+        }
+        Err(e) => {
+            return Ok(QuickBookingResult {
+                success: false,
+                message: format!("获取大模型配置失败: {}", e),
+                processed_transactions: vec![],
+                failed_lines: vec![],
+            });
+        }
     };
     
-    Ok(result)
+    // 2. 创建HTTP客户端和快速记账代理
+    use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider};
+    
+    // 根据平台创建客户端配置
+    let provider = match llm_config.platform.as_str() {
+        "Alibaba Bailian" => AIProvider::Custom("Alibaba".to_string()),
+        "OpenAI" => AIProvider::OpenAI,
+        "Claude" => AIProvider::Claude,
+        "Gemini" => AIProvider::Gemini,
+        _ => AIProvider::Custom(llm_config.platform.clone()),
+    };
+
+
+    // 创建自定义headers
+    // let mut headers = std::collections::HashMap::new();
+    // headers.insert(
+    //     "Authorization".to_string(), 
+    //     format!("Bearer {}", llm_config.app_key)
+    // );
+    // headers.insert(
+    //     "Content-Type".to_string(), 
+    //     "application/json".to_string()
+    // );
+
+    let config = ClientConfig {
+        provider,
+        base_url: "https://dashscope.aliyuncs.com/api/v1".to_string(), // 阿里云百炼API地址
+        api_key: llm_config.app_key.clone(),
+        timeout_secs: 30,
+        max_retries: 3,
+        headers: std::collections::HashMap::new()
+    };
+    
+    let http_client = AIHttpClient::new(config)
+        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+    let quick_note_agent = QuickNoteAgent::new();
+    
+    // 3. 使用AI模型解析文本
+    let parse_result = match quick_note_agent.parse_quick_note(&text, &http_client).await {
+        Ok(result) => result,
+        Err(e) => {
+            return Ok(QuickBookingResult {
+                success: false,
+                message: format!("AI解析失败: {}", e),
+                processed_transactions: vec![],
+                failed_lines: vec![FailedLine {
+                    line_number: 1,
+                    original_text: text,
+                    error_reason: e.to_string(),
+                }],
+            });
+        }
+    };
+    
+    // 4. 验证和创建交易记录
+    let mut processed_transactions = Vec::new();
+    let mut failed_lines = Vec::new();
+    
+    for (index, quick_transaction) in parse_result.transactions.iter().enumerate() {
+        // 查找分类ID
+        let category_type = if quick_transaction.transaction_type == "income" { "income" } else { "expense" };
+        let categories = match state.db.get_categories_by_type(category_type).await {
+            Ok(cats) => cats,
+            Err(e) => {
+                failed_lines.push(FailedLine {
+                    line_number: index + 1,
+                    original_text: format!("{}: {} {}", 
+                        quick_transaction.date_time, 
+                        quick_transaction.amount, 
+                        quick_transaction.remark),
+                    error_reason: format!("获取分类失败: {}", e),
+                });
+                continue;
+            }
+        };
+        
+        // 查找匹配的分类
+        let category = categories.iter()
+            .find(|cat| cat.name == quick_transaction.category)
+            .or_else(|| {
+                // 如果找不到精确匹配，尝试找到默认分类
+                if category_type == "income" {
+                    categories.iter().find(|cat| cat.name == "其他收入")
+                } else {
+                    categories.iter().find(|cat| cat.name == "其他支出")
+                }
+            });
+        
+        let category_id = match category {
+            Some(cat) => cat.id,
+            None => {
+                failed_lines.push(FailedLine {
+                    line_number: index + 1,
+                    original_text: format!("{}: {} {}", 
+                        quick_transaction.date_time, 
+                        quick_transaction.amount, 
+                        quick_transaction.remark),
+                    error_reason: format!("未找到匹配的分类: {}", quick_transaction.category),
+                });
+                continue;
+            }
+        };
+        
+        // 解析日期
+        let date = chrono::NaiveDate::parse_from_str(&quick_transaction.date_time, "%Y-%m-%d")
+            .map_err(|e| format!("日期解析失败: {}", e));
+        
+        let date = match date {
+            Ok(d) => d,
+            Err(e) => {
+                failed_lines.push(FailedLine {
+                    line_number: index + 1,
+                    original_text: format!("{}: {} {}", 
+                        quick_transaction.date_time, 
+                        quick_transaction.amount, 
+                        quick_transaction.remark),
+                    error_reason: e,
+                });
+                continue;
+            }
+        };
+        
+        // 创建交易记录
+        let transaction_data = models::NewTransaction {
+            date,
+            r#type: quick_transaction.transaction_type.clone(),
+            amount: quick_transaction.amount,
+            category_id,
+            budget_id: None, // 快速记账暂不关联预算
+            description: Some(quick_transaction.remark.clone()),
+            note: Some(quick_transaction.remark.clone()),
+        };
+        
+        match state.db.create_transaction(&transaction_data).await {
+            Ok(transaction_id) => {
+                processed_transactions.push(ProcessedTransaction {
+                    original_text: format!("{}: {} {}", 
+                        quick_transaction.date_time, 
+                        quick_transaction.amount, 
+                        quick_transaction.remark),
+                    transaction: transaction_data,
+                    confidence: 0.9, // 默认置信度
+                });
+            }
+            Err(e) => {
+                failed_lines.push(FailedLine {
+                    line_number: index + 1,
+                    original_text: format!("{}: {} {}", 
+                        quick_transaction.date_time, 
+                        quick_transaction.amount, 
+                        quick_transaction.remark),
+                    error_reason: format!("创建交易记录失败: {}", e),
+                });
+            }
+        }
+    }
+    
+    // 5. 返回处理结果
+    let success = !processed_transactions.is_empty();
+    let message = if success {
+        if failed_lines.is_empty() {
+            format!("成功解析并创建了{}条记录", processed_transactions.len())
+        } else {
+            format!("成功创建{}条记录，{}条失败", processed_transactions.len(), failed_lines.len())
+        }
+    } else {
+        "所有记录都处理失败".to_string()
+    };
+    
+    Ok(QuickBookingResult {
+        success,
+        message,
+        processed_transactions,
+        failed_lines,
+    })
 }
 
 // 辅助函数：解析单行文本为交易记录（供您实现时参考）

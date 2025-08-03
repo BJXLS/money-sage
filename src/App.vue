@@ -61,7 +61,7 @@ onMounted(() => {
       <el-aside :width="isCollapsed ? '64px' : '240px'" class="sidebar" :class="{ 'is-collapsed': isCollapsed }">
         <div class="logo">
           <el-icon class="logo-icon" :size="24"><Files /></el-icon>
-          <h2 v-show="!isCollapsed" class="logo-text">MoneyNote</h2>
+          <h2 v-show="!isCollapsed" class="logo-text">MoneySage</h2>
         </div>
         
         <!-- 汉堡菜单按钮 -->

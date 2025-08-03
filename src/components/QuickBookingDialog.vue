@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     title="快速记账"
-    width="600px"
+    width="900px"
     :close-on-click-modal="false"
     @close="handleClose"
   >
@@ -86,7 +86,7 @@
               </template>
             </el-table-column>
             
-            <el-table-column label="分类" width="120">
+            <el-table-column label="分类" width="180">
               <template #default="{ row }">
                 <el-select 
                   v-model="row.category_id" 
@@ -95,12 +95,25 @@
                   filterable
                   placeholder="选择分类"
                 >
-                  <el-option
-                    v-for="category in allCategories.filter(c => c.type === row.transaction_type)"
-                    :key="category.id"
-                    :label="category.name"
-                    :value="category.id"
-                  />
+                  <el-option-group
+                    v-for="parentCategory in getParentCategories(row.transaction_type)"
+                    :key="parentCategory.id"
+                    :label="`${parentCategory.icon || '📁'} ${parentCategory.name}`"
+                  >
+                    <el-option
+                      v-for="subCategory in getSubCategories(parentCategory.id)"
+                      :key="subCategory.id"
+                      :label="subCategory.name"
+                      :value="subCategory.id"
+                    >
+                      <div class="category-option">
+                        <span class="category-icon" :style="{ color: subCategory.color }">
+                          {{ subCategory.icon || '📋' }}
+                        </span>
+                        <span>{{ subCategory.name }}</span>
+                      </div>
+                    </el-option>
+                  </el-option-group>
                 </el-select>
               </template>
             </el-table-column>
@@ -189,6 +202,7 @@ interface Category {
   type: string
   icon?: string
   color?: string
+  parent_id?: number | null
 }
 
 interface QuickBookingResult {
@@ -222,6 +236,8 @@ const processing = ref(false)
 const showConfirmation = ref(false)
 const parsedTransactions = ref<ParsedTransaction[]>([])
 const allCategories = ref<Category[]>([])
+
+// 分类选择相关 - 简化实现
 
 // 监听props变化
 watch(
@@ -286,6 +302,7 @@ const handleSubmit = async () => {
         category_id: transaction.category_id || null
       }))
       showConfirmation.value = true
+
       ElMessage.success(`AI识别成功！解析出${result.parsed_transactions.length}条记录，请确认后保存`)
     } else {
       // AI解析失败
@@ -367,6 +384,7 @@ const handleClose = () => {
       inputText.value = ''
       showConfirmation.value = false
       parsedTransactions.value = []
+
     }).catch(() => {
       // 用户取消关闭
     })
@@ -375,8 +393,23 @@ const handleClose = () => {
     inputText.value = ''
     showConfirmation.value = false
     parsedTransactions.value = []
+    
   }
 }
+
+
+
+
+
+const getParentCategories = (transactionType: string) => {
+  return allCategories.value.filter(cat => cat.type === transactionType && !cat.parent_id)
+}
+
+const getSubCategories = (parentId: number) => {
+  return allCategories.value.filter(cat => cat.parent_id === parentId)
+}
+
+
 </script>
 
 <style scoped>
@@ -588,5 +621,16 @@ const handleClose = () => {
   background: #404040;
   border-color: #606060;
   color: #909399;
+}
+
+/* 分类选择器样式 */
+.category-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-icon {
+  font-size: 16px;
 }
 </style> 

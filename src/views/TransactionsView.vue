@@ -338,9 +338,7 @@ const selectedDateText = computed(() => {
   return dayjs(selectedDate.value).format('YYYY年M月D日')
 })
 
-const availableCategories = computed(() => {
-  return store.categories.filter(cat => cat.type === transactionForm.value.type)
-})
+
 
 const availableParentCategories = computed(() => {
   return store.categories.filter(cat => cat.type === transactionForm.value.type && !cat.parent_id)

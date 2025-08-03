@@ -208,7 +208,7 @@ export const useAppStore = defineStore('app', () => {
     parent_id?: number | null
   }) => {
     try {
-      const result = await safeInvoke('update_category', { id, category: categoryData })
+      await safeInvoke('update_category', { id, category: categoryData })
       // 总是刷新数据，无论是否在 Tauri 环境中
       await fetchCategories()
     } catch (error) {
@@ -219,7 +219,7 @@ export const useAppStore = defineStore('app', () => {
   
   const deleteCategory = async (id: number) => {
     try {
-      const result = await safeInvoke('delete_category', { id })
+      await safeInvoke('delete_category', { id })
       // 总是刷新数据，无论是否在 Tauri 环境中
       await fetchCategories()
     } catch (error) {

@@ -90,6 +90,9 @@ impl QuickNoteAgent {
 ## 输出格式
 
 严格按照以下JSON格式输出，不要添加任何额外的文字说明：
+！！注意
+1. category的输出格式为：大类（分号前的分类）-小类（大类该行识别到的小类）
+2. 如果没有合适的分类就输出‘其他-其他小类’
 
 ```json
 {
@@ -98,7 +101,7 @@ impl QuickNoteAgent {
       "date": "2025-01-20",
       "amount": 28.5,
       "transaction_type": "expense",
-      "category": "餐饮-吃饭",
+      "category": "餐饮-午饭",
       "remark": "午餐"
     }
   ],
@@ -117,7 +120,7 @@ impl QuickNoteAgent {
       "date": "2025-01-20",
       "amount": 28.5,
       "transaction_type": "expense", 
-      "category": "餐饮-吃饭",
+      "category": "餐饮-午饭",
       "remark": "中午午餐"
     },
     {

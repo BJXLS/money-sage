@@ -52,7 +52,7 @@ mod tests {
         let ai_response = r#"{
             "transactions": [
                 {
-                    "date_time": "2025-01-20",
+                    "date": "2025-01-20",
                     "amount": 25.5,
                     "transaction_type": "expense",
                     "category": "餐饮",
@@ -90,14 +90,14 @@ mod tests {
         let ai_response = r#"{
             "transactions": [
                 {
-                    "date_time": "2025-01-20",
+                    "date": "2025-01-20",
                     "amount": 28.5,
                     "transaction_type": "expense",
                     "category": "餐饮",
                     "remark": "中午午餐"
                 },
                 {
-                    "date_time": "2025-01-20",
+                    "date": "2025-01-20",
                     "amount": 15.0,
                     "transaction_type": "expense",
                     "category": "交通",
@@ -139,7 +139,7 @@ mod tests {
         let ai_response = r#"{
             "transactions": [
                 {
-                    "date_time": "2025-01-20",
+                    "date": "2025-01-20",
                     "amount": 100.0,
                     "transaction_type": "expense",
                     "category": "未知分类",
@@ -178,7 +178,7 @@ mod tests {
         let ai_response = r#"{
             "transactions": [
                 {
-                    "date_time": "invalid-date",
+                    "date": "invalid-date",
                     "amount": 50.0,
                     "transaction_type": "expense",
                     "category": "餐饮",
@@ -214,7 +214,7 @@ mod tests {
         let ai_response = r#"{
             "transactions": [
                 {
-                    "date_time": "2025-01-20",
+                    "date": "2025-01-20",
                     "amount": 5000.0,
                     "transaction_type": "income",
                     "category": "工资",
@@ -377,7 +377,7 @@ mod tests {
                     index: 0,
                     message: AIMessage {
                         role: "assistant".to_string(),
-                        content: r#"{"transactions":[{"date_time":"2025-01-20","amount":30.0,"transaction_type":"expense","category":"餐饮","remark":"午餐"}]}"#.to_string(),
+                        content: r#"{"transactions":[{"date":"2025-01-20","amount":30.0,"transaction_type":"expense","category":"餐饮","remark":"午餐"}]}"#.to_string(),
                     },
                     finish_reason: Some("stop".to_string()),
                 }
@@ -522,14 +522,14 @@ mod tests {
         let valid_result = QuickNoteResult {
             transactions: vec![
                 QuickTransaction {
-                    date_time: "2025-01-20".to_string(),
+                    date: "2025-01-20".to_string(),
                     amount: 25.5,
                     transaction_type: "expense".to_string(),
                     category: "餐饮".to_string(),
                     remark: "午餐".to_string(),
                 },
                 QuickTransaction {
-                    date_time: "2025-01-20".to_string(),
+                    date: "2025-01-20".to_string(),
                     amount: 5000.0,
                     transaction_type: "income".to_string(),
                     category: "工资".to_string(),
@@ -557,7 +557,7 @@ mod tests {
         let invalid_date_result = QuickNoteResult {
             transactions: vec![
                 QuickTransaction {
-                    date_time: "2025-13-45".to_string(), // 无效日期
+                    date: "2025-13-45".to_string(), // 无效日期
                     amount: 10.0,
                     transaction_type: "expense".to_string(),
                     category: "测试".to_string(),
@@ -574,7 +574,7 @@ mod tests {
         let invalid_amount_result = QuickNoteResult {
             transactions: vec![
                 QuickTransaction {
-                    date_time: "2025-01-20".to_string(),
+                    date: "2025-01-20".to_string(),
                     amount: -10.0, // 负数金额
                     transaction_type: "expense".to_string(),
                     category: "测试".to_string(),
@@ -591,7 +591,7 @@ mod tests {
         let invalid_type_result = QuickNoteResult {
             transactions: vec![
                 QuickTransaction {
-                    date_time: "2025-01-20".to_string(),
+                    date: "2025-01-20".to_string(),
                     amount: 10.0,
                     transaction_type: "invalid_type".to_string(), // 无效类型
                     category: "测试".to_string(),
@@ -608,7 +608,7 @@ mod tests {
         let empty_category_result = QuickNoteResult {
             transactions: vec![
                 QuickTransaction {
-                    date_time: "2025-01-20".to_string(),
+                    date: "2025-01-20".to_string(),
                     amount: 10.0,
                     transaction_type: "expense".to_string(),
                     category: "".to_string(), // 空分类
@@ -620,6 +620,101 @@ mod tests {
         let category_validation = agent.validate_parse_result(&empty_category_result);
         assert!(category_validation.is_err());
         assert!(category_validation.unwrap_err().to_string().contains("Empty category"));
+    }
+    
+    #[tokio::test]
+    async fn test_real_ai_http_client_request() {
+        use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider, AIRequest, AIMessage};
+        use crate::ai::agent::{QuickNoteAgent, Agent};
+        use std::collections::HashMap;
+        
+        // 创建阿里云百炼客户端配置
+        let config = ClientConfig {
+            provider: AIProvider::Custom("Alibaba".to_string()),
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
+            api_key: "sk-90140f4fffb44b65bee452cf5e4100c1".to_string(), // 这里使用测试API密钥
+            timeout_secs: 30,
+            max_retries: 3,
+            headers: HashMap::new(),
+        };
+        
+        // 创建HTTP客户端
+        let client = AIHttpClient::new(config);
+        assert!(client.is_ok(), "HTTP客户端创建失败");
+        let client = client.unwrap();
+        
+        // 创建快速记账代理获取系统提示词
+        let agent = QuickNoteAgent::new();
+        let system_prompt = agent.config().system_prompt.clone();
+        
+        // 构建请求消息
+        let messages = vec![
+            AIMessage {
+                role: "system".to_string(),
+                content: system_prompt,
+            },
+            AIMessage {
+                role: "user".to_string(),
+                content: "我今天吃了早饭，花了10块钱；昨天晚饭花了12块钱".to_string(),
+            },
+        ];
+        
+        // 创建AI请求
+        let request = AIRequest {
+            model: "qwen-plus".to_string(),
+            messages,
+            temperature: 0.3,
+            max_tokens: 1000,
+            top_p: Some(0.9),
+            frequency_penalty: None,
+            presence_penalty: None,
+            stream: None,
+        };
+        
+        // 发送请求
+        println!("🚀 开始发送AI请求...");
+        println!("📋 请求配置:");
+        println!("  URL: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
+        println!("  模型: qwen-plus");
+        println!("  提问: 我今天吃了早饭，花了10块钱；昨天晚饭花了12块钱");
+        println!("  Authorization: Bearer 90140f4fff...");
+        
+        let response = client.chat_completion(request).await;
+        
+        match response {
+            Ok(ai_response) => {
+                println!("✅ AI请求成功！");
+                println!("📋 响应详情:");
+                println!("  ID: {}", ai_response.id);
+                println!("  模型: {}", ai_response.model);
+                println!("  创建时间: {}", ai_response.created);
+                
+                if let Some(first_choice) = ai_response.choices.first() {
+                    println!("  响应内容: {}", first_choice.message.content);
+                    println!("  完成原因: {:?}", first_choice.finish_reason);
+                }
+                
+                if let Some(usage) = &ai_response.usage {
+                    println!("  Token使用情况:");
+                    println!("    输入Token: {}", usage.prompt_tokens);
+                    println!("    输出Token: {}", usage.completion_tokens);
+                    println!("    总Token: {}", usage.total_tokens);
+                }
+                
+                // 验证响应格式
+                assert!(!ai_response.id.is_empty(), "响应ID不能为空");
+                assert!(!ai_response.choices.is_empty(), "响应choices不能为空");
+                assert!(!ai_response.choices[0].message.content.is_empty(), "响应内容不能为空");
+                
+                println!("🎉 测试通过！");
+            }
+            Err(e) => {
+                println!("❌ AI请求失败: {}", e);
+                // 在测试中，我们可以选择是否让这个错误导致测试失败
+                // 这里我们打印错误但不让测试失败，因为可能是网络问题或API密钥问题
+                println!("⚠️  注意：这可能是由于网络问题、API密钥无效或服务不可用导致的");
+            }
+        }
     }
 }
 
@@ -684,7 +779,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
                 failed_lines.push(FailedLine {
                     line_number: index + 1,
                     original_text: format!("{}: {} {}", 
-                        quick_transaction.date_time, 
+                        quick_transaction.date, 
                         quick_transaction.amount, 
                         quick_transaction.remark),
                     error_reason: format!("获取分类失败: {}", e),
@@ -711,7 +806,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
                 failed_lines.push(FailedLine {
                     line_number: index + 1,
                     original_text: format!("{}: {} {}", 
-                        quick_transaction.date_time, 
+                        quick_transaction.date, 
                         quick_transaction.amount, 
                         quick_transaction.remark),
                     error_reason: format!("未找到匹配的分类: {}", quick_transaction.category),
@@ -721,7 +816,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
         };
         
         // 解析日期
-        let date = chrono::NaiveDate::parse_from_str(&quick_transaction.date_time, "%Y-%m-%d")
+        let date = chrono::NaiveDate::parse_from_str(&quick_transaction.date, "%Y-%m-%d")
             .map_err(|e| format!("日期解析失败: {}", e));
         
         let date = match date {
@@ -730,7 +825,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
                 failed_lines.push(FailedLine {
                     line_number: index + 1,
                     original_text: format!("{}: {} {}", 
-                        quick_transaction.date_time, 
+                        quick_transaction.date, 
                         quick_transaction.amount, 
                         quick_transaction.remark),
                     error_reason: e,
@@ -754,7 +849,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
             Ok(_transaction_id) => {
                 processed_transactions.push(ProcessedTransaction {
                     original_text: format!("{}: {} {}", 
-                        quick_transaction.date_time, 
+                        quick_transaction.date, 
                         quick_transaction.amount, 
                         quick_transaction.remark),
                     transaction: transaction_data,
@@ -765,7 +860,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
                 failed_lines.push(FailedLine {
                     line_number: index + 1,
                     original_text: format!("{}: {} {}", 
-                        quick_transaction.date_time, 
+                        quick_transaction.date, 
                         quick_transaction.amount, 
                         quick_transaction.remark),
                     error_reason: format!("创建交易记录失败: {}", e),

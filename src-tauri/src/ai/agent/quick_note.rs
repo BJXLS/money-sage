@@ -27,13 +27,13 @@ use super::base::{Agent, AgentConfig, AgentContext, AgentResult};
 /// 快速记账交易记录
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuickTransaction {
-    /// 日期时间
-    pub date_time: String,
+    /// 日期 (YYYY-MM-DD格式)
+    pub date: String,
     /// 金额
     pub amount: f64,
     /// 交易类型 (income/expense)
     pub transaction_type: String,
-    /// 分类
+    /// 分类名称
     pub category: String,
     /// 备注/描述
     pub remark: String,
@@ -60,10 +60,10 @@ impl QuickNoteAgent {
         let config = AgentConfig {
             name: "QuickNoteAgent".to_string(),
             description: "AI agent for parsing natural language into accounting transactions".to_string(),
-            model: "qwen-turbo".to_string(),
+            model: "qwen-plus".to_string(),
             temperature: 0.3, // 降低温度以获得更一致的结果
             max_tokens: 1000,
-            system_prompt: Self::build_system_prompt(),
+            system_prompt: "".to_string(), // 临时空值，运行时动态填充
             enable_memory: false, // 记账解析不需要记忆
             max_memory_size: 0,
             custom_params: HashMap::new(),
@@ -72,8 +72,8 @@ impl QuickNoteAgent {
         Self { config }
     }
     
-    /// 构建系统提示词
-    fn build_system_prompt() -> String {
+    /// 构建系统提示词模板
+    fn build_system_prompt_template() -> String {
         r#"你是一个专业的记账记录实体识别机器人。你的任务是将用户输入的自然语言文本解析为结构化的记账信息。
 
 ## 核心规则
@@ -84,17 +84,8 @@ impl QuickNoteAgent {
 4. **类型判断**: 判断是收入(income)还是支出(expense)
    - 收入关键词: 收入、赚了、工资、奖金、红包、转账收到等
    - 支出关键词: 花了、买了、支付、消费、转账给等
-5. **分类识别**: 将消费场景映射到标准分类
-   - 餐饮: 吃饭、喝咖啡、外卖、餐厅等
-   - 交通: 打车、地铁、公交、加油等  
-   - 购物: 买衣服、超市、网购等
-   - 娱乐: 电影、游戏、KTV等
-   - 住房: 房租、水电费、物业费等
-   - 医疗: 看病、买药、体检等
-   - 教育: 培训、买书、学费等
-   - 其他支出: 无法明确分类的支出
-   - 工资: 工资收入
-   - 其他收入: 其他类型收入
+5. **分类识别**: 将消费场景映射到标准分类，输出的时候需要将大类和小类都输出
+{#category}
 
 ## 输出格式
 
@@ -102,12 +93,12 @@ impl QuickNoteAgent {
 
 ```json
 {
-  "transactions": [
+  "transactions": [ 
     {
-      "date_time": "2025-01-20",
+      "date": "2025-01-20",
       "amount": 28.5,
       "transaction_type": "expense",
-      "category": "餐饮",
+      "category": "餐饮-吃饭",
       "remark": "午餐"
     }
   ],
@@ -117,32 +108,186 @@ impl QuickNoteAgent {
 
 ## 示例
 
-用户输入: "今天中午花了28.5元吃午餐，晚上打车回家15元"
+用户输入: "今天中午花了28.5元吃午餐；晚上打车回家15元"
 输出:
 ```json
 {
   "transactions": [
     {
-      "date_time": "2025-01-20",
+      "date": "2025-01-20",
       "amount": 28.5,
       "transaction_type": "expense", 
-      "category": "餐饮",
+      "category": "餐饮-吃饭",
       "remark": "中午午餐"
     },
     {
-      "date_time": "2025-01-20",
+      "date": "2025-01-20",
       "amount": 15.0,
       "transaction_type": "expense",
-      "category": "交通", 
+      "category": "交通-打车", 
       "remark": "晚上打车回家"
     }
   ],
   "explanation": "解析了2条支出记录"
 }
-```"#.to_string()
+```
+
+## 额外信息
+1. 今天是{#current_date}
+"#.to_string()
     }
     
-    /// 解析快速记账文本
+    /// 根据数据库分类数据构建完整的系统提示词
+    pub fn build_dynamic_system_prompt(categories: &[crate::models::Category]) -> String {
+        use std::collections::HashMap;
+        use chrono::Local;
+        
+        let mut template = Self::build_system_prompt_template();
+        
+        // 构建分类信息
+        let mut parent_categories: HashMap<String, Vec<String>> = HashMap::new();
+        
+        // 按类型分组处理
+        for category in categories {
+            if category.parent_id.is_none() {
+                // 父分类，初始化子分类列表
+                parent_categories.entry(category.name.clone()).or_insert_with(Vec::new);
+            } else {
+                // 子分类，需要找到对应的父分类
+                if let Some(parent) = categories.iter().find(|c| Some(c.id) == category.parent_id) {
+                    parent_categories
+                        .entry(parent.name.clone())
+                        .or_insert_with(Vec::new)
+                        .push(category.name.clone());
+                }
+            }
+        }
+        
+        // 构建分类文本
+        let mut category_text = String::new();
+        for (parent_name, children) in &parent_categories {
+            if children.is_empty() {
+                category_text.push_str(&format!("   - {}\n", parent_name));
+            } else {
+                category_text.push_str(&format!("   - {}：{}\n", parent_name, children.join("、")));
+            }
+        }
+        
+        // 填充分类信息
+        template = template.replace("{#category}", &category_text);
+        
+        // 填充当前日期
+        let current_date = Local::now().format("%Y-%m-%d").to_string();
+        template = template.replace("{#current_date}", &current_date);
+        
+        template
+    }
+    
+    /// 解析快速记账文本（使用动态系统提示词）
+    pub async fn parse_quick_note_with_categories(
+        &self, 
+        input: &str, 
+        categories: &[crate::models::Category],
+        client: &AIHttpClient
+    ) -> Result<QuickNoteResult> {
+        use crate::utils::http_client::{AIRequest, AIMessage};
+        
+        println!("🚀 [QuickNote] 开始处理快速记账请求");
+        println!("📝 [QuickNote] 原始用户输入: {}", input);
+        
+        // 验证输入
+        self.validate_input(input)?;
+        
+        // 构建动态系统提示词
+        let system_prompt = Self::build_dynamic_system_prompt(categories);
+        println!("🤖 [QuickNote] 动态系统提示词已构建，包含{}个分类", categories.len());
+        println!("📋 [QuickNote] 系统提示词内容:\n{}", system_prompt);
+        
+        // 预处理输入：将每行用分号拼接
+        let processed_input = input
+            .lines()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<&str>>()
+            .join("；");
+        
+        println!("🔄 [QuickNote] 预处理后的用户输入: {}", processed_input);
+        
+        // 构建消息
+        let messages = vec![
+            AIMessage {
+                role: "system".to_string(),
+                content: system_prompt.clone(),
+            },
+            AIMessage {
+                role: "user".to_string(),
+                content: processed_input.clone(),
+            },
+        ];
+        
+        // 创建AI请求
+        let request = AIRequest {
+            model: self.config.model.clone(),
+            messages,
+            temperature: self.config.temperature,
+            max_tokens: self.config.max_tokens,
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stream: None,
+        };
+        
+        println!("📤 [QuickNote] 发送AI请求:");
+        println!("   模型: {}", request.model);
+        println!("   温度: {}", request.temperature);
+        println!("   最大Token: {}", request.max_tokens);
+        println!("   消息数量: {}", request.messages.len());
+        
+        // 调用AI模型
+        println!("⏳ [QuickNote] 正在调用AI模型...");
+        let response = client.chat_completion(request).await?;
+        
+        println!("✅ [QuickNote] AI响应成功");
+        println!("📥 [QuickNote] AI响应详情:");
+        println!("   ID: {}", response.id);
+        println!("   模型: {}", response.model);
+        println!("   创建时间: {}", response.created);
+        
+        if let Some(usage) = &response.usage {
+            println!("   Token使用情况:");
+            println!("     输入Token: {}", usage.prompt_tokens);
+            println!("     输出Token: {}", usage.completion_tokens);
+            println!("     总Token: {}", usage.total_tokens);
+        }
+        
+        // 解析AI响应
+        let content = response.choices.get(0)
+            .ok_or_else(|| anyhow::anyhow!("AI响应中没有choices"))?
+            .message.content.clone();
+            
+        println!("📄 [QuickNote] AI原始响应内容:\n{}", content);
+        
+        let result = self.parse_ai_response(&content).await?;
+        
+        println!("🎯 [QuickNote] 解析结果:");
+        println!("   识别到{}条交易记录", result.transactions.len());
+        if let Some(explanation) = &result.explanation {
+            println!("   AI解释: {}", explanation);
+        }
+        
+        for (index, transaction) in result.transactions.iter().enumerate() {
+            println!("   交易{}:", index + 1);
+            println!("     日期: {}", transaction.date);
+            println!("     金额: {}", transaction.amount);
+            println!("     类型: {}", transaction.transaction_type);
+            println!("     分类: {}", transaction.category);
+            println!("     备注: {}", transaction.remark);
+        }
+        
+        Ok(result)
+    }
+    
+    /// 解析快速记账文本（兼容旧版本）
     pub async fn parse_quick_note(&self, input: &str, client: &AIHttpClient) -> Result<QuickNoteResult> {
         // 验证输入
         self.validate_input(input)?;
@@ -218,9 +363,9 @@ impl QuickNoteAgent {
         
         for (i, transaction) in result.transactions.iter().enumerate() {
             // 验证日期格式
-            if NaiveDate::parse_from_str(&transaction.date_time, "%Y-%m-%d").is_err() {
+            if NaiveDate::parse_from_str(&transaction.date, "%Y-%m-%d").is_err() {
                 return Err(anyhow::anyhow!("Invalid date format in transaction {}: {}", 
-                    i + 1, transaction.date_time));
+                    i + 1, transaction.date));
             }
             
             // 验证金额
@@ -325,7 +470,7 @@ mod tests {
         
         let valid_result = QuickNoteResult {
             transactions: vec![QuickTransaction {
-                date_time: "2025-01-20".to_string(),
+                date: "2025-01-20".to_string(),
                 amount: 10.0,
                 transaction_type: "expense".to_string(),
                 category: "餐饮".to_string(),
@@ -339,7 +484,7 @@ mod tests {
         // 测试无效金额
         let invalid_result = QuickNoteResult {
             transactions: vec![QuickTransaction {
-                date_time: "2025-01-20".to_string(),
+                date: "2025-01-20".to_string(),
                 amount: -10.0,
                 transaction_type: "expense".to_string(),
                 category: "餐饮".to_string(),

@@ -193,14 +193,54 @@ pub struct QuickBookingRequest {
     pub text: String,
 }
 
+// AI解析后的结果，用于前端展示和编辑
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QuickBookingResult {
     pub success: bool,
     pub message: String,
-    pub processed_transactions: Vec<ProcessedTransaction>,
+    pub parsed_transactions: Vec<ParsedTransaction>, // 解析出的交易（未保存）
     pub failed_lines: Vec<FailedLine>,
 }
 
+// AI解析出的交易信息（供前端展示和编辑）
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ParsedTransaction {
+    pub original_text: String,
+    pub date: String,           // YYYY-MM-DD格式
+    pub amount: f64,
+    pub transaction_type: String, // income/expense
+    pub category_name: String,   // AI识别的分类名称（可能是父分类-子分类格式）
+    pub category_id: Option<i64>, // 映射后的分类ID（如果能找到匹配的）
+    pub description: String,     // 备注
+    pub confidence: f32,         // AI识别的置信度
+}
+
+// 用户确认保存的请求
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SaveTransactionsRequest {
+    pub transactions: Vec<ConfirmedTransaction>,
+}
+
+// 用户确认后的交易记录
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfirmedTransaction {
+    pub date: String,           // YYYY-MM-DD格式
+    pub amount: f64,
+    pub transaction_type: String, // income/expense  
+    pub category_id: i64,       // 分类ID
+    pub description: String,    // 备注
+}
+
+// 保存结果
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SaveTransactionsResult {
+    pub success: bool,
+    pub message: String,
+    pub saved_count: usize,
+    pub failed_count: usize,
+}
+
+// 遗留结构体（兼容性）
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessedTransaction {
     pub original_text: String,

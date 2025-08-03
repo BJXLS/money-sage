@@ -7,7 +7,8 @@
     @close="handleClose"
   >
     <div class="quick-booking-content">
-      <div class="input-section">
+      <!-- 输入界面 -->
+      <div v-if="!showConfirmation" class="input-section">
         <div class="input-label">
           <el-icon class="label-icon"><EditPen /></el-icon>
           <span>请描述您的收支情况</span>
@@ -33,26 +34,132 @@
           </div>
         </div>
       </div>
+
+      <!-- 确认界面 -->
+      <div v-else class="confirmation-section">
+        <div class="confirmation-header">
+          <el-icon class="header-icon"><CircleCheck /></el-icon>
+          <span>AI识别结果确认</span>
+        </div>
+        <div class="confirmation-tip">
+          <el-alert
+            title="请检查并确认AI识别的记账信息，您可以直接编辑修改"
+            type="info"
+            :closable="false"
+            show-icon
+          />
+        </div>
+        
+        <div class="transactions-table">
+          <el-table :data="parsedTransactions" style="width: 100%">
+            <el-table-column label="日期" width="120">
+              <template #default="{ row }">
+                <el-date-picker
+                  v-model="row.date"
+                  type="date"
+                  format="YYYY-MM-DD"
+                  value-format="YYYY-MM-DD"
+                  size="small"
+                  style="width: 100%"
+                />
+              </template>
+            </el-table-column>
+            
+            <el-table-column label="金额" width="100">
+              <template #default="{ row }">
+                <el-input-number
+                  v-model="row.amount"
+                  :min="0.01"
+                  :precision="2"
+                  size="small"
+                  style="width: 100%"
+                />
+              </template>
+            </el-table-column>
+            
+            <el-table-column label="类型" width="80">
+              <template #default="{ row }">
+                <el-select v-model="row.transaction_type" size="small" style="width: 100%">
+                  <el-option label="支出" value="expense" />
+                  <el-option label="收入" value="income" />
+                </el-select>
+              </template>
+            </el-table-column>
+            
+            <el-table-column label="分类" width="120">
+              <template #default="{ row }">
+                <el-select 
+                  v-model="row.category_id" 
+                  size="small" 
+                  style="width: 100%"
+                  filterable
+                  placeholder="选择分类"
+                >
+                  <el-option
+                    v-for="category in allCategories.filter(c => c.type === row.transaction_type)"
+                    :key="category.id"
+                    :label="category.name"
+                    :value="category.id"
+                  />
+                </el-select>
+              </template>
+            </el-table-column>
+            
+            <el-table-column label="描述" min-width="150">
+              <template #default="{ row }">
+                <el-input
+                  v-model="row.description"
+                  size="small"
+                  placeholder="输入描述"
+                />
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
     </div>
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose" class="cancel-btn">
-          取消
-        </el-button>
-        <el-button @click="handleClear" class="clear-btn">
-          清空
-        </el-button>
-        <el-button 
-          type="primary" 
-          @click="handleSubmit" 
-          :loading="processing"
-          :disabled="!inputText.trim()"
-          class="submit-btn"
-        >
-          <el-icon v-if="!processing"><Lightning /></el-icon>
-          {{ processing ? '处理中...' : '智能记账' }}
-        </el-button>
+        <!-- 输入界面的按钮 -->
+        <template v-if="!showConfirmation">
+          <el-button @click="handleClose" class="cancel-btn">
+            取消
+          </el-button>
+          <el-button @click="handleClear" class="clear-btn">
+            清空
+          </el-button>
+          <el-button 
+            type="primary" 
+            @click="handleSubmit" 
+            :loading="processing"
+            :disabled="!inputText.trim()"
+            class="submit-btn"
+          >
+            <el-icon v-if="!processing"><Lightning /></el-icon>
+            {{ processing ? '处理中...' : '智能记账' }}
+          </el-button>
+        </template>
+
+        <!-- 确认界面的按钮 -->
+        <template v-else>
+          <el-button @click="handleClose" class="cancel-btn">
+            取消
+          </el-button>
+          <el-button @click="handleBackToEdit" class="back-btn">
+            <el-icon><ArrowLeft /></el-icon>
+            返回编辑
+          </el-button>
+          <el-button 
+            type="primary" 
+            @click="handleSaveTransactions" 
+            :loading="processing"
+            class="confirm-btn"
+          >
+            <el-icon v-if="!processing"><Check /></el-icon>
+            {{ processing ? '保存中...' : '确认保存' }}
+          </el-button>
+        </template>
       </div>
     </template>
   </el-dialog>
@@ -62,7 +169,41 @@
 import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { invoke } from '@tauri-apps/api/core'
-import { InfoFilled, EditPen, Lightning } from '@element-plus/icons-vue'
+import { InfoFilled, EditPen, Lightning, CircleCheck, ArrowLeft, Check } from '@element-plus/icons-vue'
+
+// 类型定义
+interface ParsedTransaction {
+  original_text: string
+  date: string
+  amount: number
+  transaction_type: string
+  category_name: string
+  category_id: number | null
+  description: string
+  confidence: number
+}
+
+interface Category {
+  id: number
+  name: string
+  type: string
+  icon?: string
+  color?: string
+}
+
+interface QuickBookingResult {
+  success: boolean
+  message: string
+  parsed_transactions: ParsedTransaction[]
+  failed_lines: any[]
+}
+
+interface SaveTransactionsResult {
+  success: boolean
+  message: string
+  saved_count: number
+  failed_count: number
+}
 
 // Props和Emits
 const props = defineProps<{
@@ -78,6 +219,9 @@ const emit = defineEmits<{
 const visible = ref(false)
 const inputText = ref('')
 const processing = ref(false)
+const showConfirmation = ref(false)
+const parsedTransactions = ref<ParsedTransaction[]>([])
+const allCategories = ref<Category[]>([])
 
 // 监听props变化
 watch(
@@ -85,9 +229,13 @@ watch(
   (newVal) => {
     visible.value = newVal
     if (newVal) {
-      // 打开对话框时清空内容
+      // 打开对话框时重置状态
       inputText.value = ''
       processing.value = false
+      showConfirmation.value = false
+      parsedTransactions.value = []
+      // 加载分类数据
+      loadCategories()
     }
   },
   { immediate: true }
@@ -98,12 +246,23 @@ watch(visible, (newVal) => {
   emit('update:modelValue', newVal)
 })
 
+// 加载分类数据
+const loadCategories = async () => {
+  try {
+    const categories = await invoke<Category[]>('get_categories')
+    allCategories.value = categories
+  } catch (error) {
+    console.error('加载分类失败:', error)
+    ElMessage.error('加载分类失败')
+  }
+}
+
 // 清空输入
 const handleClear = () => {
   inputText.value = ''
 }
 
-// 提交处理
+// 提交处理 - AI解析
 const handleSubmit = async () => {
   if (!inputText.value.trim()) {
     ElMessage.warning('请输入记账信息')
@@ -112,25 +271,89 @@ const handleSubmit = async () => {
 
   processing.value = true
   try {
-    // 调用后端API进行文本处理
-    const result = await invoke('process_quick_booking_text', {
+    // 调用后端API进行AI文本解析
+    const result = await invoke<QuickBookingResult>('process_quick_booking_text', {
       text: inputText.value.trim()
     })
 
-    ElMessage.success('记账信息处理成功！')
-    emit('success', result)
-    handleClose()
+    console.log('AI解析结果:', result)
+
+    if (result.success && result.parsed_transactions && result.parsed_transactions.length > 0) {
+      // AI解析成功，显示确认界面
+      parsedTransactions.value = result.parsed_transactions.map(transaction => ({
+        ...transaction,
+        // 确保有默认的分类ID，如果没有则设置为null
+        category_id: transaction.category_id || null
+      }))
+      showConfirmation.value = true
+      ElMessage.success(`AI识别成功！解析出${result.parsed_transactions.length}条记录，请确认后保存`)
+    } else {
+      // AI解析失败
+      ElMessage.error(result.message || 'AI解析失败，请检查输入内容')
+    }
   } catch (error) {
-    console.error('处理记账信息失败:', error)
-    ElMessage.error('处理失败，请检查输入格式或稍后重试')
+    console.error('AI解析失败:', error)
+    ElMessage.error('AI解析失败，请检查输入格式或稍后重试')
   } finally {
     processing.value = false
   }
 }
 
+// 保存确认的交易记录
+const handleSaveTransactions = async () => {
+  // 验证所有交易记录是否完整
+  const invalidTransactions = parsedTransactions.value.filter(t => 
+    !t.date || !t.amount || t.amount <= 0 || !t.category_id || !t.transaction_type
+  )
+  
+  if (invalidTransactions.length > 0) {
+    ElMessage.warning('请完善所有交易记录的信息（日期、金额、分类等）')
+    return
+  }
+
+  processing.value = true
+  try {
+    // 准备保存的数据
+    const transactionsToSave = parsedTransactions.value.map(transaction => ({
+      date: transaction.date,
+      amount: parseFloat(transaction.amount.toString()),
+      transaction_type: transaction.transaction_type,
+      category_id: parseInt(transaction.category_id!.toString()),
+      description: transaction.description || ''
+    }))
+
+    // 调用保存接口
+    const result = await invoke<SaveTransactionsResult>('save_confirmed_transactions', {
+      request: {
+        transactions: transactionsToSave
+      }
+    })
+
+    console.log('保存结果:', result)
+
+    if (result.success) {
+      ElMessage.success(result.message)
+      emit('success', result)
+      handleClose()
+    } else {
+      ElMessage.error(result.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存交易记录失败:', error)
+    ElMessage.error('保存失败，请稍后重试')
+  } finally {
+    processing.value = false
+  }
+}
+
+// 返回编辑界面
+const handleBackToEdit = () => {
+  showConfirmation.value = false
+}
+
 // 关闭对话框
 const handleClose = () => {
-  if (inputText.value.trim() && !processing.value) {
+  if ((inputText.value.trim() || showConfirmation.value) && !processing.value) {
     ElMessageBox.confirm(
       '确定要关闭吗？输入的内容将会丢失。',
       '确认关闭',
@@ -142,12 +365,16 @@ const handleClose = () => {
     ).then(() => {
       visible.value = false
       inputText.value = ''
+      showConfirmation.value = false
+      parsedTransactions.value = []
     }).catch(() => {
       // 用户取消关闭
     })
   } else {
     visible.value = false
     inputText.value = ''
+    showConfirmation.value = false
+    parsedTransactions.value = []
   }
 }
 </script>
@@ -197,6 +424,40 @@ const handleClose = () => {
   margin-right: 6px;
   color: #409eff;
   font-size: 14px;
+}
+
+/* 确认界面样式 */
+.confirmation-section {
+  margin-bottom: 16px;
+}
+
+.confirmation-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.header-icon {
+  margin-right: 8px;
+  color: #67c23a;
+  font-size: 18px;
+}
+
+.confirmation-tip {
+  margin-bottom: 16px;
+}
+
+.transactions-table {
+  margin-top: 16px;
+}
+
+.back-btn,
+.confirm-btn {
+  padding: 8px 20px;
+  font-weight: 600;
 }
 
 .dialog-footer {

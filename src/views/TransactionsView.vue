@@ -194,6 +194,24 @@
 
           <el-row :gutter="20">
             <el-col :span="12">
+              <el-form-item label="预算" v-if="transactionForm.type === 'expense'">
+                <el-select
+                  v-model="transactionForm.budgetId"
+                  placeholder="选择预算（可选）"
+                  clearable
+                  filterable
+                  style="width: 100%"
+                >
+                  <el-option
+                    v-for="b in allActiveBudgets"
+                    :key="b.id"
+                    :label="`${b.name}（${b.category_name}）`"
+                    :value="b.id"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
               <el-form-item label="账户">
                 <el-select
                   v-model="transactionForm.account"
@@ -321,6 +339,7 @@ const transactionForm = ref({
   type: 'expense' as 'income' | 'expense',
   amount: '',
   categoryId: null as number | null,
+  budgetId: null as number | null,
   account: '现金',
   time: '11:05',
   note: ''
@@ -347,6 +366,12 @@ const availableParentCategories = computed(() => {
 const selectedCategory = computed(() => {
   if (!transactionForm.value.categoryId) return null
   return store.categories.find(cat => cat.id === transactionForm.value.categoryId)
+})
+
+const allActiveBudgets = computed(() => {
+  return store.budgets
+    .filter(b => b.is_active)
+    .sort((a, b) => (b.remaining - a.remaining))
 })
 
 const hoveredSubCategories = computed(() => {
@@ -441,6 +466,7 @@ const resetForm = () => {
     type: 'expense',
     amount: '',
     categoryId: null,
+    budgetId: null,
     account: '现金',
     time: '11:05',
     note: ''
@@ -466,6 +492,7 @@ const saveTransaction = async () => {
         amount: parseFloat(transactionForm.value.amount),
         category_id: transactionForm.value.categoryId,
         date: selectedDate.value,
+        budget_id: transactionForm.value.budgetId,
         description: transactionForm.value.note,
         note: transactionForm.value.note
       }
@@ -478,6 +505,7 @@ const saveTransaction = async () => {
         amount: parseFloat(transactionForm.value.amount),
         category_id: transactionForm.value.categoryId,
         date: selectedDate.value,
+        budget_id: transactionForm.value.budgetId,
         description: transactionForm.value.note,
         note: transactionForm.value.note
       }
@@ -515,9 +543,12 @@ const setHoveredParent = (parentId: number) => {
 
 const selectCategory = (category: any) => {
   transactionForm.value.categoryId = category.id
+  // 不自动匹配预算，仅在用户明确选择时设置
   showCategoryPanel.value = false
   hoveredParentId.value = null
 }
+
+// 预算与小类相互独立：不互相联动
 
 // 点击外部关闭面板
 const handleClickOutside = (event: MouseEvent) => {

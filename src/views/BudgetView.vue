@@ -150,9 +150,16 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <div class="action-buttons">
+              <el-button
+                size="small"
+                text
+                @click="openBudgetDetail(row)"
+              >
+                详情
+              </el-button>
               <el-button
                 size="small"
                 text
@@ -191,6 +198,37 @@
       :budget="editingBudget"
       @success="handleBudgetSuccess"
     />
+
+    <!-- 预算详情抽屉 -->
+    <el-drawer v-model="showDetail" title="预算详情" size="50%">
+      <template #default>
+        <div v-if="currentBudget" class="budget-detail">
+          <div class="detail-header">
+            <div class="category-display">
+              <span class="category-icon" :style="{ color: currentBudget.category_color }">
+                {{ currentBudget.category_icon || '💰' }}
+              </span>
+              <span class="category-name">{{ currentBudget.category_name }}</span>
+            </div>
+            <div class="amounts">
+              <div>预算：¥{{ formatAmount(currentBudget.amount) }}</div>
+              <div>已用：¥{{ formatAmount(currentBudget.spent) }}</div>
+              <div>剩余：¥{{ formatAmount(currentBudget.remaining) }}</div>
+            </div>
+          </div>
+          <el-divider />
+          <h4>关联交易</h4>
+          <el-table :data="budgetTransactions" size="small">
+            <el-table-column label="日期" width="120" prop="date" />
+            <el-table-column label="金额" width="120">
+              <template #default="{ row }">-¥{{ formatAmount(row.amount) }}</template>
+            </el-table-column>
+            <el-table-column label="描述" min-width="200" prop="description" />
+          </el-table>
+        </div>
+        <div v-else>未选择预算</div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
@@ -215,6 +253,9 @@ const store = useAppStore()
 const searchQuery = ref('')
 const showAddBudgetDialog = ref(false)
 const editingBudget = ref<BudgetProgress | null>(null)
+const showDetail = ref(false)
+const currentBudget = ref<BudgetProgress | null>(null)
+const budgetTransactions = ref<any[]>([])
 
 // 计算属性
 const budgets = computed(() => store.budgets)
@@ -286,6 +327,20 @@ const deleteBudget = async (id: number) => {
 const handleBudgetSuccess = () => {
   showAddBudgetDialog.value = false
   editingBudget.value = null
+}
+
+const openBudgetDetail = async (budget: BudgetProgress) => {
+  currentBudget.value = budget
+  showDetail.value = true
+  // 取该预算周期内的交易并按 budget_id 过滤
+  const start = dayjs(budget.start_date).format('YYYY-MM-DD')
+  const end = dayjs(budget.end_date || dayjs().format('YYYY-MM-DD')).format('YYYY-MM-DD')
+  try {
+    const list = await store.fetchTransactionsByDateRange(start, end)
+    budgetTransactions.value = (list || []).filter(t => t.budget_id === budget.id)
+  } catch (e) {
+    budgetTransactions.value = []
+  }
 }
 
 // 生命周期

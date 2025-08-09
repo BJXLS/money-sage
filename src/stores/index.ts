@@ -276,8 +276,11 @@ export const useAppStore = defineStore('app', () => {
     try {
       const result = await safeInvoke<number>('create_transaction', { transaction: transactionData })
       if (result !== null) {
-        await fetchTransactions() // 重新获取交易记录
-        await fetchMonthlyStats() // 更新统计数据
+        await Promise.all([
+          fetchTransactions(), // 重新获取交易记录
+          fetchMonthlyStats(), // 更新统计数据
+          fetchBudgets()       // 同步预算进度
+        ])
       }
       return result || 0
     } catch (error) {
@@ -297,8 +300,11 @@ export const useAppStore = defineStore('app', () => {
   }) => {
     try {
       await invoke('update_transaction', { id, transaction: transactionData })
-      await fetchTransactions() // 重新获取交易记录
-      await fetchMonthlyStats() // 更新统计数据
+      await Promise.all([
+        fetchTransactions(), // 重新获取交易记录
+        fetchMonthlyStats(), // 更新统计数据
+        fetchBudgets()       // 同步预算进度
+      ])
     } catch (error) {
       console.error('更新交易记录失败:', error)
       throw error
@@ -308,8 +314,11 @@ export const useAppStore = defineStore('app', () => {
   const deleteTransaction = async (id: number) => {
     try {
       await invoke('delete_transaction', { id })
-      await fetchTransactions() // 重新获取交易记录
-      await fetchMonthlyStats() // 更新统计数据
+      await Promise.all([
+        fetchTransactions(), // 重新获取交易记录
+        fetchMonthlyStats(), // 更新统计数据
+        fetchBudgets()       // 同步预算进度
+      ])
     } catch (error) {
       console.error('删除交易记录失败:', error)
       throw error

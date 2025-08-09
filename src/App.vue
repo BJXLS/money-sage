@@ -41,6 +41,7 @@ const handleQuickBookingSuccess = (data: any) => {
   // 重新加载数据
   store.fetchTransactions()
   store.fetchMonthlyStats()
+  store.fetchBudgets()
   console.log('快速记账处理结果:', data)
 }
 

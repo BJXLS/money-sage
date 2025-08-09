@@ -74,26 +74,29 @@
         <el-form-item label="支出分类" prop="category_id">
           <el-select 
             v-model="form.category_id" 
-            placeholder="请选择支出分类"
+            placeholder="请选择支出小类"
             style="width: 100%"
             filterable
           >
-            <el-option
-              v-for="category in expenseCategories"
-              :key="category.id"
-              :label="category.name"
-              :value="category.id"
+            <el-option-group
+              v-for="parent in parentExpenseCategories"
+              :key="parent.id"
+              :label="`${parent.icon || '📁'} ${parent.name}`"
             >
-              <div class="category-option">
-                <span 
-                  class="category-icon" 
-                  :style="{ color: category.color }"
-                >
-                  {{ category.icon || '💰' }}
-                </span>
-                <span>{{ category.name }}</span>
-              </div>
-            </el-option>
+              <el-option
+                v-for="sub in getSubCategories(parent.id)"
+                :key="sub.id"
+                :label="sub.name"
+                :value="sub.id"
+              >
+                <div class="category-option">
+                  <span class="category-icon" :style="{ color: sub.color }">
+                    {{ sub.icon || '📋' }}
+                  </span>
+                  <span>{{ sub.name }}</span>
+                </div>
+              </el-option>
+            </el-option-group>
           </el-select>
         </el-form-item>
 
@@ -286,9 +289,8 @@ const dialogVisible = computed({
 
 const isEditing = computed(() => !!props.budget)
 
-const expenseCategories = computed(() => {
-  return store.categories.filter(cat => cat.type === 'expense')
-})
+const parentExpenseCategories = computed(() => store.parentExpenseCategories)
+const getSubCategories = (parentId: number) => store.getSubCategories(parentId)
 
 // 监听预算变化，填充表单
 watch(() => props.budget, (budget) => {

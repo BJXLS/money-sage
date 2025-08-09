@@ -53,16 +53,16 @@
       </el-form-item>
 
       <!-- 事件预算选择 (仅支出时显示) -->
-      <el-form-item v-if="form.type === 'expense'" label="事件预算">
+      <el-form-item v-if="form.type === 'expense'" label="预算">
         <el-select
           v-model="form.budget_id"
-          placeholder="选择事件预算（可选）"
+          placeholder="选择预算（可选）"
           style="width: 100%"
           clearable
           filterable
         >
           <el-option
-            v-for="budget in store.eventBudgets"
+            v-for="budget in matchedBudgets"
             :key="budget.id"
             :label="budget.name"
             :value="budget.id"
@@ -184,6 +184,14 @@ const dialogVisible = computed({
 
 const availableCategories = computed(() => {
   return form.type === 'income' ? store.incomeCategories : store.expenseCategories
+})
+
+// 基于当前选择的小类匹配预算（时间/事件均可），并按剩余额度排序
+const matchedBudgets = computed(() => {
+  if (!form.category_id) return []
+  return store.budgets
+    .filter(b => b.is_active && b.category_id === form.category_id)
+    .sort((a, b) => (b.remaining - a.remaining))
 })
 
 // 监听类型变化，重置分类选择

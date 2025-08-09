@@ -86,7 +86,7 @@
               </template>
             </el-table-column>
             
-            <el-table-column label="分类" width="180">
+            <el-table-column label="分类" width="220">
               <template #default="{ row }">
                 <el-select 
                   v-model="row.category_id" 
@@ -115,6 +115,28 @@
                     </el-option>
                   </el-option-group>
                 </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="预算" width="240">
+              <template #default="{ row }">
+                <el-select
+                  v-if="row.transaction_type === 'expense'"
+                  v-model="row.budget_id"
+                  size="small"
+                  clearable
+                  filterable
+                  :suffix-icon="(getAllBudgets().length > 1 && !row.budget_id) ? Warning : undefined"
+                  :class="{ 'warning-select': row.category_id && !row.budget_id }"
+                  placeholder="选择预算（可选）"
+                >
+                  <el-option
+                    v-for="budget in getAllBudgets()"
+                    :key="budget.id"
+                    :label="`${budget.name}（${budget.category_name}）`"
+                    :value="budget.id"
+                  />
+                </el-select>
+                <span v-else class="dash">-</span>
               </template>
             </el-table-column>
             
@@ -182,7 +204,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { invoke } from '@tauri-apps/api/core'
-import { InfoFilled, EditPen, Lightning, CircleCheck, ArrowLeft, Check } from '@element-plus/icons-vue'
+import { InfoFilled, EditPen, Lightning, CircleCheck, ArrowLeft, Check, Warning } from '@element-plus/icons-vue'
 
 // 类型定义
 interface ParsedTransaction {
@@ -192,6 +214,7 @@ interface ParsedTransaction {
   transaction_type: string
   category_name: string
   category_id: number | null
+  budget_id?: number | null
   description: string
   confidence: number
 }
@@ -236,6 +259,7 @@ const processing = ref(false)
 const showConfirmation = ref(false)
 const parsedTransactions = ref<ParsedTransaction[]>([])
 const allCategories = ref<Category[]>([])
+const allBudgets = ref<any[]>([])
 
 // 分类选择相关 - 简化实现
 
@@ -267,11 +291,27 @@ const loadCategories = async () => {
   try {
     const categories = await invoke<Category[]>('get_categories')
     allCategories.value = categories
+    const budgets = await invoke<any[]>('get_budgets')
+    allBudgets.value = budgets || []
   } catch (error) {
     console.error('加载分类失败:', error)
     ElMessage.error('加载分类失败')
   }
 }
+// 根据行数据匹配预算（按小类和事件/时间预算均可）
+const getAllBudgets = () => allBudgets.value.filter(b => b.is_active)
+
+// 选择预算时，自动带出对应的小类
+watch(parsedTransactions, (list) => {
+  for (const row of list) {
+    if (row && row.budget_id) {
+      const b = allBudgets.value.find(bb => bb.id === row.budget_id)
+      if (b) {
+        row.category_id = b.category_id
+      }
+    }
+  }
+}, { deep: true })
 
 // 清空输入
 const handleClear = () => {
@@ -299,7 +339,8 @@ const handleSubmit = async () => {
       parsedTransactions.value = result.parsed_transactions.map(transaction => ({
         ...transaction,
         // 确保有默认的分类ID，如果没有则设置为null
-        category_id: transaction.category_id || null
+        category_id: transaction.category_id || null,
+        budget_id: null
       }))
       showConfirmation.value = true
 
@@ -336,6 +377,7 @@ const handleSaveTransactions = async () => {
       amount: parseFloat(transaction.amount.toString()),
       transaction_type: transaction.transaction_type,
       category_id: parseInt(transaction.category_id!.toString()),
+      budget_id: transaction.budget_id ?? null,
       description: transaction.description || ''
     }))
 
@@ -632,5 +674,14 @@ const getSubCategories = (parentId: number) => {
 
 .category-icon {
   font-size: 16px;
+}
+
+/* 预算选择高亮（空缺提示） */
+:deep(.warning-select .el-select__wrapper) {
+  border-color: #e6a23c !important;
+}
+
+.dash {
+  color: #909399;
 }
 </style> 

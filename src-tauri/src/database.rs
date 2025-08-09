@@ -712,7 +712,7 @@ impl Database {
                 COALESCE(SUM(t.amount), 0.0) as spent
             FROM budgets b
             JOIN categories c ON b.category_id = c.id
-            LEFT JOIN transactions t ON b.category_id = t.category_id 
+            LEFT JOIN transactions t ON t.budget_id = b.id 
                 AND t.type = 'expense'
                 AND (
                     (b.budget_type = 'time' AND t.date BETWEEN b.start_date AND COALESCE(b.end_date, date('now')))

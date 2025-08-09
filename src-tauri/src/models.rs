@@ -228,6 +228,7 @@ pub struct ConfirmedTransaction {
     pub amount: f64,
     pub transaction_type: String, // income/expense  
     pub category_id: i64,       // 分类ID
+    pub budget_id: Option<i64>, // 关联的预算ID（可选）
     pub description: String,    // 备注
 }
 

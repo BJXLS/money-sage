@@ -572,7 +572,7 @@ async fn save_confirmed_transactions(
             r#type: confirmed_transaction.transaction_type.clone(),
             amount: confirmed_transaction.amount,
             category_id: confirmed_transaction.category_id,
-            budget_id: None,
+            budget_id: confirmed_transaction.budget_id,
             description: Some(confirmed_transaction.description.clone()),
             note: Some(confirmed_transaction.description.clone()),
         };

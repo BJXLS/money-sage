@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     title="快速记账"
-    width="900px"
+    width="1000px"
     :close-on-click-modal="false"
     @close="handleClose"
   >
@@ -52,7 +52,7 @@
         
         <div class="transactions-table">
           <el-table :data="parsedTransactions" style="width: 100%">
-            <el-table-column label="日期" width="120">
+            <el-table-column label="日期" width="140">
               <template #default="{ row }">
                 <el-date-picker
                   v-model="row.date"
@@ -65,7 +65,7 @@
               </template>
             </el-table-column>
             
-            <el-table-column label="金额" width="100">
+            <el-table-column label="金额" width="150">
               <template #default="{ row }">
                 <el-input-number
                   v-model="row.amount"
@@ -77,7 +77,7 @@
               </template>
             </el-table-column>
             
-            <el-table-column label="类型" width="80">
+            <el-table-column label="类型" width="100">
               <template #default="{ row }">
                 <el-select v-model="row.transaction_type" size="small" style="width: 100%">
                   <el-option label="支出" value="expense" />
@@ -86,7 +86,7 @@
               </template>
             </el-table-column>
             
-            <el-table-column label="分类" width="220">
+            <el-table-column label="分类" width="150">
               <template #default="{ row }">
                 <el-select 
                   v-model="row.category_id" 
@@ -117,7 +117,7 @@
                 </el-select>
               </template>
             </el-table-column>
-            <el-table-column label="预算" width="240">
+            <el-table-column label="预算" width="200">
               <template #default="{ row }">
                 <el-select
                   v-if="row.transaction_type === 'expense'"
@@ -301,17 +301,7 @@ const loadCategories = async () => {
 // 根据行数据匹配预算（按小类和事件/时间预算均可）
 const getAllBudgets = () => allBudgets.value.filter(b => b.is_active)
 
-// 选择预算时，自动带出对应的小类
-watch(parsedTransactions, (list) => {
-  for (const row of list) {
-    if (row && row.budget_id) {
-      const b = allBudgets.value.find(bb => bb.id === row.budget_id)
-      if (b) {
-        row.category_id = b.category_id
-      }
-    }
-  }
-}, { deep: true })
+// 预算和分类已解除绑定，用户可以独立选择
 
 // 清空输入
 const handleClear = () => {

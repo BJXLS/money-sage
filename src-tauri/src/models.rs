@@ -94,6 +94,17 @@ pub struct NewBudget {
     pub end_date: Option<NaiveDate>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateBudget {
+    pub name: Option<String>,
+    pub category_id: Option<i64>,
+    pub amount: Option<f64>,
+    pub budget_type: Option<String>,
+    pub period_type: Option<String>,
+    pub start_date: Option<NaiveDate>,
+    pub end_date: Option<Option<NaiveDate>>,
+}
+
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct TransactionWithCategory {
     // Transaction fields

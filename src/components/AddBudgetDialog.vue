@@ -390,8 +390,8 @@ const handleSubmit = async () => {
         : form.estimated_date || undefined
     }
     
-    if (isEditing.value) {
-      // 更新预算 (这里需要实现updateBudget方法)
+    if (isEditing.value && props.budget) {
+      await store.updateBudget(props.budget.id, budgetData)
       ElMessage.success('预算更新成功')
     } else {
       await store.createBudget(budgetData)

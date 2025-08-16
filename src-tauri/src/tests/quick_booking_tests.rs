@@ -22,7 +22,7 @@ mod tests {
         let booking_result = result.unwrap();
         assert!(!booking_result.success);
         assert_eq!(booking_result.message, "输入文本不能为空");
-        assert!(booking_result.processed_transactions.is_empty());
+        assert!(booking_result.parsed_transactions.is_empty());
         assert!(booking_result.failed_lines.is_empty());
     }
     
@@ -71,14 +71,14 @@ mod tests {
         assert!(result.is_ok());
         let booking_result = result.unwrap();
         assert!(booking_result.success);
-        assert_eq!(booking_result.processed_transactions.len(), 1);
+        assert_eq!(booking_result.parsed_transactions.len(), 1);
         assert!(booking_result.failed_lines.is_empty());
         
         // 验证交易记录的内容
-        let transaction = &booking_result.processed_transactions[0];
-        assert_eq!(transaction.transaction.amount, 25.5);
-        assert_eq!(transaction.transaction.r#type, "expense");
-        assert_eq!(transaction.transaction.description, Some("午餐".to_string()));
+        let transaction = &booking_result.parsed_transactions[0];
+        assert_eq!(transaction.amount, 25.5);
+        assert_eq!(transaction.transaction_type, "expense");
+        assert_eq!(transaction.description, "午餐");
     }
     
     #[tokio::test]
@@ -116,18 +116,18 @@ mod tests {
         assert!(result.is_ok());
         let booking_result = result.unwrap();
         assert!(booking_result.success);
-        assert_eq!(booking_result.processed_transactions.len(), 2);
+        assert_eq!(booking_result.parsed_transactions.len(), 2);
         assert!(booking_result.failed_lines.is_empty());
         
         // 验证第一条记录
-        let first_transaction = &booking_result.processed_transactions[0];
-        assert_eq!(first_transaction.transaction.amount, 28.5);
-        assert_eq!(first_transaction.transaction.r#type, "expense");
+        let first_transaction = &booking_result.parsed_transactions[0];
+        assert_eq!(first_transaction.amount, 28.5);
+        assert_eq!(first_transaction.transaction_type, "expense");
         
         // 验证第二条记录
-        let second_transaction = &booking_result.processed_transactions[1];
-        assert_eq!(second_transaction.transaction.amount, 15.0);
-        assert_eq!(second_transaction.transaction.r#type, "expense");
+        let second_transaction = &booking_result.parsed_transactions[1];
+        assert_eq!(second_transaction.amount, 15.0);
+        assert_eq!(second_transaction.transaction_type, "expense");
     }
     
     #[tokio::test]
@@ -160,12 +160,12 @@ mod tests {
         
         // 应该回退到默认分类"其他支出"
         if booking_result.success {
-            assert_eq!(booking_result.processed_transactions.len(), 1);
+            assert_eq!(booking_result.parsed_transactions.len(), 1);
             assert!(booking_result.failed_lines.is_empty());
         } else {
             // 或者可能因为找不到分类而失败
             assert_eq!(booking_result.failed_lines.len(), 1);
-            assert!(booking_result.processed_transactions.is_empty());
+            assert!(booking_result.parsed_transactions.is_empty());
         }
     }
     
@@ -198,7 +198,7 @@ mod tests {
         let booking_result = result.unwrap();
         assert!(!booking_result.success);
         assert_eq!(booking_result.failed_lines.len(), 1);
-        assert!(booking_result.processed_transactions.is_empty());
+        assert!(booking_result.parsed_transactions.is_empty());
         
         // 验证错误信息
         let failed_line = &booking_result.failed_lines[0];
@@ -233,13 +233,13 @@ mod tests {
         assert!(result.is_ok());
         let booking_result = result.unwrap();
         assert!(booking_result.success);
-        assert_eq!(booking_result.processed_transactions.len(), 1);
+        assert_eq!(booking_result.parsed_transactions.len(), 1);
         assert!(booking_result.failed_lines.is_empty());
         
         // 验证收入记录
-        let transaction = &booking_result.processed_transactions[0];
-        assert_eq!(transaction.transaction.amount, 5000.0);
-        assert_eq!(transaction.transaction.r#type, "income");
+        let transaction = &booking_result.parsed_transactions[0];
+        assert_eq!(transaction.amount, 5000.0);
+        assert_eq!(transaction.transaction_type, "income");
     }
 
     // AI HTTP 接口测试
@@ -736,7 +736,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
         return Ok(QuickBookingResult {
             success: false,
             message: "输入文本不能为空".to_string(),
-            processed_transactions: vec![],
+            parsed_transactions: vec![],
             failed_lines: vec![],
         });
     }
@@ -748,7 +748,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
             return Ok(QuickBookingResult {
                 success: false,
                 message: "请先配置大模型平台和API密钥".to_string(),
-                processed_transactions: vec![],
+                parsed_transactions: vec![],
                 failed_lines: vec![],
             });
         }
@@ -756,7 +756,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
             return Ok(QuickBookingResult {
                 success: false,
                 message: format!("获取大模型配置失败: {}", e),
-                processed_transactions: vec![],
+                parsed_transactions: vec![],
                 failed_lines: vec![],
             });
         }
@@ -767,7 +767,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
         .map_err(|e| format!("解析模拟AI响应失败: {}", e))?;
     
     // 处理解析结果（复用原函数的逻辑）
-    let mut processed_transactions = Vec::new();
+    let mut parsed_transactions = Vec::new();
     let mut failed_lines = Vec::new();
     
     for (index, quick_transaction) in parse_result.transactions.iter().enumerate() {
@@ -815,67 +815,42 @@ async fn test_process_quick_booking_with_mock_ai_response(
             }
         };
         
-        // 解析日期
-        let date = chrono::NaiveDate::parse_from_str(&quick_transaction.date, "%Y-%m-%d")
-            .map_err(|e| format!("日期解析失败: {}", e));
-        
-        let date = match date {
-            Ok(d) => d,
-            Err(e) => {
-                failed_lines.push(FailedLine {
-                    line_number: index + 1,
-                    original_text: format!("{}: {} {}", 
-                        quick_transaction.date, 
-                        quick_transaction.amount, 
-                        quick_transaction.remark),
-                    error_reason: e,
-                });
-                continue;
-            }
-        };
-        
-        // 创建交易记录
-        let transaction_data = NewTransaction {
-            date,
-            r#type: quick_transaction.transaction_type.clone(),
-            amount: quick_transaction.amount,
-            category_id,
-            budget_id: None,
-            description: Some(quick_transaction.remark.clone()),
-            note: Some(quick_transaction.remark.clone()),
-        };
-        
-        match db_state.db.create_transaction(&transaction_data).await {
-            Ok(_transaction_id) => {
-                processed_transactions.push(ProcessedTransaction {
-                    original_text: format!("{}: {} {}", 
-                        quick_transaction.date, 
-                        quick_transaction.amount, 
-                        quick_transaction.remark),
-                    transaction: transaction_data,
-                    confidence: 0.9,
-                });
-            }
-            Err(e) => {
-                failed_lines.push(FailedLine {
-                    line_number: index + 1,
-                    original_text: format!("{}: {} {}", 
-                        quick_transaction.date, 
-                        quick_transaction.amount, 
-                        quick_transaction.remark),
-                    error_reason: format!("创建交易记录失败: {}", e),
-                });
-            }
+        // 验证日期格式
+        if chrono::NaiveDate::parse_from_str(&quick_transaction.date, "%Y-%m-%d").is_err() {
+            failed_lines.push(FailedLine {
+                line_number: index + 1,
+                original_text: format!("{}: {} {}", 
+                    quick_transaction.date, 
+                    quick_transaction.amount, 
+                    quick_transaction.remark),
+                error_reason: "日期解析失败".to_string(),
+            });
+            continue;
         }
+        
+        // 创建 ParsedTransaction 而不是实际保存
+        parsed_transactions.push(ParsedTransaction {
+            original_text: format!("{}: {} {}", 
+                quick_transaction.date, 
+                quick_transaction.amount, 
+                quick_transaction.remark),
+            date: quick_transaction.date.clone(),
+            amount: quick_transaction.amount,
+            transaction_type: quick_transaction.transaction_type.clone(),
+            category_name: quick_transaction.category.clone(),
+            category_id: Some(category_id),
+            description: quick_transaction.remark.clone(),
+            confidence: 0.9,
+        });
     }
     
     // 返回处理结果
-    let success = !processed_transactions.is_empty();
+    let success = !parsed_transactions.is_empty();
     let message = if success {
         if failed_lines.is_empty() {
-            format!("成功解析并创建了{}条记录", processed_transactions.len())
+            format!("成功解析了{}条记录", parsed_transactions.len())
         } else {
-            format!("成功创建{}条记录，{}条失败", processed_transactions.len(), failed_lines.len())
+            format!("成功解析{}条记录，{}条失败", parsed_transactions.len(), failed_lines.len())
         }
     } else {
         "所有记录都处理失败".to_string()
@@ -884,7 +859,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
     Ok(QuickBookingResult {
         success,
         message,
-        processed_transactions,
+        parsed_transactions,
         failed_lines,
     })
 }

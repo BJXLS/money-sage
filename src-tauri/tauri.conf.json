@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "记账本",
+  "productName": "money-sage",
   "version": "0.1.0",
   "identifier": "com.money-note.app",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "记账本 - MoneySage",
+        "title": "MoneySage",
         "width": 1200,
         "height": 800,
         "minWidth": 1000,
@@ -32,19 +32,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": ["msi"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "windows": {
-      "nsis": {
-        "displayLanguageSelector": false,
-        "installMode": "perMachine"
-      }
-    }
+    ]
   }
 }

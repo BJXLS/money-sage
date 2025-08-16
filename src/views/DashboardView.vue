@@ -171,7 +171,7 @@
                   <span class="category-icon" :style="{ color: budget.category_color }">
                     {{ budget.category_icon || '💰' }}
                   </span>
-                  {{ budget.category_name }}
+                  {{ budget.name }}
                 </div>
                 <div class="budget-amount">
                   ¥{{ formatAmount(budget.spent) }} / ¥{{ formatAmount(budget.amount) }}

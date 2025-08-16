@@ -228,20 +228,22 @@ export const useAppStore = defineStore('app', () => {
     }
   }
   
-  const fetchTransactions = async (limit?: number, offset?: number) => {
+  const fetchTransactions = async (_limit?: number, _offset?: number) => {
     try {
       loading.value = true
-      console.log('正在获取交易记录...')
-      const result = await invoke<TransactionWithCategory[]>('get_transactions', { 
-        limit: limit || pageSize.value, 
-        offset: offset || (currentPage.value - 1) * pageSize.value 
+      // 改为每次获取当月的所有记录
+      const base = dayjs()
+      const startDate = base.startOf('month').format('YYYY-MM-DD')
+      const endDate = base.endOf('month').format('YYYY-MM-DD')
+      console.log('正在获取当月交易记录...', startDate, endDate)
+      const result = await invoke<TransactionWithCategory[]>('get_transactions_by_date_range', {
+        startDate,
+        endDate
       })
-      console.log('获取到的交易记录:', result)
+      console.log('获取到的当月交易记录:', result)
       transactions.value = result || []
     } catch (error) {
       console.error('获取交易记录失败:', error)
-      // 保持现有数据，不要清空
-      // transactions.value = []
       throw error
     } finally {
       loading.value = false
@@ -255,7 +257,8 @@ export const useAppStore = defineStore('app', () => {
         startDate,
         endDate
       })
-      return result
+      transactions.value = result || []
+      return result || []
     } catch (error) {
       console.error('获取交易记录失败:', error)
       throw error
@@ -379,6 +382,24 @@ export const useAppStore = defineStore('app', () => {
     }
   }
   
+  const updateBudget = async (id: number, budgetData: {
+    name?: string
+    category_id?: number
+    amount?: number
+    budget_type?: 'time' | 'event'
+    period_type?: 'weekly' | 'monthly' | 'yearly'
+    start_date?: string
+    end_date?: string
+  }) => {
+    try {
+      await invoke('update_budget', { id, budget: budgetData })
+      await fetchBudgets() // 重新获取预算列表
+    } catch (error) {
+      console.error('更新预算失败:', error)
+      throw error
+    }
+  }
+  
   const deleteBudget = async (id: number) => {
     try {
       await invoke('delete_budget', { id })
@@ -466,6 +487,7 @@ export const useAppStore = defineStore('app', () => {
     fetchCategoryStats,
     fetchBudgets,
     createBudget,
+    updateBudget,
     deleteBudget,
     importCSV,
     exportCSV,

@@ -105,6 +105,11 @@ async fn create_budget(state: State<'_, DatabaseState>, budget: NewBudget) -> Re
 }
 
 #[tauri::command]
+async fn update_budget(state: State<'_, DatabaseState>, id: i64, budget: UpdateBudget) -> Result<(), String> {
+    state.db.update_budget(id, &budget).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn delete_budget(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
     state.db.delete_budget(id).await.map_err(|e| e.to_string())
 }
@@ -725,6 +730,7 @@ pub fn run() {
             get_category_stats,
             get_budgets,
             create_budget,
+            update_budget,
             delete_budget,
             import_transactions,
             export_csv_transactions,

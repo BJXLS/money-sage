@@ -783,6 +783,71 @@ impl Database {
         Ok(result.last_insert_rowid())
     }
 
+    pub async fn update_budget(&self, id: i64, budget: &UpdateBudget) -> Result<()> {
+        // 构建动态SQL语句
+        let mut updates = Vec::new();
+        
+        if budget.name.is_some() {
+            updates.push("name = ?");
+        }
+        if budget.category_id.is_some() {
+            updates.push("category_id = ?");
+        }
+        if budget.amount.is_some() {
+            updates.push("amount = ?");
+        }
+        if budget.budget_type.is_some() {
+            updates.push("budget_type = ?");
+        }
+        if budget.period_type.is_some() {
+            updates.push("period_type = ?");
+        }
+        if budget.start_date.is_some() {
+            updates.push("start_date = ?");
+        }
+        if budget.end_date.is_some() {
+            updates.push("end_date = ?");
+        }
+        
+        if updates.is_empty() {
+            return Ok(()); // 没有要更新的字段
+        }
+        
+        updates.push("updated_at = ?");
+        
+        let sql = format!("UPDATE budgets SET {} WHERE id = ?", updates.join(", "));
+        let mut query = sqlx::query(&sql);
+        
+        // 按顺序绑定参数
+        if let Some(name) = &budget.name {
+            query = query.bind(name);
+        }
+        if let Some(category_id) = budget.category_id {
+            query = query.bind(category_id);
+        }
+        if let Some(amount) = budget.amount {
+            query = query.bind(amount);
+        }
+        if let Some(budget_type) = &budget.budget_type {
+            query = query.bind(budget_type);
+        }
+        if let Some(period_type) = &budget.period_type {
+            query = query.bind(period_type);
+        }
+        if let Some(start_date) = budget.start_date {
+            query = query.bind(start_date);
+        }
+        if let Some(end_date) = &budget.end_date {
+            query = query.bind(end_date);
+        }
+        
+        query = query.bind(Utc::now()).bind(id);
+        
+        query.execute(&self.pool).await?;
+        
+        Ok(())
+    }
+
     pub async fn delete_budget(&self, id: i64) -> Result<()> {
         sqlx::query("DELETE FROM budgets WHERE id = ?")
             .bind(id)

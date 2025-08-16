@@ -7,32 +7,6 @@
         <span class="current-month">{{ currentMonthText }}</span>
         <el-button @click="nextMonth" :icon="ArrowRight" size="small" />
       </div>
-      
-      <div class="view-controls">
-        <el-button-group>
-          <el-button 
-            :type="viewMode === 'day' ? 'primary' : 'default'" 
-            @click="setViewMode('day')"
-            size="small"
-          >
-            日
-          </el-button>
-          <el-button 
-            :type="viewMode === 'week' ? 'primary' : 'default'" 
-            @click="setViewMode('week')"
-            size="small"
-          >
-            周
-          </el-button>
-          <el-button 
-            :type="viewMode === 'month' ? 'primary' : 'default'" 
-            @click="setViewMode('month')"
-            size="small"
-          >
-            月
-          </el-button>
-        </el-button-group>
-      </div>
     </div>
 
     <!-- 日历视图 -->
@@ -55,6 +29,7 @@
               'selected': day.date === selectedDate,
               'has-transactions': day.transactions.length > 0
             }"
+            :style="day.expenseColor ? { borderLeftColor: day.expenseColor } : {}"
             @click="selectDate(day.date)"
           >
             <div class="day-number">{{ day.dayNumber }}</div>
@@ -229,7 +204,7 @@
               <el-form-item label="时间">
                                   <el-input
                     v-model="transactionForm.time"
-                    placeholder="11:05"
+                    placeholder="00:00"
                     type="time"
                   />
               </el-form-item>
@@ -312,7 +287,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, ArrowDown, Money, Edit, Delete } from '@element-plus/icons-vue'
 import { useAppStore } from '../stores'
@@ -323,7 +298,6 @@ const store = useAppStore()
 // 响应式数据
 const currentDate = ref(dayjs())
 const selectedDate = ref(dayjs().format('YYYY-MM-DD'))
-const viewMode = ref<'day' | 'week' | 'month'>('month')
 const showRecordDialog = ref(false)
 
 // 分类选择相关
@@ -341,12 +315,12 @@ const transactionForm = ref({
   categoryId: null as number | null,
   budgetId: null as number | null,
   account: '现金',
-  time: '11:05',
+  time: '00:00',
   note: ''
 })
 
 // 周天数组
-const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六','周日']
 
 // 计算属性
 const currentMonthText = computed(() => {
@@ -432,7 +406,8 @@ const calendarDays = computed(() => {
       isOtherMonth: current.month() !== month,
       isToday: current.isSame(dayjs(), 'day'),
       transactions: dayTransactions,
-      totalExpense
+      totalExpense,
+      expenseColor: getExpenseColor(totalExpense)
     })
     
     current = current.add(1, 'day')
@@ -441,11 +416,24 @@ const calendarDays = computed(() => {
   return days
 })
 
-// 方法
-const setViewMode = (mode: 'day' | 'week' | 'month') => {
-  viewMode.value = mode
+// 根据花费金额计算颜色的函数
+const getExpenseColor = (expense: number) => {
+  if (expense === 0) return null // 没有花费不显示竖杠
+  
+  // 按照固定阈值判定颜色
+  if (expense < 100) {
+    // 低花费：绿色 (#67c23a)
+    return '#67c23a'
+  } else if (expense < 500) {
+    // 中等花费：更醒目的橙黄色 (#ff9500)
+    return '#ff9500'
+  } else {
+    // 高花费：红色 (#e74c3c)
+    return '#e74c3c'
+  }
 }
 
+// 方法
 const prevMonth = () => {
   currentDate.value = currentDate.value.subtract(1, 'month')
 }
@@ -468,7 +456,7 @@ const resetForm = () => {
     categoryId: null,
     budgetId: null,
     account: '现金',
-    time: '11:05',
+    time: '00:00',
     note: ''
   }
 }
@@ -498,6 +486,10 @@ const saveTransaction = async () => {
       }
       await store.updateTransaction(editingTransactionId.value, updateData)
       ElMessage.success('记录更新成功')
+      // 更新后刷新当前选择月份的全部记录
+      const monthStart = currentDate.value.startOf('month').format('YYYY-MM-DD')
+      const monthEnd = currentDate.value.endOf('month').format('YYYY-MM-DD')
+      await store.fetchTransactionsByDateRange(monthStart, monthEnd)
     } else {
       // 创建新交易
       const transaction = {
@@ -511,6 +503,10 @@ const saveTransaction = async () => {
       }
       await store.createTransaction(transaction)
       ElMessage.success('记录保存成功')
+      // 创建后刷新当前选择月份的全部记录
+      const monthStart = currentDate.value.startOf('month').format('YYYY-MM-DD')
+      const monthEnd = currentDate.value.endOf('month').format('YYYY-MM-DD')
+      await store.fetchTransactionsByDateRange(monthStart, monthEnd)
     }
     handleDialogClose()
   } catch (error) {
@@ -559,9 +555,19 @@ const handleClickOutside = (event: MouseEvent) => {
 }
 
 onMounted(() => {
-  store.fetchTransactions()
+  // 初次进入拉取当月记录
+  const monthStart = currentDate.value.startOf('month').format('YYYY-MM-DD')
+  const monthEnd = currentDate.value.endOf('month').format('YYYY-MM-DD')
+  store.fetchTransactionsByDateRange(monthStart, monthEnd)
   store.fetchCategories()
   document.addEventListener('click', handleClickOutside)
+})
+
+// 监听月份变化，切换月份时拉取该月全部记录
+watch(currentDate, (newVal) => {
+  const monthStart = newVal.startOf('month').format('YYYY-MM-DD')
+  const monthEnd = newVal.endOf('month').format('YYYY-MM-DD')
+  store.fetchTransactionsByDateRange(monthStart, monthEnd)
 })
 
 // 编辑交易记录
@@ -571,6 +577,7 @@ const editTransaction = (transaction: any) => {
     type: transaction.type,
     amount: transaction.amount.toString(),
     categoryId: transaction.category_id,
+    budgetId: transaction.budget_id ?? null,
     account: '现金', // 默认值，因为原数据可能没有account字段
     time: formatTime(transaction.created_at),
     note: transaction.description || transaction.note || ''
@@ -589,6 +596,10 @@ const deleteTransaction = async (id: number) => {
     
     await store.deleteTransaction(id)
     ElMessage.success('删除成功')
+    // 删除后刷新当前选择月份的全部记录
+    const monthStart = currentDate.value.startOf('month').format('YYYY-MM-DD')
+    const monthEnd = currentDate.value.endOf('month').format('YYYY-MM-DD')
+    await store.fetchTransactionsByDateRange(monthStart, monthEnd)
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败，请重试')
@@ -690,7 +701,7 @@ onUnmounted(() => {
 }
 
 .calendar-day.has-transactions {
-  border-left: 4px solid #67c23a;
+  border-left: 4px solid #67c23a; /* 默认颜色，会被内联样式覆盖 */
 }
 
 .day-number {

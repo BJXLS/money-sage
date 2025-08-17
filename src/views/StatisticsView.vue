@@ -87,9 +87,14 @@
                 <div class="category-amount">
                   <div class="amount">¥{{ formatAmount(category.amount) }}</div>
                   <div class="change" :class="getChangeClass(category.change)">
-                    <el-icon v-if="category.change > 0"><CaretTop /></el-icon>
-                    <el-icon v-else-if="category.change < 0"><CaretBottom /></el-icon>
-                    <span>{{ Math.abs(category.change).toFixed(1) }}%</span>
+                    <template v-if="category.change === null">
+                      <span>--</span>
+                    </template>
+                    <template v-else>
+                      <el-icon v-if="category.change > 0"><CaretTop /></el-icon>
+                      <el-icon v-else-if="category.change < 0"><CaretBottom /></el-icon>
+                      <span>{{ Math.abs(category.change).toFixed(1) }}%</span>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -211,6 +216,38 @@
                   <span class="remaining-info">剩余 {{ daysRemaining }} 天</span>
                 </div>
               </div>
+              
+              <!-- 当前有效预算列表 -->
+              <!-- <div class="current-budgets-section" v-if="currentMonthBudgets.length > 0">
+                <div class="section-header">
+                  <span class="section-title-small">{{ selectedMonthText }}生效预算</span>
+                  <span class="budget-count">共{{ currentMonthBudgets.length }}项</span>
+                </div>
+                <div class="budget-list">
+                  <div 
+                    v-for="budget in currentMonthBudgets" 
+                    :key="budget.id"
+                    class="budget-item"
+                  >
+                    <div class="budget-item-info">
+                      <span class="budget-name">{{ budget.name }}</span>
+                      <span class="budget-category">({{ budget.category_name }})</span>
+                    </div>
+                    <div class="budget-amount">
+                      <span class="budget-period-type">{{ getPeriodTypeText(budget.period_type) }}</span>
+                      <span class="budget-amount-value">¥{{ formatAmount(budget.amount) }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div> -->
+              
+              <!-- 无预算提示 -->
+              <!-- <div class="no-budget-section" v-else>
+                <div class="no-budget-tip">
+                  <el-icon><InfoFilled /></el-icon>
+                  <span>{{ selectedMonthText }}暂无生效预算</span>
+                </div>
+              </div> -->
             </div>
           </el-card>
         </el-col>
@@ -352,7 +389,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, PieChart } from 'echarts/charts'
@@ -404,12 +441,51 @@ const selectedMonthText = computed(() => {
   return dayjs(selectedMonth.value).format('YYYY年M月')
 })
 
-// 分类详情数据（模拟环比变化）
+// 分类详情数据（计算真实月环比）
 const categoryDetails = computed(() => {
-  return store.categoryStats.map(category => ({
-    ...category,
-    change: Math.random() * 20 - 10 // 模拟-10%到+10%的变化
-  }))
+  return store.categoryStats.map(category => {
+    // 计算前一个月的分类支出
+    const currentMonth = dayjs(selectedMonth.value)
+    const previousMonth = currentMonth.subtract(1, 'month').format('YYYY-MM')
+    
+    // 从月度统计中找到上个月的数据
+    const previousMonthData = store.monthlyStats.find(stat => stat.month === previousMonth)
+    
+    if (!previousMonthData || previousMonthData.expense === 0) {
+      return {
+        ...category,
+        change: null // 前一个月无数据
+      }
+    }
+    
+    // 需要获取上个月该分类的具体支出数据
+    // 由于我们只有当前月的分类统计，这里需要从交易记录中计算上个月该分类的支出
+    const previousMonthStart = currentMonth.subtract(1, 'month').startOf('month')
+    const previousMonthEnd = currentMonth.subtract(1, 'month').endOf('month')
+    
+    const previousMonthCategoryAmount = store.transactions
+      .filter(t => 
+        t.type === 'expense' && 
+        t.category_id === category.category_id &&
+        dayjs(t.date).isBetween(previousMonthStart, previousMonthEnd, 'day', '[]')
+      )
+      .reduce((sum, t) => sum + t.amount, 0)
+    
+    if (previousMonthCategoryAmount === 0) {
+      return {
+        ...category,
+        change: null // 前一个月该分类无支出
+      }
+    }
+    
+    // 计算环比变化 = (当前月 - 上个月) / 上个月 * 100
+    const changePercentage = ((category.amount - previousMonthCategoryAmount) / previousMonthCategoryAmount) * 100
+    
+    return {
+      ...category,
+      change: changePercentage
+    }
+  })
 })
 
 // 选中月份的收入支出
@@ -427,17 +503,62 @@ const selectedMonthExpense = computed(() => {
 
 
 
+// 检查预算是否在选中月份有效
+const isBudgetValidForMonth = (budget: any, selectedMonth: string) => {
+  const selectedDate = dayjs(selectedMonth)
+  const budgetStart = dayjs(budget.start_date)
+  const budgetEnd = budget.end_date ? dayjs(budget.end_date) : null
+  
+  // 根据预算周期类型进行匹配
+  switch (budget.period_type) {
+    case 'daily':
+      // 每日预算：检查选中月份是否包含该日期
+      return selectedDate.isSame(budgetStart, 'month')
+    
+    case 'weekly':
+      // 每周预算：检查选中月份是否与该周有重叠
+      if (budgetEnd) {
+        const monthStart = selectedDate.startOf('month')
+        const monthEnd = selectedDate.endOf('month')
+        return (budgetStart.isSame(monthEnd) || budgetStart.isBefore(monthEnd)) && 
+               (budgetEnd.isSame(monthStart) || budgetEnd.isAfter(monthStart))
+      }
+      return selectedDate.isSame(budgetStart, 'month')
+    
+    case 'monthly':
+      // 每月预算：检查是否是同一月份
+      return selectedDate.isSame(budgetStart, 'month')
+    
+    case 'yearly':
+      // 每年预算：检查选中月份是否在该年内
+      return selectedDate.isSame(budgetStart, 'year')
+    
+    default:
+      return false
+  }
+}
+
 // 总预算计算 - 根据选中月份
 const totalBudget = computed(() => {
   return store.budgets
-    .filter(b => b.budget_type === 'time' && b.period_type === 'monthly' && b.is_active)
+    .filter(b => b.budget_type === 'time' && b.is_active && isBudgetValidForMonth(b, selectedMonth.value))
     .reduce((sum, b) => sum + b.amount, 0)
 })
 
+// 计算选中月份内的实际支出 - 与预算分类无关
 const totalSpent = computed(() => {
-  // 这里应该基于选中月份的实际支出，而不是预算的spent字段
-  // 因为spent字段可能是累计值
-  return selectedMonthExpense.value
+  // 直接计算选中月份的所有支出
+  const selectedDate = dayjs(selectedMonth.value)
+  
+  // 筛选该月的所有支出交易
+  const monthlyExpenseTransactions = store.transactions.filter(transaction => {
+    if (transaction.type !== 'expense') return false
+    
+    const transactionDate = dayjs(transaction.date)
+    return transactionDate.isSame(selectedDate, 'month')
+  })
+  
+  return monthlyExpenseTransactions.reduce((sum, transaction) => sum + transaction.amount, 0)
 })
 
 const totalRemaining = computed(() => {
@@ -487,6 +608,13 @@ const dailySuggestion = computed(() => {
 const averageDailySpending = computed(() => {
   if (daysUsed.value === 0) return 0
   return totalSpent.value / daysUsed.value
+})
+
+// 获取当前月份有效的预算列表
+const currentMonthBudgets = computed(() => {
+  return store.budgets.filter(b => 
+    b.budget_type === 'time' && b.is_active && isBudgetValidForMonth(b, selectedMonth.value)
+  )
 })
 
 // 图例数据
@@ -734,7 +862,8 @@ const getCategoryIcon = (index: number) => {
   return icons[index % icons.length]
 }
 
-const getChangeClass = (change: number) => {
+const getChangeClass = (change: number | null) => {
+  if (change === null) return 'no-data'
   if (change > 0) return 'increase'
   if (change < 0) return 'decrease'
   return 'no-change'
@@ -818,31 +947,76 @@ const showAddBudgetDialog = () => {
   console.log('打开添加预算对话框')
 }
 
+// 获取预算周期类型文本
+const getPeriodTypeText = (periodType: string) => {
+  const typeMap: { [key: string]: string } = {
+    'daily': '每日',
+    'weekly': '每周',
+    'monthly': '每月',
+    'yearly': '每年'
+  }
+  return typeMap[periodType] || periodType
+}
+
 // 月份改变处理函数
 const onMonthChange = async (month: string) => {
   if (!month) return
+  
+  console.log('onMonthChange触发，月份切换到:', month)
+  console.log('当前selectedMonth:', selectedMonth.value)
+  
+  // 无论如何都执行数据更新，确保切换回当前月份时也能刷新
+  await updateMonthData(month)
+}
+
+// 更新月份数据的通用函数
+const updateMonthData = async (month: string) => {
+  console.log('开始更新月份数据:', month)
+  
+  // 强制更新selectedMonth的值，确保响应式更新
+  selectedMonth.value = month
   
   // 更新选中月份的数据
   const startDate = dayjs(month).startOf('month').format('YYYY-MM-DD')
   const endDate = dayjs(month).endOf('month').format('YYYY-MM-DD')
   
+  console.log('获取数据范围:', startDate, 'to', endDate)
+  
   // 重新获取相关数据
   await fetchSelectedMonthData(startDate, endDate)
+  
+  console.log('数据刷新完成，新的selectedMonth:', selectedMonth.value)
 }
 
 // 获取选中月份的数据
 const fetchSelectedMonthData = async (startDate: string, endDate: string) => {
   try {
+    // 为了计算月环比，需要获取更大范围的交易数据（包含前一个月）
+    const selectedDate = dayjs(startDate)
+    const extendedStartDate = selectedDate.subtract(2, 'month').startOf('month').format('YYYY-MM-DD')
+    const extendedEndDate = selectedDate.add(1, 'month').endOf('month').format('YYYY-MM-DD')
+    
     await Promise.all([
       store.fetchCategoryStats(startDate, endDate, 'expense'),
       store.fetchMonthlyStats(12), // 重新获取月度统计数据
+      store.fetchTransactionsByDateRange(extendedStartDate, extendedEndDate), // 获取扩展范围的交易记录
     ])
   } catch (error) {
     console.error('获取月份数据失败:', error)
   }
 }
 
+// 监听selectedMonth的变化，确保数据能够正确更新
+watch(selectedMonth, async (newMonth, oldMonth) => {
+  console.log('selectedMonth watch triggered:', oldMonth, '->', newMonth)
+  if (newMonth && newMonth !== oldMonth) {
+    await updateMonthData(newMonth)
+  }
+}, { immediate: false })
+
 onMounted(async () => {
+  console.log('组件挂载，初始化数据...')
+  
   // 初始化数据
   await Promise.all([
     store.fetchCategories(),
@@ -850,10 +1024,10 @@ onMounted(async () => {
     store.fetchBudgets()
   ])
   
-  // 获取当前选中月份的分类统计
-  const startDate = dayjs(selectedMonth.value).startOf('month').format('YYYY-MM-DD')
-  const endDate = dayjs(selectedMonth.value).endOf('month').format('YYYY-MM-DD')
-  await store.fetchCategoryStats(startDate, endDate, 'expense')
+  // 获取当前选中月份的数据
+  await updateMonthData(selectedMonth.value)
+  
+  console.log('初始化完成')
 })
 </script>
 
@@ -919,7 +1093,7 @@ onMounted(async () => {
 
 .pie-chart-card,
 .category-details-card {
-  height: 580px; /* 增加高度以容纳汇总信息 */
+  height: 620px; /* 增加高度 */
   background: #2a2a2a;
   border: 1px solid #404040;
 }
@@ -985,15 +1159,17 @@ onMounted(async () => {
 }
 
 .category-details {
-  max-height: 380px;
+  max-height: 480px;
   overflow-y: auto;
+  padding: 8px 16px; /* 减少上下内边距，增加左右内边距 */
+  margin: -16px -20px; /* 负边距让内容更贴近边框 */
 }
 
 .category-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 0;
+  padding: 14px 8px; /* 调整内边距 */
   border-bottom: 1px solid #404040;
 }
 
@@ -1104,6 +1280,10 @@ onMounted(async () => {
   color: #b0b0b0;
 }
 
+.change.no-data {
+  color: #909399;
+}
+
 /* 第二区域：支出趋势 */
 .expense-trend-section {
   margin-bottom: 40px;
@@ -1144,7 +1324,13 @@ onMounted(async () => {
   margin-bottom: 40px;
 }
 
-.budget-overview-card,
+.budget-overview-card {
+  min-height: 400px;
+  height: auto;
+  background: #2a2a2a;
+  border: 1px solid #404040;
+}
+
 .daily-budget-card {
   height: 400px;
   background: #2a2a2a;
@@ -1333,6 +1519,109 @@ onMounted(async () => {
   font-size: 16px;
   font-weight: 600;
   color: #ffffff;
+}
+
+/* 当前有效预算样式 */
+.current-budgets-section {
+  margin-top: 20px;
+  padding: 16px;
+  background: #1a1a1a;
+  border-radius: 8px;
+  border: 1px solid #404040;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-title-small {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.budget-count {
+  font-size: 12px;
+  color: #b0b0b0;
+  background: rgba(64, 64, 64, 0.3);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.budget-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.budget-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(64, 64, 64, 0.2);
+  border-radius: 6px;
+  border: 1px solid rgba(64, 64, 64, 0.5);
+}
+
+.budget-item-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.budget-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.budget-category {
+  font-size: 12px;
+  color: #b0b0b0;
+}
+
+.budget-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.budget-period-type {
+  font-size: 10px;
+  color: #909399;
+  background: rgba(64, 64, 64, 0.3);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.budget-amount-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #67C23A;
+}
+
+/* 无预算提示样式 */
+.no-budget-section {
+  margin-top: 20px;
+  padding: 20px;
+  background: #1a1a1a;
+  border-radius: 8px;
+  border: 1px solid #404040;
+}
+
+.no-budget-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b0b0b0;
+  font-size: 14px;
+  justify-content: center;
 }
 
 /* 第四区域：事件预算 */
@@ -1527,7 +1816,7 @@ onMounted(async () => {
   
   .pie-chart-card,
   .category-details-card {
-    height: 500px;
+    height: 550px;
   }
   
   .chart-container {
@@ -1567,7 +1856,9 @@ onMounted(async () => {
   }
   
   .category-details {
-    max-height: 300px;
+    max-height: 380px;
+    padding: 6px 12px;
+    margin: -12px -16px;
   }
   
   .trend-card {
@@ -1578,7 +1869,11 @@ onMounted(async () => {
     height: 300px;
   }
   
-  .budget-overview-card,
+  .budget-overview-card {
+    min-height: 400px;
+    height: auto;
+  }
+  
   .daily-budget-card {
     height: auto;
   }

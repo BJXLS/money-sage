@@ -108,7 +108,9 @@
               v-model="form.period_type" 
               placeholder="请选择预算周期"
               style="width: 100%"
+              @change="handlePeriodTypeChange"
             >
+              <el-option label="每日" value="daily" />
               <el-option label="每周" value="weekly" />
               <el-option label="每月" value="monthly" />
               <el-option label="每年" value="yearly" />
@@ -117,15 +119,52 @@
 
           <!-- 时间范围 -->
           <el-form-item label="时间范围" prop="dateRange">
+            <!-- 每日预算：单日选择 -->
             <el-date-picker
-              v-model="form.dateRange"
-              type="daterange"
-              range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
+              v-if="form.period_type === 'daily'"
+              v-model="form.singleDate"
+              type="date"
+              placeholder="选择日期"
               format="YYYY-MM-DD"
               value-format="YYYY-MM-DD"
               style="width: 100%"
+              @change="handleSingleDateChange"
+            />
+            
+            <!-- 每周预算：周范围选择 -->
+            <el-date-picker
+              v-else-if="form.period_type === 'weekly'"
+              v-model="form.dateRange"
+              type="week"
+              placeholder="选择完整周"
+              format="YYYY年第WW周"
+              value-format="YYYY-MM-DD"
+              style="width: 100%"
+              @change="handleWeekChange"
+            />
+            
+            <!-- 每月预算：月选择 -->
+            <el-date-picker
+              v-else-if="form.period_type === 'monthly'"
+              v-model="form.singleDate"
+              type="month"
+              placeholder="选择完整月"
+              format="YYYY年MM月"
+              value-format="YYYY-MM"
+              style="width: 100%"
+              @change="handleMonthChange"
+            />
+            
+            <!-- 每年预算：年选择 -->
+            <el-date-picker
+              v-else-if="form.period_type === 'yearly'"
+              v-model="form.singleDate"
+              type="year"
+              placeholder="选择完整年"
+              format="YYYY年"
+              value-format="YYYY"
+              style="width: 100%"
+              @change="handleYearChange"
             />
           </el-form-item>
         </template>
@@ -249,9 +288,10 @@ const form = reactive({
   name: '',
   amount: '',
   budget_type: 'time' as 'time' | 'event',
-  period_type: 'monthly' as 'weekly' | 'monthly' | 'yearly',
+  period_type: 'monthly' as 'daily' | 'weekly' | 'monthly' | 'yearly',
   category_id: null as number | null,
   dateRange: [] as string[],
+  singleDate: '' as string,
   description: '',
   estimated_date: '',
   is_active: true
@@ -277,7 +317,30 @@ const rules: FormRules = {
     { required: true, message: '请选择预算周期', trigger: 'change' }
   ],
   dateRange: [
-    { required: true, message: '请选择时间范围', trigger: 'change' }
+    { 
+      required: true, 
+      message: '请选择时间范围', 
+      trigger: 'change',
+      validator: (rule: any, value: any, callback: any) => {
+        if (form.budget_type === 'time') {
+          if (form.period_type === 'weekly') {
+            if (!value || value.length === 0) {
+              callback(new Error('请选择完整周'))
+            } else {
+              callback()
+            }
+          } else {
+            if (!form.singleDate) {
+              callback(new Error('请选择时间'))
+            } else {
+              callback()
+            }
+          }
+        } else {
+          callback()
+        }
+      }
+    }
   ]
 }
 
@@ -304,6 +367,15 @@ watch(() => props.budget, (budget) => {
     
     if (budget.budget_type === 'time') {
       form.dateRange = [budget.start_date, budget.end_date || '']
+      
+      // 根据预算周期类型设置 singleDate
+      if (budget.period_type === 'daily') {
+        form.singleDate = budget.start_date
+      } else if (budget.period_type === 'monthly') {
+        form.singleDate = dayjs(budget.start_date).format('YYYY-MM')
+      } else if (budget.period_type === 'yearly') {
+        form.singleDate = dayjs(budget.start_date).format('YYYY')
+      }
     } else {
       form.estimated_date = budget.end_date || ''
     }
@@ -330,12 +402,25 @@ watch(() => form.budget_type, (newType) => {
     form.estimated_date = ''
   } else {
     form.dateRange = []
+    form.singleDate = ''
     form.period_type = 'monthly'
   }
   
   // 清除验证
   nextTick(() => {
     formRef.value?.clearValidate()
+  })
+})
+
+// 监听预算周期变化
+watch(() => form.period_type, () => {
+  // 清空时间选择
+  form.dateRange = []
+  form.singleDate = ''
+  
+  // 清除验证
+  nextTick(() => {
+    formRef.value?.clearValidate(['dateRange'])
   })
 })
 
@@ -347,6 +432,7 @@ const resetForm = () => {
   form.period_type = 'monthly'
   form.category_id = null
   form.dateRange = []
+  form.singleDate = ''
   form.description = ''
   form.estimated_date = ''
   form.is_active = true
@@ -358,6 +444,48 @@ const handleTypeChange = (type: 'time' | 'event') => {
 
 const handleClose = () => {
   dialogVisible.value = false
+}
+
+// 预算周期变化处理
+const handlePeriodTypeChange = () => {
+  form.dateRange = []
+  form.singleDate = ''
+}
+
+// 单日选择处理
+const handleSingleDateChange = (value: string) => {
+  if (form.period_type === 'daily') {
+    // 对于每日预算，设置单日的开始和结束时间相同
+    form.dateRange = [value, value]
+  }
+}
+
+// 周选择处理
+const handleWeekChange = (value: string) => {
+  if (value && form.period_type === 'weekly') {
+    // Element Plus 的周选择器返回该周第一天的日期
+    const startDate = dayjs(value)
+    const endDate = startDate.add(6, 'day')
+    form.dateRange = [startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD')]
+  }
+}
+
+// 月选择处理
+const handleMonthChange = (value: string) => {
+  if (value && form.period_type === 'monthly') {
+    const monthStart = dayjs(value).startOf('month')
+    const monthEnd = dayjs(value).endOf('month')
+    form.dateRange = [monthStart.format('YYYY-MM-DD'), monthEnd.format('YYYY-MM-DD')]
+  }
+}
+
+// 年选择处理
+const handleYearChange = (value: string) => {
+  if (value && form.period_type === 'yearly') {
+    const yearStart = dayjs(value).startOf('year')
+    const yearEnd = dayjs(value).endOf('year')
+    form.dateRange = [yearStart.format('YYYY-MM-DD'), yearEnd.format('YYYY-MM-DD')]
+  }
 }
 
 const formatAmount = (amount: number) => {

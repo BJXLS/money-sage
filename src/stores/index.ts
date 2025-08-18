@@ -387,7 +387,7 @@ export const useAppStore = defineStore('app', () => {
     category_id?: number
     amount?: number
     budget_type?: 'time' | 'event'
-    period_type?: 'weekly' | 'monthly' | 'yearly'
+    period_type?: 'daily' | 'weekly' | 'monthly' | 'yearly'
     start_date?: string
     end_date?: string
   }) => {

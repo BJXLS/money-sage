@@ -432,11 +432,6 @@ const trendType = ref<'expense' | 'income'>('expense')
 // 月份选择器状态
 const selectedMonth = ref(dayjs().format('YYYY-MM'))
 
-// 计算属性
-const currentMonthText = computed(() => {
-  return dayjs().format('YYYY年M月')
-})
-
 const selectedMonthText = computed(() => {
   return dayjs(selectedMonth.value).format('YYYY年M月')
 })
@@ -467,7 +462,8 @@ const categoryDetails = computed(() => {
       .filter(t => 
         t.type === 'expense' && 
         t.category_id === category.category_id &&
-        dayjs(t.date).isBetween(previousMonthStart, previousMonthEnd, 'day', '[]')
+(dayjs(t.date).isSame(previousMonthStart) || dayjs(t.date).isAfter(previousMonthStart)) &&
+        (dayjs(t.date).isSame(previousMonthEnd) || dayjs(t.date).isBefore(previousMonthEnd))
       )
       .reduce((sum, t) => sum + t.amount, 0)
     
@@ -488,18 +484,10 @@ const categoryDetails = computed(() => {
   })
 })
 
-// 选中月份的收入支出
-const selectedMonthIncome = computed(() => {
-  const monthData = store.monthlyStats.find(stat => stat.month === selectedMonth.value)
-  return monthData?.income || 0
-})
-
 const selectedMonthExpense = computed(() => {
   const monthData = store.monthlyStats.find(stat => stat.month === selectedMonth.value)
   return monthData?.expense || 0
 })
-
-
 
 
 
@@ -608,13 +596,6 @@ const dailySuggestion = computed(() => {
 const averageDailySpending = computed(() => {
   if (daysUsed.value === 0) return 0
   return totalSpent.value / daysUsed.value
-})
-
-// 获取当前月份有效的预算列表
-const currentMonthBudgets = computed(() => {
-  return store.budgets.filter(b => 
-    b.budget_type === 'time' && b.is_active && isBudgetValidForMonth(b, selectedMonth.value)
-  )
 })
 
 // 图例数据
@@ -857,11 +838,6 @@ const formatAmount = (amount: number) => {
   })
 }
 
-const getCategoryIcon = (index: number) => {
-  const icons = ['🍽️', '🚗', '🛍️', '🎮', '🏠', '💊', '📚', '✈️']
-  return icons[index % icons.length]
-}
-
 const getChangeClass = (change: number | null) => {
   if (change === null) return 'no-data'
   if (change > 0) return 'increase'
@@ -928,7 +904,7 @@ const getEventStatusText = (percentage: number) => {
   return '已超支'
 }
 
-const getEventDaysText = (startDate: string, endDate: string) => {
+const getEventDaysText = (_startDate: string, endDate: string) => {
   const now = dayjs()
   const end = dayjs(endDate)
   const remaining = end.diff(now, 'day')
@@ -945,17 +921,6 @@ const getEventDaysText = (startDate: string, endDate: string) => {
 const showAddBudgetDialog = () => {
   // 这里可以添加打开添加预算对话框的逻辑
   console.log('打开添加预算对话框')
-}
-
-// 获取预算周期类型文本
-const getPeriodTypeText = (periodType: string) => {
-  const typeMap: { [key: string]: string } = {
-    'daily': '每日',
-    'weekly': '每周',
-    'monthly': '每月',
-    'yearly': '每年'
-  }
-  return typeMap[periodType] || periodType
 }
 
 // 月份改变处理函数

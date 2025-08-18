@@ -181,8 +181,8 @@ pub struct LLMConfig {
     pub platform: String,
     pub app_key: String,
     pub is_active: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: String,  // 改为字符串类型避免解析问题
+    pub updated_at: String,  // 改为字符串类型避免解析问题
 }
 
 #[derive(Debug, Serialize, Deserialize)]

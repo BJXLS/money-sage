@@ -888,7 +888,10 @@ impl Database {
     // 大模型配置相关方法
     pub async fn get_llm_config(&self) -> Result<Option<LLMConfig>> {
         let config = sqlx::query_as::<_, LLMConfig>(
-            "SELECT * FROM llm_configs WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1"
+            "SELECT id, platform, app_key, is_active, 
+                    strftime('%Y-%m-%d %H:%M:%S', created_at) as created_at, 
+                    strftime('%Y-%m-%d %H:%M:%S', updated_at) as updated_at 
+             FROM llm_configs WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1"
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -897,9 +900,11 @@ impl Database {
     }
 
     pub async fn save_llm_config(&self, config: &NewLLMConfig) -> Result<i64> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        
         // 先将所有配置设为非活跃状态
         sqlx::query("UPDATE llm_configs SET is_active = 0, updated_at = ?")
-            .bind(Utc::now())
+            .bind(&now)
             .execute(&self.pool)
             .await?;
 
@@ -910,8 +915,8 @@ impl Database {
         )
         .bind(&config.platform)
         .bind(&config.app_key)
-        .bind(Utc::now())
-        .bind(Utc::now())
+        .bind(&now)
+        .bind(&now)
         .execute(&self.pool)
         .await?;
         
@@ -939,7 +944,7 @@ impl Database {
 
         if !query_parts.is_empty() {
             query_parts.push("updated_at = ?");
-            let now = Utc::now().to_string();
+            let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
             binds.push(&now);
 
             let query_str = format!("UPDATE llm_configs SET {} WHERE id = ?", query_parts.join(", "));

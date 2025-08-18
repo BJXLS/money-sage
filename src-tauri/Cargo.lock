@@ -2365,7 +2365,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "money-note"
+name = "money-sage"
 version = "0.1.0"
 dependencies = [
  "anyhow",

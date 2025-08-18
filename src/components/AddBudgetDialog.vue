@@ -321,7 +321,7 @@ const rules: FormRules = {
       required: true, 
       message: '请选择时间范围', 
       trigger: 'change',
-      validator: (rule: any, value: any, callback: any) => {
+      validator: (_rule: any, value: any, callback: any) => {
         if (form.budget_type === 'time') {
           if (form.period_type === 'weekly') {
             if (!value || value.length === 0) {

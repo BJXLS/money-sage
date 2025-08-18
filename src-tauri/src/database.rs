@@ -887,16 +887,27 @@ impl Database {
 
     // 大模型配置相关方法
     pub async fn get_llm_config(&self) -> Result<Option<LLMConfig>> {
-        let config = sqlx::query_as::<_, LLMConfig>(
-            "SELECT id, platform, app_key, is_active, 
-                    strftime('%Y-%m-%d %H:%M:%S', created_at) as created_at, 
-                    strftime('%Y-%m-%d %H:%M:%S', updated_at) as updated_at 
+        // 使用手动查询避免日期时间解析问题
+        let row = sqlx::query(
+            "SELECT id, platform, app_key, is_active, created_at, updated_at 
              FROM llm_configs WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1"
         )
         .fetch_optional(&self.pool)
         .await?;
         
-        Ok(config)
+        if let Some(row) = row {
+            let config = LLMConfig {
+                id: row.get("id"),
+                platform: row.get("platform"),
+                app_key: row.get("app_key"),
+                is_active: row.get::<i64, _>("is_active") != 0,
+                created_at: row.get::<String, _>("created_at"),
+                updated_at: row.get::<String, _>("updated_at"),
+            };
+            Ok(Some(config))
+        } else {
+            Ok(None)
+        }
     }
 
     pub async fn save_llm_config(&self, config: &NewLLMConfig) -> Result<i64> {

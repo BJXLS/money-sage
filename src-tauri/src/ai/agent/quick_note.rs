@@ -60,9 +60,9 @@ impl QuickNoteAgent {
         let config = AgentConfig {
             name: "QuickNoteAgent".to_string(),
             description: "AI agent for parsing natural language into accounting transactions".to_string(),
-            model: "qwen-plus".to_string(),
+            model: "qwen-plus-2025-09-11".to_string(),
             temperature: 0.3, // 降低温度以获得更一致的结果
-            max_tokens: 1000,
+            max_tokens: 5000,
             system_prompt: "".to_string(), // 临时空值，运行时动态填充
             enable_memory: false, // 记账解析不需要记忆
             max_memory_size: 0,
@@ -91,7 +91,7 @@ impl QuickNoteAgent {
 
 严格按照以下JSON格式输出，不要添加任何额外的文字说明：
 ！！注意
-1. category的输出格式为：大类（分号前的分类）-小类（大类该行识别到的小类）
+1. category的输出格式为：大类（分号前的分类）-小类（大类该行识别到的  小类）
 2. 如果没有合适的分类就输出‘其他-其他小类’
 
 ```json

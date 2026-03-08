@@ -216,10 +216,18 @@ async fn export_csv_transactions(state: State<'_, DatabaseState>, file_path: Str
     Ok(())
 }
 
-// 大模型配置相关命令
+// ── 大模型配置相关命令（泛化重设计）────────────────────────────────────
+
+/// 获取所有已保存的 LLM 配置
 #[tauri::command]
-async fn get_llm_config(state: State<'_, DatabaseState>) -> Result<Option<LLMConfig>, String> {
-    state.db.get_llm_config().await.map_err(|e| e.to_string())
+async fn get_llm_configs(state: State<'_, DatabaseState>) -> Result<Vec<LLMConfig>, String> {
+    state.db.get_llm_configs().await.map_err(|e| e.to_string())
+}
+
+/// 获取当前活跃的 LLM 配置（快速记账等功能使用）
+#[tauri::command]
+async fn get_active_llm_config(state: State<'_, DatabaseState>) -> Result<Option<LLMConfig>, String> {
+    state.db.get_active_llm_config().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -232,9 +240,56 @@ async fn update_llm_config(state: State<'_, DatabaseState>, id: i64, config: Upd
     state.db.update_llm_config(id, &config).await.map_err(|e| e.to_string())
 }
 
+/// 将指定配置设为活跃，同时停用其他所有配置
+#[tauri::command]
+async fn set_active_llm_config(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
+    state.db.set_active_llm_config(id).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn delete_llm_config(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
     state.db.delete_llm_config(id).await.map_err(|e| e.to_string())
+}
+
+/// 测试连接（不需要预先保存，直接发一条最小请求验证可达性）
+#[tauri::command]
+async fn test_llm_connection(config: TestConnectionRequest) -> Result<String, String> {
+    use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider, AIRequest, AIMessage};
+
+    let client_config = ClientConfig {
+        provider: AIProvider::Custom("test".to_string()),
+        base_url: config.base_url.clone(),
+        api_key: config.api_key.clone(),
+        timeout_secs: 15,
+        max_retries: 1,
+        headers: std::collections::HashMap::new(),
+    };
+
+    let http_client = AIHttpClient::new(client_config)
+        .map_err(|e| format!("创建客户端失败: {}", e))?;
+
+    let request = AIRequest {
+        model: config.model.clone(),
+        messages: vec![AIMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }],
+        temperature: 0.1,
+        max_tokens: 5,
+        top_p: None,
+        frequency_penalty: None,
+        presence_penalty: None,
+        stream: None,
+        enable_thinking: false,
+    };
+
+    match http_client.chat_completion(request).await {
+        Ok(resp) => {
+            let model_used = resp.model;
+            Ok(format!("连接成功！模型: {}", model_used))
+        }
+        Err(e) => Err(format!("连接失败: {}", e)),
+    }
 }
 
 // 快速记账文本处理命令
@@ -252,13 +307,13 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
         });
     }
     
-    // 1. 获取当前的LLM配置
-    let llm_config = match state.db.get_llm_config().await {
+    // 1. 获取当前活跃的 LLM 配置
+    let llm_config = match state.db.get_active_llm_config().await {
         Ok(Some(config)) => config,
         Ok(None) => {
             return Ok(QuickBookingResult {
                 success: false,
-                message: "请先配置大模型平台和API密钥".to_string(),
+                message: "请先在设置中配置大模型接口".to_string(),
                 parsed_transactions: vec![],
                 failed_lines: vec![],
             });
@@ -272,43 +327,36 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
             });
         }
     };
-    
-    // 2. 创建HTTP客户端和快速记账代理
+
+    if llm_config.base_url.is_empty() || llm_config.model.is_empty() {
+        return Ok(QuickBookingResult {
+            success: false,
+            message: "大模型配置不完整，请检查 Base URL 和模型名称".to_string(),
+            parsed_transactions: vec![],
+            failed_lines: vec![],
+        });
+    }
+
+    // 2. 创建HTTP客户端和快速记账代理（使用配置中的 base_url 和 model）
     use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider};
-    
-    // 根据平台创建客户端配置
-    let provider = match llm_config.platform.as_str() {
-        "Alibaba Bailian" => AIProvider::Custom("Alibaba".to_string()),
-        "OpenAI" => AIProvider::OpenAI,
-        "Claude" => AIProvider::Claude,
-        "Gemini" => AIProvider::Gemini,
-        _ => AIProvider::Custom(llm_config.platform.clone()),
-    };
-
-
-    // 创建自定义headers
-    // let mut headers = std::collections::HashMap::new();
-    // headers.insert(
-    //     "Authorization".to_string(), 
-    //     format!("Bearer {}", llm_config.app_key)
-    // );
-    // headers.insert(
-    //     "Content-Type".to_string(), 
-    //     "application/json".to_string()
-    // );
 
     let config = ClientConfig {
-        provider,
-        base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(), // 阿里云百炼兼容模式API地址
-        api_key: llm_config.app_key.clone(),
-        timeout_secs: 30,
+        provider: AIProvider::Custom(llm_config.provider.clone()),
+        base_url: llm_config.base_url.clone(),
+        api_key: llm_config.api_key.clone(),
+        timeout_secs: 60,
         max_retries: 3,
-        headers: std::collections::HashMap::new()
+        headers: std::collections::HashMap::new(),
     };
     
     let http_client = AIHttpClient::new(config)
         .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
-    let quick_note_agent = QuickNoteAgent::new();
+    let quick_note_agent = QuickNoteAgent::new_with_config(
+        llm_config.model.clone(),
+        llm_config.temperature as f32,
+        llm_config.max_tokens as u32,
+        llm_config.enable_thinking,
+    );
     
     // 3. 获取所有分类数据用于构建动态提示词
     let all_categories = match state.db.get_categories().await {
@@ -734,10 +782,13 @@ pub fn run() {
             delete_budget,
             import_transactions,
             export_csv_transactions,
-            get_llm_config,
+            get_llm_configs,
+            get_active_llm_config,
             save_llm_config,
             update_llm_config,
+            set_active_llm_config,
             delete_llm_config,
+            test_llm_connection,
             process_quick_booking_text,
             save_confirmed_transactions
         ])

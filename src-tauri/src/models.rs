@@ -174,28 +174,62 @@ pub struct DateRange {
     pub end_date: NaiveDate,
 }
 
-// 大模型配置相关结构
-#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+// 大模型配置相关结构（泛化重设计：支持任意 OpenAI 兼容接口）
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LLMConfig {
     pub id: i64,
-    pub platform: String,
-    pub app_key: String,
+    /// 用户自定义配置名称，如 "我的 GPT-4"
+    pub config_name: String,
+    /// 供应商名称，如 "OpenAI"、"阿里百炼"、"Ollama"
+    pub provider: String,
+    /// API Base URL，如 "https://api.openai.com/v1"
+    pub base_url: String,
+    /// API Key（本地服务可为空）
+    pub api_key: String,
+    /// 模型名称，如 "gpt-4o-mini"、"qwen-plus"
+    pub model: String,
+    /// 温度参数 0.0-2.0
+    pub temperature: f64,
+    /// 最大 token 数
+    pub max_tokens: i64,
+    /// 是否开启深度思考（仅阿里百炼等支持该参数的供应商生效）
+    pub enable_thinking: bool,
     pub is_active: bool,
-    pub created_at: String,  // 改为字符串类型避免解析问题
-    pub updated_at: String,  // 改为字符串类型避免解析问题
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NewLLMConfig {
-    pub platform: String,
-    pub app_key: String,
+    pub config_name: String,
+    pub provider: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    pub temperature: Option<f64>,
+    pub max_tokens: Option<i64>,
+    pub enable_thinking: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateLLMConfig {
-    pub platform: Option<String>,
-    pub app_key: Option<String>,
+    pub config_name: Option<String>,
+    pub provider: Option<String>,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub model: Option<String>,
+    pub temperature: Option<f64>,
+    pub max_tokens: Option<i64>,
+    pub enable_thinking: Option<bool>,
     pub is_active: Option<bool>,
+}
+
+/// 连接测试请求（不要求先保存）
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TestConnectionRequest {
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
 }
 
 // 快速记账相关结构

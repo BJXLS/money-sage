@@ -255,15 +255,17 @@ const trendChartOption = computed(() => {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#2a2a2a',
-      borderColor: '#404040',
+      backgroundColor: '#1a1a28',
+      borderColor: 'rgba(255,255,255,0.1)',
+      borderRadius: 10,
       textStyle: {
-        color: '#ffffff'
+        color: '#e2e8f0',
+        fontSize: 13
       },
       formatter: (params: any) => {
-        let result = `${params[0].axisValue}<br/>`
+        let result = `<div style="font-weight:600;margin-bottom:6px;color:#94a3b8">${params[0].axisValue}</div>`
         params.forEach((param: any) => {
-          result += `${param.marker}${param.seriesName}: ¥${formatAmount(param.value)}<br/>`
+          result += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0">${param.marker}<span style="color:#94a3b8">${param.seriesName}</span><span style="font-weight:600;margin-left:auto">¥${formatAmount(param.value)}</span></div>`
         })
         return result
       }
@@ -271,68 +273,74 @@ const trendChartOption = computed(() => {
     legend: {
       data: ['收入', '支出'],
       textStyle: {
-        color: '#ffffff'
-      }
+        color: '#64748b',
+        fontSize: 13
+      },
+      itemGap: 20
     },
     grid: {
       left: '3%',
       right: '4%',
       bottom: '3%',
+      top: '12%',
       containLabel: true
     },
     xAxis: {
       type: 'category',
       data: data.map(item => item.month).reverse(),
-      axisLine: {
-        lineStyle: {
-          color: '#404040'
-        }
-      },
-      axisTick: {
-        lineStyle: {
-          color: '#404040'
-        }
-      },
-      axisLabel: {
-        color: '#b0b0b0'
-      }
+      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
+      axisTick: { show: false },
+      axisLabel: { color: '#475569', fontSize: 12 }
     },
     yAxis: {
       type: 'value',
-      axisLine: {
-        lineStyle: {
-          color: '#404040'
-        }
-      },
-      axisTick: {
-        lineStyle: {
-          color: '#404040'
-        }
-      },
+      axisLine: { show: false },
+      axisTick: { show: false },
       axisLabel: {
-        color: '#b0b0b0',
+        color: '#475569',
+        fontSize: 12,
         formatter: (value: number) => `¥${formatAmount(value)}`
       },
-      splitLine: {
-        lineStyle: {
-          color: '#404040'
-        }
-      }
+      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)', type: 'dashed' } }
     },
     series: [
       {
         name: '收入',
         type: 'line',
         data: data.map(item => item.income).reverse(),
-        itemStyle: { color: '#67C23A' },
-        areaStyle: { opacity: 0.3, color: '#67C23A' }
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        itemStyle: { color: '#10b981' },
+        lineStyle: { color: '#10b981', width: 2.5 },
+        areaStyle: {
+          color: {
+            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(16,185,129,0.25)' },
+              { offset: 1, color: 'rgba(16,185,129,0.02)' }
+            ]
+          }
+        }
       },
       {
         name: '支出',
         type: 'line',
         data: data.map(item => item.expense).reverse(),
-        itemStyle: { color: '#F56C6C' },
-        areaStyle: { opacity: 0.3, color: '#F56C6C' }
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        itemStyle: { color: '#f87171' },
+        lineStyle: { color: '#f87171', width: 2.5 },
+        areaStyle: {
+          color: {
+            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(248,113,113,0.25)' },
+              { offset: 1, color: 'rgba(248,113,113,0.02)' }
+            ]
+          }
+        }
       }
     ]
   }
@@ -345,46 +353,62 @@ const pieChartOption = computed(() => {
     value: item.amount
   }))
   
+  const palette = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#84cc16']
+
   return {
     backgroundColor: 'transparent',
+    color: palette,
     tooltip: {
       trigger: 'item',
-      backgroundColor: '#2a2a2a',
-      borderColor: '#404040',
+      backgroundColor: '#1a1a28',
+      borderColor: 'rgba(255,255,255,0.1)',
+      borderRadius: 10,
       textStyle: {
-        color: '#ffffff'
+        color: '#e2e8f0',
+        fontSize: 13
       },
-      formatter: '{a} <br/>{b}: ¥{c} ({d}%)'
+      formatter: (params: any) => {
+        return `<div style="font-weight:600;margin-bottom:4px">${params.name}</div><div>¥${formatAmount(params.value)} <span style="color:#64748b">(${params.percent}%)</span></div>`
+      }
     },
     legend: {
       orient: 'vertical',
       left: 'left',
-      textStyle: {
-        color: '#ffffff'
-      }
+      textStyle: { color: '#64748b', fontSize: 12 },
+      itemWidth: 10,
+      itemHeight: 10,
+      borderRadius: 5
     },
     series: [
       {
         name: '支出分布',
         type: 'pie',
-        radius: ['40%', '70%'],
+        radius: ['42%', '68%'],
+        center: ['60%', '50%'],
         avoidLabelOverlap: false,
+        itemStyle: {
+          borderColor: '#151520',
+          borderWidth: 3,
+          borderRadius: 6
+        },
         label: {
           show: false,
           position: 'center',
-          color: '#ffffff'
+          color: '#e2e8f0'
         },
         emphasis: {
           label: {
             show: true,
-            fontSize: '16',
+            fontSize: 15,
             fontWeight: 'bold',
-            color: '#ffffff'
+            color: '#e2e8f0'
+          },
+          itemStyle: {
+            shadowBlur: 20,
+            shadowColor: 'rgba(0,0,0,0.3)'
           }
         },
-        labelLine: {
-          show: false
-        },
+        labelLine: { show: false },
         data: data
       }
     ]
@@ -401,9 +425,9 @@ const formatDate = (dateStr: string) => {
 }
 
 const getProgressColor = (percentage: number) => {
-  if (percentage < 60) return '#67C23A'
-  if (percentage < 80) return '#E6A23C'
-  return '#F56C6C'
+  if (percentage < 60) return '#10b981'
+  if (percentage < 80) return '#f59e0b'
+  return '#ef4444'
 }
 
 const updateTrendChart = async () => {
@@ -443,7 +467,7 @@ onMounted(async () => {
 
 <style scoped>
 .dashboard {
-  color: #ffffff;
+  color: #e2e8f0;
 }
 
 .stats-cards {
@@ -451,74 +475,138 @@ onMounted(async () => {
 }
 
 .stat-card {
-  border: none;
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
-  transition: all 0.3s ease;
-  background: #2a2a2a;
-  border: 1px solid #404040;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  cursor: default;
+  position: relative;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  opacity: 0;
+  transition: opacity 0.25s;
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.stat-card:hover::before {
+  opacity: 1;
+}
+
+.income-card {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.03) 100%);
+  border-color: rgba(16, 185, 129, 0.2) !important;
+}
+
+.income-card:hover {
+  box-shadow: 0 8px 32px rgba(16, 185, 129, 0.15);
+}
+
+.expense-card {
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.1) 0%, rgba(248, 113, 113, 0.03) 100%);
+  border-color: rgba(248, 113, 113, 0.2) !important;
+}
+
+.expense-card:hover {
+  box-shadow: 0 8px 32px rgba(248, 113, 113, 0.15);
+}
+
+.balance-card {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(99, 102, 241, 0.04) 100%);
+  border-color: rgba(99, 102, 241, 0.25) !important;
+}
+
+.balance-card:hover {
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.2);
+}
+
+.transactions-card {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.1) 0%, rgba(251, 191, 36, 0.03) 100%);
+  border-color: rgba(251, 191, 36, 0.2) !important;
+}
+
+.transactions-card:hover {
+  box-shadow: 0 8px 32px rgba(251, 191, 36, 0.15);
 }
 
 .stat-content {
   display: flex;
   align-items: center;
-  padding: 8px 0;
+  padding: 6px 0;
+  gap: 16px;
 }
 
 .stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
-  margin-right: 16px;
+  font-size: 22px;
+  flex-shrink: 0;
 }
 
 .income-card .stat-icon {
-  background: linear-gradient(135deg, #67C23A, #85CE61);
+  background: linear-gradient(135deg, #10b981, #34d399);
   color: white;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
 }
 
 .expense-card .stat-icon {
-  background: linear-gradient(135deg, #F56C6C, #F78989);
+  background: linear-gradient(135deg, #ef4444, #f87171);
   color: white;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
 }
 
 .balance-card .stat-icon {
-  background: linear-gradient(135deg, #409EFF, #66B1FF);
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
 }
 
 .transactions-card .stat-icon {
-  background: linear-gradient(135deg, #E6A23C, #EEBE77);
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
   color: white;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
 }
 
 .stat-info {
   flex: 1;
+  min-width: 0;
 }
 
 .stat-label {
-  font-size: 14px;
-  color: #b0b0b0;
-  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
 }
 
+.income-card .stat-label { color: rgba(16, 185, 129, 0.8); }
+.expense-card .stat-label { color: rgba(248, 113, 113, 0.8); }
+.balance-card .stat-label { color: rgba(165, 180, 252, 0.8); }
+.transactions-card .stat-label { color: rgba(251, 191, 36, 0.8); }
+
 .stat-value {
-  font-size: 24px;
-  font-weight: 600;
-  color: #ffffff;
+  font-size: 26px;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: -0.5px;
+  line-height: 1;
 }
 
 .stat-value.negative {
-  color: #F56C6C;
+  color: #f87171;
 }
 
 .charts-section {
@@ -526,20 +614,20 @@ onMounted(async () => {
 }
 
 .chart-card {
-  height: 400px;
-  background: #2a2a2a;
-  border: 1px solid #404040;
+  height: 380px;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #ffffff;
+  color: #e2e8f0;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .chart-container {
-  height: 320px;
+  height: 295px;
 }
 
 .trend-chart,
@@ -554,14 +642,12 @@ onMounted(async () => {
 
 .recent-transactions,
 .budget-progress {
-  height: 500px;
-  background: #2a2a2a;
-  border: 1px solid #404040;
+  height: 460px;
 }
 
 .transactions-list,
 .budget-list {
-  max-height: 400px;
+  max-height: 370px;
   overflow-y: auto;
 }
 
@@ -569,29 +655,37 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #404040;
+  padding: 11px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.15s;
+  border-radius: 8px;
+  margin: 0 -4px;
 }
 
 .transaction-item:last-child {
   border-bottom: none;
 }
 
+.transaction-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .transaction-left {
   display: flex;
   align-items: center;
+  gap: 12px;
 }
 
 .transaction-icon {
-  font-size: 20px;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  font-size: 18px;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(64, 158, 255, 0.2);
-  margin-right: 12px;
+  background: rgba(99, 102, 241, 0.12);
+  flex-shrink: 0;
 }
 
 .transaction-info {
@@ -601,58 +695,69 @@ onMounted(async () => {
 .transaction-desc {
   font-size: 14px;
   font-weight: 500;
-  color: #ffffff;
+  color: #cbd5e1;
   margin-bottom: 2px;
+  line-height: 1.3;
 }
 
 .transaction-date {
   font-size: 12px;
-  color: #b0b0b0;
+  color: #475569;
 }
 
 .transaction-amount {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
 }
 
 .transaction-amount.income {
-  color: #67C23A;
+  color: #34d399;
 }
 
 .transaction-amount.expense {
-  color: #F56C6C;
+  color: #f87171;
 }
 
 .budget-item {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #1a1a1a;
-  border-radius: 8px;
-  border: 1px solid #404040;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.2s;
+}
+
+.budget-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .budget-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .budget-category {
   display: flex;
   align-items: center;
-  font-weight: 500;
-  color: #ffffff;
+  font-weight: 600;
+  font-size: 14px;
+  color: #e2e8f0;
+  gap: 8px;
 }
 
 .category-icon {
-  margin-right: 8px;
-  font-size: 18px;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .budget-amount {
-  font-size: 14px;
-  color: #b0b0b0;
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
 }
 
 .budget-progress-bar {
@@ -661,18 +766,19 @@ onMounted(async () => {
 
 .budget-status {
   font-size: 12px;
+  font-weight: 500;
 }
 
 .status-good {
-  color: #67C23A;
+  color: #34d399;
 }
 
 .status-warning {
-  color: #E6A23C;
+  color: #fbbf24;
 }
 
 .status-danger {
-  color: #F56C6C;
+  color: #f87171;
 }
 
 .empty-state {
@@ -682,39 +788,11 @@ onMounted(async () => {
   height: 200px;
 }
 
-/* 滚动条样式 */
-.transactions-list::-webkit-scrollbar,
-.budget-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.transactions-list::-webkit-scrollbar-track,
-.budget-list::-webkit-scrollbar-track {
-  background: #1a1a1a;
-  border-radius: 3px;
-}
-
-.transactions-list::-webkit-scrollbar-thumb,
-.budget-list::-webkit-scrollbar-thumb {
-  background: #606060;
-  border-radius: 3px;
-}
-
-.transactions-list::-webkit-scrollbar-thumb:hover,
-.budget-list::-webkit-scrollbar-thumb:hover {
-  background: #808080;
-}
-
 /* 响应式设计 */
 @media (max-width: 768px) {
   .stat-content {
     flex-direction: column;
     text-align: center;
-  }
-  
-  .stat-icon {
-    margin-right: 0;
-    margin-bottom: 8px;
   }
   
   .chart-card {

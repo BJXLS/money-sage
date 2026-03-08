@@ -249,6 +249,7 @@ pub trait Agent: Send + Sync {
             frequency_penalty: None,
             presence_penalty: None,
             stream: None,
+            enable_thinking: false,
         };
         
         client.chat_completion(request).await

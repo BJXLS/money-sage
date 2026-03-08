@@ -62,6 +62,8 @@ pub struct AIRequest {
     pub presence_penalty: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
+    /// 是否开启深度思考（默认 false，始终随请求体发送）
+    pub enable_thinking: bool,
 }
 
 /// AI响应选择
@@ -250,6 +252,7 @@ impl AIHttpClient {
                     frequency_penalty: None,
                     presence_penalty: None,
                     stream: None,
+                    enable_thinking: false,
                 };
                 
                 match self.chat_completion(test_request).await {
@@ -283,7 +286,13 @@ impl AIHttpClient {
     fn build_request_body(&self, request: AIRequest) -> Result<Value> {
         match &self.config.provider {
             AIProvider::OpenAI | AIProvider::Local | AIProvider::Custom(_) => {
-                Ok(serde_json::to_value(request)?)
+                let enable_thinking = request.enable_thinking;
+                let mut body = serde_json::to_value(&request)?;
+                // 阿里百炼额外要求在 parameters 中再传一次
+                if enable_thinking {
+                    body["parameters"] = json!({ "enable_thinking": true });
+                }
+                Ok(body)
             }
             AIProvider::Claude => {
                 // Claude API 格式转换
@@ -345,7 +354,7 @@ impl AIHttpClient {
                     
                     if attempt < self.config.max_retries {
                         let delay = Duration::from_millis(1000 * (2_u64.pow(attempt as u32)));
-                        println!("Request failed, retrying in {:?}...", delay);
+                        println!("🔄 [HTTP] 第 {}/{} 次重试，等待 {:?}...", attempt + 1, self.config.max_retries, delay);
                         sleep(delay).await;
                     }
                 }
@@ -357,6 +366,19 @@ impl AIHttpClient {
     
     /// 发送单次请求
     async fn send_request(&self, url: &str, body: &Value) -> Result<AIResponse> {
+        // ── 请求日志 ──────────────────────────────────────────────────────
+        let body_str = serde_json::to_string_pretty(body).unwrap_or_default();
+        // 脱敏：隐藏 api_key（出现在 URL query 参数中，如 Gemini）
+        let safe_url = if url.contains("key=") {
+            let idx = url.find("key=").unwrap_or(url.len());
+            format!("{}key=***", &url[..idx])
+        } else {
+            url.to_string()
+        };
+        println!("📡 [HTTP] POST {}", safe_url);
+        println!("📦 [HTTP] Body: {}", body_str);
+        // ─────────────────────────────────────────────────────────────────
+
         let response = self.client
             .post(url)
             .json(body)
@@ -364,10 +386,12 @@ impl AIHttpClient {
             .await
             .map_err(|e| anyhow!("Request failed: {}", e))?;
         
-        if !response.status().is_success() {
-            let status = response.status();
+        let status = response.status();
+
+        if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            
+            println!("❌ [HTTP] {} Error: {}", status, error_text);
+
             // 尝试解析结构化错误
             if let Ok(api_error) = serde_json::from_str::<APIError>(&error_text) {
                 return Err(anyhow!("API Error: {}", api_error.error.message));
@@ -378,6 +402,8 @@ impl AIHttpClient {
         
         let response_text = response.text().await
             .map_err(|e| anyhow!("Failed to read response: {}", e))?;
+
+        println!("✅ [HTTP] {} — {} bytes", status, response_text.len());
         
         // 根据不同服务商解析响应
         match &self.config.provider {

@@ -277,17 +277,37 @@ impl Database {
             "#).execute(pool).await?;
         }
 
-        // 创建大模型配置表
+        // 创建大模型配置表（泛化版：支持任意 OpenAI 兼容接口）
         sqlx::query(r#"
             CREATE TABLE IF NOT EXISTS llm_configs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                platform TEXT NOT NULL,
-                app_key TEXT NOT NULL,
-                is_active INTEGER DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                config_name TEXT    NOT NULL DEFAULT '',
+                provider    TEXT    NOT NULL DEFAULT '',
+                base_url    TEXT    NOT NULL DEFAULT '',
+                api_key     TEXT    NOT NULL DEFAULT '',
+                model       TEXT    NOT NULL DEFAULT '',
+                temperature      REAL    NOT NULL DEFAULT 0.7,
+                max_tokens       INTEGER NOT NULL DEFAULT 2048,
+                enable_thinking  INTEGER NOT NULL DEFAULT 0,
+                is_active        INTEGER NOT NULL DEFAULT 0,
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         "#).execute(pool).await?;
+
+        // 迁移旧版 llm_configs 表：为已有表补充缺失列（忽略已存在的错误）
+        let _ = sqlx::query("ALTER TABLE llm_configs ADD COLUMN config_name TEXT NOT NULL DEFAULT ''").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE llm_configs ADD COLUMN provider TEXT NOT NULL DEFAULT ''").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE llm_configs ADD COLUMN base_url TEXT NOT NULL DEFAULT ''").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE llm_configs ADD COLUMN api_key TEXT NOT NULL DEFAULT ''").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE llm_configs ADD COLUMN model TEXT NOT NULL DEFAULT ''").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE llm_configs ADD COLUMN temperature REAL NOT NULL DEFAULT 0.7").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE llm_configs ADD COLUMN max_tokens INTEGER NOT NULL DEFAULT 2048").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE llm_configs ADD COLUMN enable_thinking INTEGER NOT NULL DEFAULT 0").execute(pool).await;
+        // 将旧 platform/app_key 列迁移到新列（仅当新列为空时）
+        let _ = sqlx::query(
+            "UPDATE llm_configs SET provider = platform, api_key = app_key WHERE provider = '' AND platform IS NOT NULL AND platform != ''"
+        ).execute(pool).await;
 
         // 创建索引
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)").execute(pool).await?;
@@ -297,7 +317,7 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_budgets_period ON budgets(start_date, end_date)").execute(pool).await?;
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_configs_platform ON llm_configs(platform)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_configs_active ON llm_configs(is_active)").execute(pool).await?;
 
         Ok(())
     }
@@ -885,89 +905,130 @@ impl Database {
         Ok(ids)
     }
 
-    // 大模型配置相关方法
-    pub async fn get_llm_config(&self) -> Result<Option<LLMConfig>> {
-        // 使用手动查询避免日期时间解析问题
-        let row = sqlx::query(
-            "SELECT id, platform, app_key, is_active, created_at, updated_at 
-             FROM llm_configs WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1"
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-        
-        if let Some(row) = row {
-            let config = LLMConfig {
-                id: row.get("id"),
-                platform: row.get("platform"),
-                app_key: row.get("app_key"),
-                is_active: row.get::<i64, _>("is_active") != 0,
-                created_at: row.get::<String, _>("created_at"),
-                updated_at: row.get::<String, _>("updated_at"),
-            };
-            Ok(Some(config))
-        } else {
-            Ok(None)
+    // ── 大模型配置相关方法 ──────────────────────────────────────────────
+
+    fn row_to_llm_config(row: &sqlx::sqlite::SqliteRow) -> LLMConfig {
+        use sqlx::Row;
+        LLMConfig {
+            id:          row.get("id"),
+            config_name: row.try_get("config_name").unwrap_or_default(),
+            provider:    row.try_get("provider").unwrap_or_else(|_| row.try_get("platform").unwrap_or_default()),
+            base_url:    row.try_get("base_url").unwrap_or_default(),
+            api_key:     row.try_get("api_key").unwrap_or_else(|_| row.try_get("app_key").unwrap_or_default()),
+            model:       row.try_get("model").unwrap_or_default(),
+            temperature:      row.try_get::<f64, _>("temperature").unwrap_or(0.7),
+            max_tokens:       row.try_get::<i64, _>("max_tokens").unwrap_or(2048),
+            enable_thinking:  row.try_get::<i64, _>("enable_thinking").unwrap_or(0) != 0,
+            is_active:        row.try_get::<i64, _>("is_active").unwrap_or(0) != 0,
+            created_at:  row.try_get::<String, _>("created_at").unwrap_or_default(),
+            updated_at:  row.try_get::<String, _>("updated_at").unwrap_or_default(),
         }
     }
 
+    /// 获取所有 LLM 配置（按创建时间倒序）
+    pub async fn get_llm_configs(&self) -> Result<Vec<LLMConfig>> {
+        let rows = sqlx::query(
+            "SELECT * FROM llm_configs ORDER BY is_active DESC, created_at DESC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(Self::row_to_llm_config).collect())
+    }
+
+    /// 获取当前活跃的 LLM 配置
+    pub async fn get_active_llm_config(&self) -> Result<Option<LLMConfig>> {
+        let row = sqlx::query(
+            "SELECT * FROM llm_configs WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1"
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.as_ref().map(Self::row_to_llm_config))
+    }
+
+    /// 保存新配置（不再强制只有一个活跃；新配置默认设为活跃并停用其他）
     pub async fn save_llm_config(&self, config: &NewLLMConfig) -> Result<i64> {
         let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        
-        // 先将所有配置设为非活跃状态
+        let temperature = config.temperature.unwrap_or(0.7);
+        let max_tokens = config.max_tokens.unwrap_or(2048);
+        let enable_thinking = config.enable_thinking.unwrap_or(false) as i64;
+
+        // 先停用所有旧配置
         sqlx::query("UPDATE llm_configs SET is_active = 0, updated_at = ?")
             .bind(&now)
             .execute(&self.pool)
             .await?;
 
-        // 插入新配置
         let result = sqlx::query(
-            "INSERT INTO llm_configs (platform, app_key, is_active, created_at, updated_at) 
-             VALUES (?, ?, 1, ?, ?)"
+            "INSERT INTO llm_configs (config_name, provider, base_url, api_key, model, temperature, max_tokens, enable_thinking, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)"
         )
-        .bind(&config.platform)
-        .bind(&config.app_key)
+        .bind(&config.config_name)
+        .bind(&config.provider)
+        .bind(&config.base_url)
+        .bind(&config.api_key)
+        .bind(&config.model)
+        .bind(temperature)
+        .bind(max_tokens)
+        .bind(enable_thinking)
         .bind(&now)
         .bind(&now)
         .execute(&self.pool)
         .await?;
-        
+
         Ok(result.last_insert_rowid())
     }
 
+    /// 更新已有配置
     pub async fn update_llm_config(&self, id: i64, config: &UpdateLLMConfig) -> Result<()> {
-        let mut query_parts = Vec::new();
-        let mut binds = Vec::new();
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        if let Some(platform) = &config.platform {
-            query_parts.push("platform = ?");
-            binds.push(platform.as_str());
-        }
+        sqlx::query(
+            "UPDATE llm_configs SET
+                config_name     = COALESCE(?, config_name),
+                provider        = COALESCE(?, provider),
+                base_url        = COALESCE(?, base_url),
+                api_key         = COALESCE(?, api_key),
+                model           = COALESCE(?, model),
+                temperature     = COALESCE(?, temperature),
+                max_tokens      = COALESCE(?, max_tokens),
+                enable_thinking = COALESCE(?, enable_thinking),
+                is_active       = COALESCE(?, is_active),
+                updated_at      = ?
+             WHERE id = ?"
+        )
+        .bind(&config.config_name)
+        .bind(&config.provider)
+        .bind(&config.base_url)
+        .bind(&config.api_key)
+        .bind(&config.model)
+        .bind(config.temperature)
+        .bind(config.max_tokens)
+        .bind(config.enable_thinking.map(|v| if v { 1i64 } else { 0i64 }))
+        .bind(config.is_active.map(|v| if v { 1i64 } else { 0i64 }))
+        .bind(&now)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
 
-        if let Some(app_key) = &config.app_key {
-            query_parts.push("app_key = ?");
-            binds.push(app_key.as_str());
-        }
+        Ok(())
+    }
 
-        if let Some(is_active) = &config.is_active {
-            query_parts.push("is_active = ?");
-            binds.push(if *is_active { "1" } else { "0" });
-        }
+    /// 将指定配置设为活跃，同时停用其他所有配置
+    pub async fn set_active_llm_config(&self, id: i64) -> Result<()> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        if !query_parts.is_empty() {
-            query_parts.push("updated_at = ?");
-            let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            binds.push(&now);
+        sqlx::query("UPDATE llm_configs SET is_active = 0, updated_at = ?")
+            .bind(&now)
+            .execute(&self.pool)
+            .await?;
 
-            let query_str = format!("UPDATE llm_configs SET {} WHERE id = ?", query_parts.join(", "));
-            let mut query = sqlx::query(&query_str);
-            
-            for bind in binds {
-                query = query.bind(bind);
-            }
-            query = query.bind(id);
-            
-            query.execute(&self.pool).await?;
-        }
+        sqlx::query("UPDATE llm_configs SET is_active = 1, updated_at = ? WHERE id = ?")
+            .bind(&now)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }

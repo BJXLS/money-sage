@@ -344,6 +344,7 @@ mod tests {
             frequency_penalty: Some(0.1),
             presence_penalty: Some(0.1),
             stream: None,
+            enable_thinking: false,
         };
         
         // 验证请求字段
@@ -669,6 +670,7 @@ mod tests {
             frequency_penalty: None,
             presence_penalty: None,
             stream: None,
+            enable_thinking: false,
         };
         
         // 发送请求

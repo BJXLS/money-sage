@@ -52,24 +52,36 @@ pub struct QuickNoteResult {
 /// 用于解析自然语言输入并提取记账信息
 pub struct QuickNoteAgent {
     config: AgentConfig,
+    /// 是否开启深度思考（阿里百炼等供应商专有）
+    enable_thinking: bool,
 }
 
 impl QuickNoteAgent {
-    /// 创建新的快速记账代理
+    /// 创建新的快速记账代理（使用默认模型）
     pub fn new() -> Self {
+        Self::new_with_config("qwen3-vl-plus-2025-12-19".to_string(), 0.3, 20000, false)
+    }
+
+    /// 创建新的快速记账代理（使用指定模型）
+    pub fn new_with_model(model: String) -> Self {
+        Self::new_with_config(model, 0.3, 20000, false)
+    }
+
+    /// 创建新的快速记账代理（使用指定模型、temperature、max_tokens 和 thinking 配置）
+    pub fn new_with_config(model: String, temperature: f32, max_tokens: u32, enable_thinking: bool) -> Self {
         let config = AgentConfig {
             name: "QuickNoteAgent".to_string(),
             description: "AI agent for parsing natural language into accounting transactions".to_string(),
-            model: "qwen-plus-2025-09-11".to_string(),
-            temperature: 0.3, // 降低温度以获得更一致的结果
-            max_tokens: 5000,
+            model,
+            temperature,
+            max_tokens,
             system_prompt: "".to_string(), // 临时空值，运行时动态填充
-            enable_memory: false, // 记账解析不需要记忆
+            enable_memory: false,
             max_memory_size: 0,
             custom_params: HashMap::new(),
         };
-        
-        Self { config }
+
+        Self { config, enable_thinking }
     }
     
     /// 构建系统提示词模板
@@ -238,6 +250,7 @@ impl QuickNoteAgent {
             frequency_penalty: None,
             presence_penalty: None,
             stream: None,
+            enable_thinking: self.enable_thinking,
         };
         
         println!("📤 [QuickNote] 发送AI请求:");

@@ -1,5 +1,5 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use chrono::NaiveDate;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -696,7 +696,201 @@ async fn parse_text_line_to_transaction(
     })
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
+// ─────────────────────────────────────────────────────────────────────────────
+// 智能分析 (ChatBI) 命令
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn get_analysis_sessions(
+    db_state: State<'_, DatabaseState>,
+) -> Result<Vec<AnalysisSession>, String> {
+    db_state.db.get_analysis_sessions().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_analysis_messages(
+    db_state: State<'_, DatabaseState>,
+    session_id: String,
+) -> Result<Vec<AnalysisMessageRecord>, String> {
+    db_state.db.get_analysis_messages(&session_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_analysis_session(
+    db_state: State<'_, DatabaseState>,
+    session_id: String,
+) -> Result<(), String> {
+    db_state.db.delete_analysis_session(&session_id).await.map_err(|e| e.to_string())
+}
+
+/// 流式分析：接收用户消息 → 构建上下文 → 调用 LLM（SSE）→ 通过事件推送 chunk → 持久化
+#[tauri::command]
+async fn send_analysis_message_stream(
+    app: tauri::AppHandle,
+    db_state: State<'_, DatabaseState>,
+    request: AnalysisStreamRequest,
+) -> Result<(), String> {
+    use crate::ai::agent::analysis::{AnalysisAgent, FinancialContext};
+    use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider, AIMessage};
+    use chrono::{Local, Datelike};
+
+    let sid = request.session_id.clone();
+
+    // ── 辅助：发出 done / error 事件 ───────────────────────────────────
+    let emit_err = |app: &tauri::AppHandle, sid: &str, msg: String| {
+        let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
+            session_id: sid.to_string(),
+            chunk: String::new(),
+            done: true,
+            error: Some(msg),
+        });
+    };
+
+    if request.message.trim().is_empty() {
+        emit_err(&app, &sid, "请输入您的问题".into());
+        return Ok(());
+    }
+
+    // 1. 获取 LLM 配置（按 config_id 优先，否则 fallback 到 active）
+    let llm_config = match request.config_id {
+        Some(cid) => {
+            match db_state.db.get_llm_config_by_id(cid).await {
+                Ok(Some(c)) => c,
+                _ => match db_state.db.get_active_llm_config().await {
+                    Ok(Some(c)) => c,
+                    _ => { emit_err(&app, &sid, "请先在设置中配置大模型接口".into()); return Ok(()); }
+                },
+            }
+        }
+        None => match db_state.db.get_active_llm_config().await {
+            Ok(Some(c)) => c,
+            _ => { emit_err(&app, &sid, "请先在设置中配置大模型接口".into()); return Ok(()); }
+        },
+    };
+
+    // 2. 读取历史（在保存本轮 user 消息之前，20 条 = 10 轮）
+    let history_records = db_state.db
+        .get_recent_analysis_messages(&sid, 20)
+        .await
+        .unwrap_or_default();
+    let history: Vec<AIMessage> = history_records
+        .iter()
+        .map(|r| AIMessage { role: r.role.clone(), content: r.content.clone() })
+        .collect();
+
+    // 3. 确保会话存在 + 持久化 user 消息
+    let title: String = request.message.chars().take(30).collect();
+    if let Err(e) = db_state.db.ensure_analysis_session(&sid, &title, request.config_id).await {
+        emit_err(&app, &sid, format!("创建会话失败: {}", e));
+        return Ok(());
+    }
+    let _ = db_state.db.save_analysis_message(&sid, "user", &request.message).await;
+
+    // 4. 构建 HTTP 客户端
+    let client_config = ClientConfig {
+        provider: AIProvider::Custom(llm_config.provider.clone()),
+        base_url: llm_config.base_url.clone(),
+        api_key: llm_config.api_key.clone(),
+        timeout_secs: 600,
+        max_retries: 1,
+        headers: HashMap::new(),
+    };
+    let http_client = match AIHttpClient::new(client_config) {
+        Ok(c) => c,
+        Err(e) => { emit_err(&app, &sid, format!("创建 HTTP 客户端失败: {}", e)); return Ok(()); }
+    };
+
+    // 5. 构建财务上下文
+    let today = Local::now();
+    let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
+        .unwrap_or_else(|| NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+    let month_end = {
+        let next = if today.month() == 12 {
+            NaiveDate::from_ymd_opt(today.year() + 1, 1, 1)
+        } else {
+            NaiveDate::from_ymd_opt(today.year(), today.month() + 1, 1)
+        };
+        next.and_then(|d| d.pred_opt()).unwrap_or(month_start)
+    };
+
+    let financial_context = FinancialContext {
+        monthly_stats: db_state.db.get_monthly_stats(3).await.unwrap_or_default(),
+        expense_category_stats: db_state.db.get_category_stats(&month_start, &month_end, "expense").await.unwrap_or_default(),
+        income_category_stats: db_state.db.get_category_stats(&month_start, &month_end, "income").await.unwrap_or_default(),
+    };
+
+    // 6. 组装 AI 请求
+    let agent = AnalysisAgent::new(
+        llm_config.model.clone(),
+        llm_config.temperature as f32,
+        llm_config.max_tokens as u32,
+        llm_config.enable_thinking,
+    );
+    let ai_request = agent.build_request(&request.message, &history, &financial_context);
+
+    // 7. 发起流式请求
+    let mut response = match http_client.chat_completion_stream(ai_request).await {
+        Ok(r) => r,
+        Err(e) => { emit_err(&app, &sid, format!("请求失败: {}", e)); return Ok(()); }
+    };
+
+    // 8. 解析 SSE 并逐 chunk 推送
+    let mut full_content = String::new();
+    let mut buffer = String::new();
+
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+                while let Some(pos) = buffer.find('\n') {
+                    let line = buffer[..pos].trim_end_matches('\r').to_string();
+                    buffer = buffer[pos + 1..].to_string();
+
+                    if !line.starts_with("data: ") { continue; }
+                    let data = line[6..].trim();
+                    if data == "[DONE]" { continue; }
+
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                        if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
+                            if !content.is_empty() {
+                                full_content.push_str(content);
+                                let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
+                                    session_id: sid.clone(),
+                                    chunk: content.to_string(),
+                                    done: false,
+                                    error: None,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(None) => break,
+            Err(e) => {
+                emit_err(&app, &sid, format!("流式读取失败: {}", e));
+                return Ok(());
+            }
+        }
+    }
+
+    // 9. 流结束
+    let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
+        session_id: sid.clone(),
+        chunk: String::new(),
+        done: true,
+        error: None,
+    });
+
+    // 10. 持久化 assistant 回复 + 更新会话时间戳
+    if !full_content.is_empty() {
+        let _ = db_state.db.save_analysis_message(&sid, "assistant", &full_content).await;
+    }
+    let _ = db_state.db.touch_analysis_session(&sid).await;
+
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -758,7 +952,7 @@ pub fn run() {
                     }
                 }
             });
-            
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -790,7 +984,11 @@ pub fn run() {
             delete_llm_config,
             test_llm_connection,
             process_quick_booking_text,
-            save_confirmed_transactions
+            save_confirmed_transactions,
+            get_analysis_sessions,
+            get_analysis_messages,
+            delete_analysis_session,
+            send_analysis_message_stream
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

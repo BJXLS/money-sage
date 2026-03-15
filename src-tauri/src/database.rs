@@ -309,6 +309,29 @@ impl Database {
             "UPDATE llm_configs SET provider = platform, api_key = app_key WHERE provider = '' AND platform IS NOT NULL AND platform != ''"
         ).execute(pool).await;
 
+        // 智能分析会话表
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS analysis_sessions (
+                id          TEXT PRIMARY KEY,
+                title       TEXT NOT NULL DEFAULT '',
+                config_id   INTEGER,
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
+
+        // 智能分析消息表
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS analysis_messages (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id  TEXT NOT NULL,
+                role        TEXT NOT NULL,
+                content     TEXT NOT NULL DEFAULT '',
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES analysis_sessions(id) ON DELETE CASCADE
+            )
+        "#).execute(pool).await?;
+
         // 创建索引
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)").execute(pool).await?;
@@ -318,6 +341,7 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_budgets_period ON budgets(start_date, end_date)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_configs_active ON llm_configs(is_active)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_analysis_messages_session ON analysis_messages(session_id)").execute(pool).await?;
 
         Ok(())
     }
@@ -1035,6 +1059,127 @@ impl Database {
 
     pub async fn delete_llm_config(&self, id: i64) -> Result<()> {
         sqlx::query("DELETE FROM llm_configs WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_llm_config_by_id(&self, id: i64) -> Result<Option<LLMConfig>> {
+        let row = sqlx::query("SELECT * FROM llm_configs WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.as_ref().map(Self::row_to_llm_config))
+    }
+
+    // ── 智能分析会话相关方法 ──────────────────────────────────────────────
+
+    pub async fn get_analysis_sessions(&self) -> Result<Vec<AnalysisSession>> {
+        let rows = sqlx::query(
+            "SELECT id, title, config_id, created_at, updated_at FROM analysis_sessions ORDER BY updated_at DESC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|row| {
+            use sqlx::Row;
+            AnalysisSession {
+                id: row.get("id"),
+                title: row.get("title"),
+                config_id: row.get("config_id"),
+                created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
+                updated_at: row.try_get::<String, _>("updated_at").unwrap_or_default(),
+            }
+        }).collect())
+    }
+
+    pub async fn get_analysis_messages(&self, session_id: &str) -> Result<Vec<AnalysisMessageRecord>> {
+        let rows = sqlx::query(
+            "SELECT id, session_id, role, content, created_at FROM analysis_messages WHERE session_id = ? ORDER BY id ASC"
+        )
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|row| {
+            use sqlx::Row;
+            AnalysisMessageRecord {
+                id: row.get("id"),
+                session_id: row.get("session_id"),
+                role: row.get("role"),
+                content: row.get("content"),
+                created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
+            }
+        }).collect())
+    }
+
+    /// 获取最近 N 条消息（用于上下文构建），按 id 正序
+    pub async fn get_recent_analysis_messages(&self, session_id: &str, limit: i64) -> Result<Vec<AnalysisMessageRecord>> {
+        let rows = sqlx::query(
+            "SELECT * FROM (SELECT id, session_id, role, content, created_at FROM analysis_messages WHERE session_id = ? ORDER BY id DESC LIMIT ?) sub ORDER BY id ASC"
+        )
+        .bind(session_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|row| {
+            use sqlx::Row;
+            AnalysisMessageRecord {
+                id: row.get("id"),
+                session_id: row.get("session_id"),
+                role: row.get("role"),
+                content: row.get("content"),
+                created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
+            }
+        }).collect())
+    }
+
+    /// 确保会话存在（首次调用时创建，已存在则忽略）
+    pub async fn ensure_analysis_session(&self, id: &str, title: &str, config_id: Option<i64>) -> Result<()> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        sqlx::query(
+            "INSERT OR IGNORE INTO analysis_sessions (id, title, config_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+        )
+        .bind(id)
+        .bind(title)
+        .bind(config_id)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn touch_analysis_session(&self, id: &str) -> Result<()> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        sqlx::query("UPDATE analysis_sessions SET updated_at = ? WHERE id = ?")
+            .bind(&now)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn save_analysis_message(&self, session_id: &str, role: &str, content: &str) -> Result<i64> {
+        let result = sqlx::query(
+            "INSERT INTO analysis_messages (session_id, role, content) VALUES (?, ?, ?)"
+        )
+        .bind(session_id)
+        .bind(role)
+        .bind(content)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.last_insert_rowid())
+    }
+
+    pub async fn delete_analysis_session(&self, id: &str) -> Result<()> {
+        sqlx::query("DELETE FROM analysis_messages WHERE session_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM analysis_sessions WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
             .await?;

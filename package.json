@@ -15,27 +15,28 @@
     "build:installer:debug": "npm run build && tauri build --debug"
   },
   "dependencies": {
-    "vue": "^3.5.13",
+    "@element-plus/icons-vue": "^2.3.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
-    "element-plus": "^2.8.5",
-    "@element-plus/icons-vue": "^2.3.1",
-    "echarts": "^5.5.0",
-    "vue-echarts": "^7.0.3",
-    "dayjs": "^1.11.13",
-    "papaparse": "^5.4.1",
     "@vueuse/core": "^11.2.0",
-    "pinia": "^2.2.6"
+    "dayjs": "^1.11.13",
+    "echarts": "^5.5.0",
+    "element-plus": "^2.8.5",
+    "marked": "^17.0.4",
+    "papaparse": "^5.4.1",
+    "pinia": "^2.2.6",
+    "vue": "^3.5.13",
+    "vue-echarts": "^7.0.3"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^22.10.1",
+    "@types/papaparse": "^5.3.14",
     "@vitejs/plugin-vue": "^5.2.1",
     "typescript": "~5.6.2",
-    "vite": "^6.0.3",
-    "vue-tsc": "^2.1.10",
-    "@tauri-apps/cli": "^2",
-    "@types/papaparse": "^5.3.14",
     "unplugin-auto-import": "^0.18.4",
     "unplugin-vue-components": "^0.28.0",
-    "@types/node": "^22.10.1"
+    "vite": "^6.0.3",
+    "vue-tsc": "^2.1.10"
   }
 }

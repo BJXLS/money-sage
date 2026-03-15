@@ -7,6 +7,7 @@ import CategoriesView from './views/CategoriesView.vue'
 import BudgetView from './views/BudgetView.vue'
 import StatisticsView from './views/StatisticsView.vue'
 import ImportExportView from './views/ImportExportView.vue'
+import AnalysisView from './views/AnalysisView.vue'
 import QuickBookingDialog from './components/QuickBookingDialog.vue'
 import LLMConfigDialog from './components/LLMConfigDialog.vue'
 
@@ -31,6 +32,7 @@ const getPageTitle = () => {
     categories: '分类管理',
     budget: '预算设置',
     statistics: '数据分析',
+    'smart-analysis': '智能分析',
     'import-export': '导入导出'
   }
   return titles[activeMenu.value] || '记账本'
@@ -106,6 +108,11 @@ onMounted(() => {
             <el-icon><DataAnalysis /></el-icon>
             <template #title>数据分析</template>
           </el-menu-item>
+
+          <el-menu-item index="smart-analysis">
+            <el-icon><ChatDotRound /></el-icon>
+            <template #title>智能分析</template>
+          </el-menu-item>
           
           <el-menu-item index="import-export">
             <el-icon><Upload /></el-icon>
@@ -157,6 +164,9 @@ onMounted(() => {
           <!-- 统计分析 -->
           <StatisticsView v-else-if="activeMenu === 'statistics'" />
           
+          <!-- 智能分析 -->
+          <AnalysisView v-else-if="activeMenu === 'smart-analysis'" />
+
           <!-- 导入导出 -->
           <ImportExportView v-else-if="activeMenu === 'import-export'" />
         </div>

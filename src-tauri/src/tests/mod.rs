@@ -1,4 +1,6 @@
 pub mod quick_booking_tests;
+#[path = "analysis_agent.tests.rs"]
+pub mod analysis_agent_tests;
 
 // 共用的测试工具函数
 use crate::database::Database;
@@ -55,8 +57,14 @@ pub async fn create_test_database() -> Result<Database, Box<dyn std::error::Erro
     
     // 插入测试LLM配置
     let llm_config = NewLLMConfig {
-        platform: "Test Platform".to_string(),
-        app_key: "test-api-key".to_string(),
+        config_name: "Test Config".to_string(),
+        provider: "Test Platform".to_string(),
+        base_url: "https://api.openai.com/v1".to_string(),
+        api_key: "test-api-key".to_string(),
+        model: "gpt-4o".to_string(),
+        temperature: Some(0.3),
+        max_tokens: Some(2048),
+        enable_thinking: Some(false),
     };
     
     db.save_llm_config(&llm_config).await?;

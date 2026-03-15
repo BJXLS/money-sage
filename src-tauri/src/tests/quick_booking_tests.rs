@@ -744,7 +744,7 @@ async fn test_process_quick_booking_with_mock_ai_response(
     }
     
     // 获取LLM配置
-    let _llm_config = match db_state.db.get_llm_config().await {
+    let _llm_config = match db_state.db.get_active_llm_config().await {
         Ok(Some(config)) => config,
         Ok(None) => {
             return Ok(QuickBookingResult {

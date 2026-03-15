@@ -286,6 +286,72 @@ pub struct SaveTransactionsResult {
     pub failed_count: usize,
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 智能分析 (ChatBI) 相关结构
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 持久化的分析会话
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AnalysisSession {
+    pub id: String,
+    pub title: String,
+    pub config_id: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 持久化的分析消息
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AnalysisMessageRecord {
+    pub id: i64,
+    pub session_id: String,
+    pub role: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+/// 流式分析请求（前端 → 后端）
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AnalysisStreamRequest {
+    pub message: String,
+    pub session_id: String,
+    pub config_id: Option<i64>,
+}
+
+/// 流式 chunk 事件载荷（后端 → 前端，通过 Tauri 事件推送）
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StreamChunkPayload {
+    pub session_id: String,
+    pub chunk: String,
+    pub done: bool,
+    pub error: Option<String>,
+}
+
+/// AI 生成的图表配置（ECharts 数据格式，暂保留供后续使用）
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChartDataItem {
+    pub name: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChartConfig {
+    pub chart_type: String,
+    pub title: String,
+    pub x_axis: Option<Vec<String>>,
+    pub data: Vec<ChartDataItem>,
+    pub unit: Option<String>,
+}
+
+/// 分析响应（非流式，保留兼容）
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AnalysisResponse {
+    pub success: bool,
+    pub message: String,
+    pub text: String,
+    pub chart: Option<ChartConfig>,
+}
+
 // 遗留结构体（兼容性）
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessedTransaction {

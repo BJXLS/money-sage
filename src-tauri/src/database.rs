@@ -343,6 +343,20 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_configs_active ON llm_configs(is_active)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_analysis_messages_session ON analysis_messages(session_id)").execute(pool).await?;
 
+        // MCP 服务器配置表
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS mcp_servers (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT    NOT NULL DEFAULT '',
+                command     TEXT    NOT NULL DEFAULT '',
+                args        TEXT    NOT NULL DEFAULT '[]',
+                env         TEXT    NOT NULL DEFAULT '{}',
+                enabled     INTEGER NOT NULL DEFAULT 1,
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
+
         Ok(())
     }
 
@@ -1185,4 +1199,97 @@ impl Database {
             .await?;
         Ok(())
     }
-} 
+
+    // ── MCP 服务器配置相关方法 ──────────────────────────────────────────
+
+    pub async fn get_mcp_servers(&self) -> Result<Vec<crate::mcp::McpServerConfig>> {
+        let rows = sqlx::query(
+            "SELECT id, name, command, args, env, enabled, created_at, updated_at FROM mcp_servers ORDER BY created_at ASC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.iter().map(|row| {
+            use sqlx::Row;
+            crate::mcp::McpServerConfig {
+                id: row.get("id"),
+                name: row.try_get("name").unwrap_or_default(),
+                command: row.try_get("command").unwrap_or_default(),
+                args: row.try_get("args").unwrap_or_else(|_| "[]".to_string()),
+                env: row.try_get("env").unwrap_or_else(|_| "{}".to_string()),
+                enabled: row.try_get::<i64, _>("enabled").unwrap_or(1) != 0,
+                created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
+                updated_at: row.try_get::<String, _>("updated_at").unwrap_or_default(),
+            }
+        }).collect())
+    }
+
+    pub async fn create_mcp_server(&self, config: &crate::mcp::NewMcpServerConfig) -> Result<i64> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let result = sqlx::query(
+            "INSERT INTO mcp_servers (name, command, args, env, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(&config.name)
+        .bind(&config.command)
+        .bind(&config.args)
+        .bind(&config.env)
+        .bind(config.enabled as i64)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.last_insert_rowid())
+    }
+
+    pub async fn update_mcp_server(&self, id: i64, config: &crate::mcp::UpdateMcpServerConfig) -> Result<()> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        sqlx::query(
+            "UPDATE mcp_servers SET
+                name    = COALESCE(?, name),
+                command = COALESCE(?, command),
+                args    = COALESCE(?, args),
+                env     = COALESCE(?, env),
+                enabled = COALESCE(?, enabled),
+                updated_at = ?
+             WHERE id = ?"
+        )
+        .bind(&config.name)
+        .bind(&config.command)
+        .bind(&config.args)
+        .bind(&config.env)
+        .bind(config.enabled.map(|v| if v { 1i64 } else { 0i64 }))
+        .bind(&now)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_mcp_server(&self, id: i64) -> Result<()> {
+        sqlx::query("DELETE FROM mcp_servers WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_mcp_server_by_id(&self, id: i64) -> Result<Option<crate::mcp::McpServerConfig>> {
+        let row = sqlx::query("SELECT id, name, command, args, env, enabled, created_at, updated_at FROM mcp_servers WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.as_ref().map(|row| {
+            use sqlx::Row;
+            crate::mcp::McpServerConfig {
+                id: row.get("id"),
+                name: row.try_get("name").unwrap_or_default(),
+                command: row.try_get("command").unwrap_or_default(),
+                args: row.try_get("args").unwrap_or_else(|_| "[]".to_string()),
+                env: row.try_get("env").unwrap_or_else(|_| "{}".to_string()),
+                enabled: row.try_get::<i64, _>("enabled").unwrap_or(1) != 0,
+                created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
+                updated_at: row.try_get::<String, _>("updated_at").unwrap_or_default(),
+            }
+        }))
+    }
+}

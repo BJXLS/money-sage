@@ -10,11 +10,13 @@ import ImportExportView from './views/ImportExportView.vue'
 import AnalysisView from './views/AnalysisView.vue'
 import QuickBookingDialog from './components/QuickBookingDialog.vue'
 import LLMConfigDialog from './components/LLMConfigDialog.vue'
+import McpConfigDialog from './components/McpConfigDialog.vue'
 
 const store = useAppStore()
 const activeMenu = ref('dashboard')
 const showQuickBooking = ref(false)
 const showLLMConfig = ref(false)
+const showMcpConfig = ref(false)
 const isCollapsed = ref(false)
 
 const handleMenuSelect = (key: string) => {
@@ -137,10 +139,13 @@ onMounted(() => {
             <h3>{{ getPageTitle() }}</h3>
           </div>
           <div class="header-right">
-                          <el-button @click="showQuickBooking = true" class="quick-booking-btn">
-                <el-icon><Plus /></el-icon>
-                快速记账
-              </el-button>
+            <el-button @click="showQuickBooking = true" class="quick-booking-btn">
+              <el-icon><Plus /></el-icon>
+              快速记账
+            </el-button>
+            <el-button @click="showMcpConfig = true" class="mcp-config-btn" title="MCP 工具服务器">
+              <el-icon><Connection /></el-icon>
+            </el-button>
             <el-button @click="showLLMConfig = true" class="llm-config-btn" title="大模型配置">
               <el-icon><Setting /></el-icon>
             </el-button>
@@ -183,6 +188,11 @@ onMounted(() => {
     <LLMConfigDialog 
       v-model="showLLMConfig" 
       @success="handleLLMConfigSaved"
+    />
+
+    <!-- MCP 服务器配置对话框 -->
+    <McpConfigDialog
+      v-model="showMcpConfig"
     />
   </div>
 </template>
@@ -393,6 +403,29 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.mcp-config-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  min-width: auto;
+}
+
+.mcp-config-btn:hover {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #10b981;
+}
+
+.mcp-config-btn:focus {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
 }
 
 .llm-config-btn {

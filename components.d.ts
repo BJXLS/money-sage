@@ -41,6 +41,7 @@ declare module 'vue' {
     ElTag: typeof import('element-plus/es')['ElTag']
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     LLMConfigDialog: typeof import('./src/components/LLMConfigDialog.vue')['default']
+    McpConfigDialog: typeof import('./src/components/McpConfigDialog.vue')['default']
     QuickBookingDialog: typeof import('./src/components/QuickBookingDialog.vue')['default']
   }
 }

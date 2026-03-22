@@ -1,4 +1,5 @@
 use crate::models::{CategoryStats, MonthlyStats};
+use crate::mcp::McpTool;
 use crate::utils::http_client::{AIMessage, AIRequest};
 
 /// 财务上下文快照（注入 system prompt）
@@ -6,6 +7,11 @@ pub struct FinancialContext {
     pub monthly_stats: Vec<MonthlyStats>,
     pub expense_category_stats: Vec<CategoryStats>,
     pub income_category_stats: Vec<CategoryStats>,
+}
+
+/// MCP 工具上下文（让 Agent 知道有哪些外部工具可用）
+pub struct McpToolsContext {
+    pub tools: Vec<(String, McpTool)>,
 }
 
 /// 智能分析 Agent —— 负责构建 prompt 和组装请求，实际调用由 lib.rs 处理
@@ -27,6 +33,14 @@ impl AnalysisAgent {
     }
 
     pub fn build_system_prompt(&self, ctx: &FinancialContext) -> String {
+        self.build_system_prompt_with_tools(ctx, None)
+    }
+
+    pub fn build_system_prompt_with_tools(
+        &self,
+        ctx: &FinancialContext,
+        mcp_ctx: Option<&McpToolsContext>,
+    ) -> String {
         let mut p = String::from(
             "你是一位专业的个人财务分析师。用户正在使用记账软件，你需要基于他们的真实财务数据回答问题、提供分析和建议。\n\
              请使用 Markdown 格式回复，保持简洁、有条理、有数据支撑。\n\n\
@@ -68,6 +82,23 @@ impl AnalysisAgent {
                 ));
             }
             p.push('\n');
+        }
+
+        // 如果有 MCP 工具可用，在 system prompt 中告知 Agent
+        if let Some(mcp) = mcp_ctx {
+            if !mcp.tools.is_empty() {
+                p.push_str("## 可用的外部工具\n\n");
+                p.push_str("以下外部工具已通过 MCP 连接，你可以告知用户这些功能可用：\n\n");
+                for (server, tool) in &mcp.tools {
+                    p.push_str(&format!(
+                        "- **{}** (来自 {}): {}\n",
+                        tool.name,
+                        server,
+                        tool.description.as_deref().unwrap_or("无描述")
+                    ));
+                }
+                p.push('\n');
+            }
         }
 
         p.push_str("请根据以上数据回答用户的问题。如果数据不足以回答，请坦诚说明。\n");

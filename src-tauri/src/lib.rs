@@ -8,6 +8,7 @@ mod models;
 mod database;
 mod utils;
 mod ai;
+mod mcp;
 
 #[cfg(test)]
 mod tests;
@@ -15,9 +16,12 @@ mod tests;
 use database::Database;
 use models::*;
 
-// 定义应用状态
 pub struct DatabaseState {
     pub db: Database,
+}
+
+pub struct McpState {
+    pub manager: mcp::McpManager,
 }
 
 #[tauri::command]
@@ -728,9 +732,10 @@ async fn delete_analysis_session(
 async fn send_analysis_message_stream(
     app: tauri::AppHandle,
     db_state: State<'_, DatabaseState>,
+    mcp_state: State<'_, McpState>,
     request: AnalysisStreamRequest,
 ) -> Result<(), String> {
-    use crate::ai::agent::analysis::{AnalysisAgent, FinancialContext};
+    use crate::ai::agent::analysis::{AnalysisAgent, FinancialContext, McpToolsContext};
     use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider, AIMessage};
     use chrono::{Local, Datelike};
 
@@ -819,14 +824,45 @@ async fn send_analysis_message_stream(
         income_category_stats: db_state.db.get_category_stats(&month_start, &month_end, "income").await.unwrap_or_default(),
     };
 
-    // 6. 组装 AI 请求
+    // 6. 收集 MCP 工具上下文
+    let mcp_tools = mcp_state.manager.get_all_tools().await;
+    let mcp_ctx = if mcp_tools.is_empty() {
+        None
+    } else {
+        Some(McpToolsContext { tools: mcp_tools })
+    };
+
+    // 7. 组装 AI 请求
     let agent = AnalysisAgent::new(
         llm_config.model.clone(),
         llm_config.temperature as f32,
         llm_config.max_tokens as u32,
         llm_config.enable_thinking,
     );
-    let ai_request = agent.build_request(&request.message, &history, &financial_context);
+
+    let system_prompt = agent.build_system_prompt_with_tools(&financial_context, mcp_ctx.as_ref());
+    let mut messages = vec![crate::utils::http_client::AIMessage {
+        role: "system".to_string(),
+        content: system_prompt,
+    }];
+    let max_history = 20;
+    let start = if history.len() > max_history { history.len() - max_history } else { 0 };
+    messages.extend_from_slice(&history[start..]);
+    messages.push(crate::utils::http_client::AIMessage {
+        role: "user".to_string(),
+        content: request.message.clone(),
+    });
+    let ai_request = crate::utils::http_client::AIRequest {
+        model: llm_config.model.clone(),
+        messages,
+        temperature: llm_config.temperature as f32,
+        max_tokens: llm_config.max_tokens as u32,
+        top_p: None,
+        frequency_penalty: None,
+        presence_penalty: None,
+        stream: None,
+        enable_thinking: llm_config.enable_thinking,
+    };
 
     // 7. 发起流式请求
     let mut response = match http_client.chat_completion_stream(ai_request).await {
@@ -891,21 +927,125 @@ async fn send_analysis_message_stream(
     Ok(())
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MCP 服务器管理命令
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn get_mcp_servers(db_state: State<'_, DatabaseState>) -> Result<Vec<mcp::McpServerConfig>, String> {
+    db_state.db.get_mcp_servers().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn create_mcp_server(
+    db_state: State<'_, DatabaseState>,
+    config: mcp::NewMcpServerConfig,
+) -> Result<i64, String> {
+    db_state.db.create_mcp_server(&config).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn update_mcp_server(
+    db_state: State<'_, DatabaseState>,
+    id: i64,
+    config: mcp::UpdateMcpServerConfig,
+) -> Result<(), String> {
+    db_state.db.update_mcp_server(id, &config).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_mcp_server(
+    db_state: State<'_, DatabaseState>,
+    mcp_state: State<'_, McpState>,
+    id: i64,
+) -> Result<(), String> {
+    // 先停止运行中的服务器
+    mcp_state.manager.stop_server(id).await.ok();
+    db_state.db.delete_mcp_server(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn start_mcp_server(
+    db_state: State<'_, DatabaseState>,
+    mcp_state: State<'_, McpState>,
+    id: i64,
+) -> Result<(), String> {
+    let config = db_state.db.get_mcp_server_by_id(id).await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "MCP 服务器配置不存在".to_string())?;
+
+    mcp_state.manager.start_server(&config).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn stop_mcp_server(
+    mcp_state: State<'_, McpState>,
+    id: i64,
+) -> Result<(), String> {
+    mcp_state.manager.stop_server(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_mcp_server_status(
+    db_state: State<'_, DatabaseState>,
+    mcp_state: State<'_, McpState>,
+) -> Result<Vec<mcp::McpServerStatus>, String> {
+    let configs = db_state.db.get_mcp_servers().await.map_err(|e| e.to_string())?;
+    Ok(mcp_state.manager.get_all_status(&configs).await)
+}
+
+#[tauri::command]
+async fn get_mcp_tools(
+    mcp_state: State<'_, McpState>,
+    server_id: i64,
+) -> Result<Vec<mcp::McpTool>, String> {
+    mcp_state.manager.get_tools(server_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_all_mcp_tools(
+    mcp_state: State<'_, McpState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let tools = mcp_state.manager.get_all_tools().await;
+    let result: Vec<serde_json::Value> = tools.iter().map(|(server, tool)| {
+        serde_json::json!({
+            "server": server,
+            "name": tool.name,
+            "description": tool.description,
+            "inputSchema": tool.input_schema,
+        })
+    }).collect();
+    Ok(result)
+}
+
+#[tauri::command]
+async fn call_mcp_tool(
+    mcp_state: State<'_, McpState>,
+    server_id: i64,
+    tool_name: String,
+    arguments: Option<std::collections::HashMap<String, serde_json::Value>>,
+) -> Result<mcp::ToolCallResult, String> {
+    mcp_state.manager.call_tool(server_id, &tool_name, arguments).await.map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // 初始化 MCP 管理器（同步，无需 async）
+            app.manage(McpState {
+                manager: mcp::McpManager::new(),
+            });
+
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                // 初始化数据库
                 let app_data_dir = app_handle.path().app_data_dir()
                     .expect("无法获取应用数据目录");
                     
                 println!("应用数据目录: {}", app_data_dir.display());
                 
-                // 确保应用数据目录存在
                 if let Err(e) = std::fs::create_dir_all(&app_data_dir) {
                     eprintln!("创建应用数据目录失败: {}", e);
                     return;
@@ -914,7 +1054,6 @@ pub fn run() {
                 let db_path = app_data_dir.join("money_note.db");
                 println!("数据库路径: {}", db_path.display());
                 
-                // 尝试不同的数据库URL格式
                 let database_url = format!("sqlite://{}?mode=rwc", db_path.display());
                 println!("尝试数据库URL: {}", database_url);
                 
@@ -925,7 +1064,6 @@ pub fn run() {
                     }
                     Err(e) => {
                         eprintln!("数据库初始化失败: {}", e);
-                        // 尝试使用更简单的URL格式
                         let simple_url = format!("sqlite:{}", db_path.to_string_lossy());
                         println!("尝试简单URL格式: {}", simple_url);
                         
@@ -936,7 +1074,6 @@ pub fn run() {
                             }
                             Err(e) => {
                                 eprintln!("简单URL格式也失败: {}", e);
-                                // 最后尝试内存数据库
                                 println!("尝试内存数据库作为备选...");
                                 match Database::new("sqlite::memory:").await {
                                     Ok(db) => {
@@ -988,7 +1125,18 @@ pub fn run() {
             get_analysis_sessions,
             get_analysis_messages,
             delete_analysis_session,
-            send_analysis_message_stream
+            send_analysis_message_stream,
+            // MCP 命令
+            get_mcp_servers,
+            create_mcp_server,
+            update_mcp_server,
+            delete_mcp_server,
+            start_mcp_server,
+            stop_mcp_server,
+            get_mcp_server_status,
+            get_mcp_tools,
+            get_all_mcp_tools,
+            call_mcp_tool
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -308,6 +308,10 @@ pub struct AnalysisMessageRecord {
     pub role: String,
     pub content: String,
     pub created_at: String,
+    pub message_type: String,
+    pub tool_calls_json: Option<String>,
+    pub tool_call_id: Option<String>,
+    pub tool_name: Option<String>,
 }
 
 /// 流式分析请求（前端 → 后端）
@@ -318,6 +322,18 @@ pub struct AnalysisStreamRequest {
     pub config_id: Option<i64>,
 }
 
+/// 工具调用状态载荷
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ToolStatusPayload {
+    pub tool_name: String,
+    pub status: String,
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_input: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_output: Option<String>,
+}
+
 /// 流式 chunk 事件载荷（后端 → 前端，通过 Tauri 事件推送）
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamChunkPayload {
@@ -325,6 +341,8 @@ pub struct StreamChunkPayload {
     pub chunk: String,
     pub done: bool,
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_status: Option<ToolStatusPayload>,
 }
 
 /// AI 生成的图表配置（ECharts 数据格式，暂保留供后续使用）

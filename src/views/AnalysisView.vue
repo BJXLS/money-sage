@@ -30,6 +30,18 @@ interface AnalysisMessageRecord {
   role: string
   content: string
   created_at: string
+  message_type: string
+  tool_calls_json: string | null
+  tool_call_id: string | null
+  tool_name: string | null
+}
+
+interface ToolStatusPayload {
+  tool_name: string
+  status: string
+  description?: string
+  tool_input?: string
+  tool_output?: string
 }
 
 interface StreamChunkPayload {
@@ -37,14 +49,21 @@ interface StreamChunkPayload {
   chunk: string
   done: boolean
   error: string | null
+  tool_status?: ToolStatusPayload
 }
 
 interface Message {
   id: number
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
   loading?: boolean
   error?: boolean
+  toolStatus?: string
+  messageType?: 'text' | 'tool_call' | 'tool_result'
+  toolName?: string
+  toolInput?: string
+  toolOutput?: string
+  collapsed?: boolean
 }
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
@@ -137,6 +156,16 @@ const renderMarkdown = (text: string) => {
 
 // ─── 发送消息（流式） ────────────────────────────────────────────────────────
 
+const parseToolInput = (toolCallsJson: string): string => {
+  try {
+    const arr = JSON.parse(toolCallsJson)
+    if (Array.isArray(arr) && arr.length > 0) {
+      return typeof arr[0].arguments === 'string' ? arr[0].arguments : JSON.stringify(arr[0].arguments, null, 2)
+    }
+  } catch { /* ignore */ }
+  return toolCallsJson
+}
+
 const sendMessage = async (text?: string) => {
   const content = (text ?? inputText.value).trim()
   if (!content || isLoading.value) return
@@ -144,11 +173,13 @@ const sendMessage = async (text?: string) => {
   inputText.value = ''
 
   // 添加用户消息
-  messages.value.push({ id: ++msgIdCounter, role: 'user', content })
+  messages.value.push({ id: ++msgIdCounter, role: 'user', content, messageType: 'text' })
 
-  // 添加 AI loading 占位
-  const aiMsgId = ++msgIdCounter
-  messages.value.push({ id: aiMsgId, role: 'assistant', content: '', loading: true })
+  // 当前 AI 文本 bubble 的 id（每次新的文本流开始时创建）
+  let currentTextBubbleId: number | null = null
+  // 初始 loading 占位
+  const loadingMsgId = ++msgIdCounter
+  messages.value.push({ id: loadingMsgId, role: 'assistant', content: '', loading: true, messageType: 'text' })
   isLoading.value = true
   await scrollToBottom()
 
@@ -157,15 +188,12 @@ const sendMessage = async (text?: string) => {
     const payload = event.payload
     if (payload.session_id !== sessionId.value) return
 
-    const idx = messages.value.findIndex(m => m.id === aiMsgId)
-    if (idx === -1) return
-
     if (payload.error) {
-      messages.value[idx] = {
-        ...messages.value[idx],
-        content: payload.error,
-        error: true,
-        loading: false,
+      // 找到当前 loading 的 bubble 或最后一个 assistant bubble
+      const targetId = currentTextBubbleId ?? loadingMsgId
+      const idx = messages.value.findIndex(m => m.id === targetId)
+      if (idx !== -1) {
+        messages.value[idx] = { ...messages.value[idx], content: payload.error, error: true, loading: false }
       }
       isLoading.value = false
       currentUnlisten?.()
@@ -175,7 +203,18 @@ const sendMessage = async (text?: string) => {
     }
 
     if (payload.done) {
-      messages.value[idx] = { ...messages.value[idx], loading: false }
+      const targetId = currentTextBubbleId ?? loadingMsgId
+      const idx = messages.value.findIndex(m => m.id === targetId)
+      if (idx !== -1) {
+        messages.value[idx] = { ...messages.value[idx], loading: false, toolStatus: undefined }
+      }
+      // 移除空的 loading 占位（如果没有任何文本内容）
+      if (!currentTextBubbleId) {
+        const loadIdx = messages.value.findIndex(m => m.id === loadingMsgId)
+        if (loadIdx !== -1 && !messages.value[loadIdx].content) {
+          messages.value.splice(loadIdx, 1)
+        }
+      }
       isLoading.value = false
       currentUnlisten?.()
       currentUnlisten = null
@@ -183,11 +222,84 @@ const sendMessage = async (text?: string) => {
       return
     }
 
-    // 追加 chunk
-    messages.value[idx] = {
-      ...messages.value[idx],
-      content: messages.value[idx].content + payload.chunk,
-      loading: false,
+    // 工具调用状态
+    if (payload.tool_status) {
+      const ts = payload.tool_status
+
+      if (ts.status === 'calling') {
+        // 移除初始 loading 占位（如果还在）
+        if (!currentTextBubbleId) {
+          const loadIdx = messages.value.findIndex(m => m.id === loadingMsgId)
+          if (loadIdx !== -1 && !messages.value[loadIdx].content) {
+            messages.value.splice(loadIdx, 1)
+          }
+        } else {
+          // 结束当前文本 bubble 的 loading
+          const idx = messages.value.findIndex(m => m.id === currentTextBubbleId)
+          if (idx !== -1) messages.value[idx] = { ...messages.value[idx], loading: false }
+          currentTextBubbleId = null
+        }
+
+        // 插入 tool_call bubble
+        messages.value.push({
+          id: ++msgIdCounter,
+          role: 'assistant',
+          content: '',
+          messageType: 'tool_call',
+          toolName: ts.tool_name,
+          toolInput: ts.tool_input,
+          loading: true,
+        })
+        scrollToBottom()
+        return
+      }
+
+      if (ts.status === 'result') {
+        // 结束上一个 tool_call bubble 的 loading
+        const lastToolCall = [...messages.value].reverse().find(m => m.messageType === 'tool_call' && m.loading)
+        if (lastToolCall) {
+          const idx = messages.value.findIndex(m => m.id === lastToolCall.id)
+          if (idx !== -1) messages.value[idx] = { ...messages.value[idx], loading: false }
+        }
+
+        // 插入 tool_result bubble
+        messages.value.push({
+          id: ++msgIdCounter,
+          role: 'tool',
+          content: ts.tool_output ?? '',
+          messageType: 'tool_result',
+          toolName: ts.tool_name,
+          toolOutput: ts.tool_output,
+          collapsed: true,
+        })
+        scrollToBottom()
+        return
+      }
+
+      return
+    }
+
+    // 文本 chunk — 确保有一个 assistant text bubble
+    if (!currentTextBubbleId) {
+      // 看看初始 loading 占位是否还在
+      const loadIdx = messages.value.findIndex(m => m.id === loadingMsgId)
+      if (loadIdx !== -1 && !messages.value[loadIdx].content && messages.value[loadIdx].messageType === 'text') {
+        currentTextBubbleId = loadingMsgId
+      } else {
+        // 创建新的文本 bubble
+        currentTextBubbleId = ++msgIdCounter
+        messages.value.push({ id: currentTextBubbleId, role: 'assistant', content: '', loading: true, messageType: 'text' })
+      }
+    }
+
+    const idx = messages.value.findIndex(m => m.id === currentTextBubbleId)
+    if (idx !== -1) {
+      messages.value[idx] = {
+        ...messages.value[idx],
+        content: messages.value[idx].content + payload.chunk,
+        loading: true,
+        toolStatus: undefined,
+      }
     }
     scrollToBottom()
   })
@@ -202,7 +314,8 @@ const sendMessage = async (text?: string) => {
       }
     })
   } catch (err) {
-    const idx = messages.value.findIndex(m => m.id === aiMsgId)
+    const targetId = currentTextBubbleId ?? loadingMsgId
+    const idx = messages.value.findIndex(m => m.id === targetId)
     if (idx !== -1) {
       messages.value[idx] = {
         ...messages.value[idx],
@@ -252,10 +365,16 @@ const restoreSession = async (session: AnalysisSession) => {
     showWelcome()
 
     for (const r of records) {
+      const msgType = (r.message_type || 'text') as Message['messageType']
       messages.value.push({
         id: ++msgIdCounter,
         role: r.role as Message['role'],
         content: r.content,
+        messageType: msgType,
+        toolName: r.tool_name ?? undefined,
+        toolInput: r.tool_calls_json ? parseToolInput(r.tool_calls_json) : undefined,
+        toolOutput: msgType === 'tool_result' ? r.content : undefined,
+        collapsed: msgType === 'tool_result',
       })
     }
 
@@ -409,16 +528,52 @@ onUnmounted(() => {
             <span>{{ msg.content }}</span>
           </div>
 
-          <!-- AI 消息 -->
-          <div v-else class="msg-ai-wrapper">
+          <!-- Tool Call 消息（LLM 决定调用工具） -->
+          <div v-else-if="msg.messageType === 'tool_call'" class="msg-ai-wrapper">
+            <div class="ai-avatar tool-avatar">🔧</div>
+            <div class="tool-call-card">
+              <div class="tool-card-header">
+                <span class="tool-card-icon">🔧</span>
+                <span class="tool-card-name">{{ msg.toolName }}</span>
+                <span v-if="msg.loading" class="tool-card-status calling">调用中...</span>
+                <span v-else class="tool-card-status done">已调用</span>
+              </div>
+              <div v-if="msg.toolInput" class="tool-card-body">
+                <pre class="tool-card-code">{{ msg.toolInput }}</pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tool Result 消息（工具返回结果） -->
+          <div v-else-if="msg.messageType === 'tool_result'" class="msg-ai-wrapper">
+            <div class="ai-avatar result-avatar">📊</div>
+            <div class="tool-result-card">
+              <div class="tool-result-header" @click="msg.collapsed = !msg.collapsed">
+                <span class="tool-card-icon">📊</span>
+                <span class="tool-card-name">{{ msg.toolName }} 结果</span>
+                <span class="tool-result-toggle">{{ msg.collapsed ? '展开 ▸' : '收起 ▾' }}</span>
+              </div>
+              <div v-if="!msg.collapsed" class="tool-result-body">
+                <pre class="tool-result-code">{{ msg.toolOutput || msg.content }}</pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI 文本消息 -->
+          <div v-else-if="msg.role === 'assistant'" class="msg-ai-wrapper">
             <div class="ai-avatar">AI</div>
             <div class="msg-bubble msg-ai-bubble" :class="{ 'msg-error': msg.error }">
-              <div v-if="msg.loading && !msg.content" class="loading-dots">
+              <div v-if="msg.loading && !msg.content && !msg.toolStatus" class="loading-dots">
                 <span /><span /><span />
               </div>
               <template v-else>
-                <div class="ai-text markdown-body" v-html="renderMarkdown(msg.content)" />
-                <div v-if="msg.loading" class="streaming-cursor" />
+                <div v-if="msg.content" class="ai-text markdown-body" v-html="renderMarkdown(msg.content)" />
+                <div v-if="msg.toolStatus" class="tool-status-indicator">
+                  <span class="tool-status-icon">&#128269;</span>
+                  <span class="tool-status-text">{{ msg.toolStatus }}</span>
+                  <span class="tool-status-dots"><span /><span /><span /></span>
+                </div>
+                <div v-if="msg.loading && !msg.toolStatus" class="streaming-cursor" />
               </template>
             </div>
           </div>
@@ -708,6 +863,129 @@ onUnmounted(() => {
   color: #d0d0e8; font-size: 14px; line-height: 1.7; word-break: break-word;
 }
 .msg-error { border-color: #ef4444 !important; color: #fca5a5 !important; }
+
+/* ── Tool Call 卡片 ── */
+.tool-avatar { background: linear-gradient(135deg, #f59e0b, #d97706) !important; font-size: 14px !important; }
+.result-avatar { background: linear-gradient(135deg, #10b981, #059669) !important; font-size: 14px !important; }
+
+.tool-call-card {
+  max-width: 75%;
+  background: #151520;
+  border: 1px solid #2a2a44;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #1a1a2e;
+  border-bottom: 1px solid #2a2a44;
+}
+.tool-card-icon { font-size: 14px; flex-shrink: 0; }
+.tool-card-name { font-size: 13px; font-weight: 600; color: #c0c0e0; }
+.tool-card-status {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+.tool-card-status.calling {
+  background: #1e1a00;
+  color: #fbbf24;
+  border: 1px solid #92400e;
+}
+.tool-card-status.done {
+  background: #0a1e14;
+  color: #34d399;
+  border: 1px solid #065f46;
+}
+.tool-card-body { padding: 8px 12px; }
+.tool-card-code {
+  font-size: 12px;
+  color: #a0a0c0;
+  background: #12121f;
+  border: 1px solid #2a2a44;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a40 transparent;
+}
+
+/* ── Tool Result 卡片 ── */
+.tool-result-card {
+  max-width: 75%;
+  background: #111118;
+  border: 1px solid #2a2a44;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.tool-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #141420;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.tool-result-header:hover { background: #1a1a2e; }
+.tool-result-toggle {
+  margin-left: auto;
+  font-size: 11px;
+  color: #6060a0;
+  transition: color 0.15s;
+}
+.tool-result-header:hover .tool-result-toggle { color: #a5b4fc; }
+.tool-result-body { padding: 8px 12px; }
+.tool-result-code {
+  font-size: 12px;
+  color: #90c090;
+  background: #0c0c14;
+  border: 1px solid #1e2e1e;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a40 transparent;
+}
+
+/* msg-tool row alignment */
+.msg-tool { display: flex; justify-content: flex-start; }
+
+/* 工具调用状态 */
+.tool-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a50;
+  border-radius: 8px;
+  margin-top: 6px;
+}
+.tool-status-icon { font-size: 14px; flex-shrink: 0; }
+.tool-status-text { font-size: 13px; color: #a5b4fc; }
+.tool-status-dots { display: inline-flex; gap: 3px; align-items: center; }
+.tool-status-dots span {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: #6366f1;
+  animation: dot-bounce 1.2s infinite ease-in-out;
+}
+.tool-status-dots span:nth-child(1) { animation-delay: 0s; }
+.tool-status-dots span:nth-child(2) { animation-delay: 0.2s; }
+.tool-status-dots span:nth-child(3) { animation-delay: 0.4s; }
 
 /* 流式光标 */
 .streaming-cursor {

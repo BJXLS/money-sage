@@ -216,10 +216,7 @@ pub trait Agent: Send + Sync {
         
         // 添加系统提示词
         if !self.config().system_prompt.is_empty() {
-            messages.push(AIMessage {
-                role: "system".to_string(),
-                content: self.config().system_prompt.clone(),
-            });
+            messages.push(AIMessage::text("system", &self.config().system_prompt));
         }
         
         // 添加历史消息（如果启用记忆）
@@ -229,10 +226,7 @@ pub trait Agent: Send + Sync {
         }
         
         // 添加当前用户输入
-        messages.push(AIMessage {
-            role: "user".to_string(),
-            content: input.to_string(),
-        });
+        messages.push(AIMessage::text("user", input));
         
         Ok(messages)
     }
@@ -250,6 +244,8 @@ pub trait Agent: Send + Sync {
             presence_penalty: None,
             stream: None,
             enable_thinking: false,
+            tools: None,
+            tool_choice: None,
         };
         
         client.chat_completion(request).await
@@ -315,21 +311,15 @@ impl Agent for BaseAgent {
         // 提取响应内容
         let content = response.choices
             .first()
-            .map(|choice| choice.message.content.clone())
+            .map(|choice| choice.message.content_text().to_string())
             .unwrap_or_default();
         
         // 后处理输出
         let processed_output = self.postprocess_output(&content, context).await?;
         
         // 更新上下文
-        context.add_message(AIMessage {
-            role: "user".to_string(),
-            content: input.to_string(),
-        });
-        context.add_message(AIMessage {
-            role: "assistant".to_string(),
-            content: processed_output.clone(),
-        });
+        context.add_message(AIMessage::text("user", input));
+        context.add_message(AIMessage::text("assistant", &processed_output));
         
         // 创建结果
         let mut result = AgentResult::success(processed_output);
@@ -414,10 +404,7 @@ mod tests {
         assert_eq!(context.get_data("key1"), Some(&serde_json::json!("value1")));
         
         // 测试添加消息
-        context.add_message(AIMessage {
-            role: "user".to_string(),
-            content: "Hello".to_string(),
-        });
+        context.add_message(AIMessage::text("user", "Hello"));
         assert_eq!(context.message_history.len(), 1);
     }
     

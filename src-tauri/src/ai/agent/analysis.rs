@@ -1,6 +1,7 @@
-use crate::models::{CategoryStats, MonthlyStats};
 use crate::mcp::McpTool;
+use crate::models::{CategoryStats, MonthlyStats};
 use crate::utils::http_client::{AIMessage, AIRequest};
+use chrono::Local;
 
 /// 财务上下文快照（注入 system prompt）
 pub struct FinancialContext {
@@ -38,57 +39,19 @@ impl AnalysisAgent {
 
     pub fn build_system_prompt_with_tools(
         &self,
-        ctx: &FinancialContext,
+        _ctx: &FinancialContext,
         mcp_ctx: Option<&McpToolsContext>,
     ) -> String {
         let mut p = String::from(
-            "你是一位专业的个人财务分析师。用户正在使用记账软件，你需要基于他们的真实财务数据回答问题、提供分析和建议。\n\
-             请使用 Markdown 格式回复，保持简洁、有条理、有数据支撑。\n\n\
-             ## 用户财务数据摘要\n\n"
+            "你是一位专业的个人财务分析师。用户正在使用记账软件，你需要基于基于你能使用的工具，回答问题、提供分析和建议。\n\
+             请使用 Markdown 格式回复，保持简洁、有条理、有数据支撑。\n\n"
         );
-
-        if !ctx.monthly_stats.is_empty() {
-            p.push_str(
-                "### 近几月收支\n\n| 月份 | 收入 | 支出 | 结余 |\n|------|------|------|------|\n",
-            );
-            for s in &ctx.monthly_stats {
-                p.push_str(&format!(
-                    "| {} | {:.2} | {:.2} | {:.2} |\n",
-                    s.month, s.income, s.expense, s.balance
-                ));
-            }
-            p.push('\n');
-        } else {
-            p.push_str("暂无月度统计数据。\n\n");
-        }
-
-        if !ctx.expense_category_stats.is_empty() {
-            p.push_str("### 本月支出分类\n\n| 分类 | 金额 | 占比 |\n|------|------|------|\n");
-            for s in &ctx.expense_category_stats {
-                p.push_str(&format!(
-                    "| {} | {:.2} | {:.1}% |\n",
-                    s.category_name, s.amount, s.percentage
-                ));
-            }
-            p.push('\n');
-        }
-
-        if !ctx.income_category_stats.is_empty() {
-            p.push_str("### 本月收入分类\n\n| 分类 | 金额 | 占比 |\n|------|------|------|\n");
-            for s in &ctx.income_category_stats {
-                p.push_str(&format!(
-                    "| {} | {:.2} | {:.1}% |\n",
-                    s.category_name, s.amount, s.percentage
-                ));
-            }
-            p.push('\n');
-        }
 
         // 如果有 MCP 工具可用，在 system prompt 中告知 Agent
         if let Some(mcp) = mcp_ctx {
             if !mcp.tools.is_empty() {
                 p.push_str("## 可用的外部工具\n\n");
-                p.push_str("以下外部工具已通过 MCP 连接，你可以告知用户这些功能可用：\n\n");
+                p.push_str("以下外部工具已通过 MCP 连接，你可以调用，解决用户的问题：\n\n");
                 for (server, tool) in &mcp.tools {
                     p.push_str(&format!(
                         "- **{}** (来自 {}): {}\n",
@@ -101,7 +64,23 @@ impl AnalysisAgent {
             }
         }
 
-        p.push_str("请根据以上数据回答用户的问题。如果数据不足以回答，请坦诚说明。\n");
+        p.push_str(
+            "## 工具使用指南\n\n\
+             你拥有 get_database_schema 和 query_database 两个工具，可以直接查询用户的记账数据库。\n\
+             当用户提出需要具体数据才能回答的问题时，请：\n\
+             1. 先调用 get_database_schema 了解表结构\n\
+             2. 然后调用 query_database 执行 SQL 查询获取数据\n\
+             3. 基于查询结果给出分析和建议\n\n\
+             请根据以上数据回答用户的问题。如果数据不足以回答，请使用工具查询更多数据。\n"
+        );
+
+        let now_local = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        p.push_str(&format!(
+            "## 当前时间\n\n\
+             以下是用户设备上的当前本地时间（用于理解「今天」「本月」「上周」「最近 30 天」等表述，并在 SQL 中编写正确的日期条件）：\n\
+             - **本地时间**：{now_local}\n\n"
+        ));
+
         p
     }
 
@@ -112,12 +91,9 @@ impl AnalysisAgent {
         history: &[AIMessage],
         ctx: &FinancialContext,
     ) -> Vec<AIMessage> {
-        let mut msgs = vec![AIMessage {
-            role: "system".to_string(),
-            content: self.build_system_prompt(ctx),
-        }];
+        let mut msgs = vec![AIMessage::text("system", self.build_system_prompt(ctx))];
 
-        let max_history = 20; // 10 轮
+        let max_history = 20;
         let start = if history.len() > max_history {
             history.len() - max_history
         } else {
@@ -127,10 +103,7 @@ impl AnalysisAgent {
             msgs.push(msg.clone());
         }
 
-        msgs.push(AIMessage {
-            role: "user".to_string(),
-            content: user_message.to_string(),
-        });
+        msgs.push(AIMessage::text("user", user_message));
 
         msgs
     }
@@ -142,6 +115,17 @@ impl AnalysisAgent {
         history: &[AIMessage],
         ctx: &FinancialContext,
     ) -> AIRequest {
+        self.build_request_with_tools(user_message, history, ctx, None)
+    }
+
+    /// 构建带工具定义的 AIRequest
+    pub fn build_request_with_tools(
+        &self,
+        user_message: &str,
+        history: &[AIMessage],
+        ctx: &FinancialContext,
+        tools: Option<Vec<serde_json::Value>>,
+    ) -> AIRequest {
         AIRequest {
             model: self.model.clone(),
             messages: self.build_messages(user_message, history, ctx),
@@ -152,6 +136,8 @@ impl AnalysisAgent {
             presence_penalty: None,
             stream: None,
             enable_thinking: self.enable_thinking,
+            tools,
+            tool_choice: None,
         }
     }
 }

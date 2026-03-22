@@ -40,11 +40,49 @@ impl Default for ModelConfig {
     }
 }
 
+/// Function calling: 工具调用
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub call_type: String,
+    pub function: FunctionCall,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String,
+}
+
 /// AI请求消息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIMessage {
     pub role: String,
-    pub content: String,
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+impl AIMessage {
+    pub fn text(role: impl Into<String>, content: impl Into<String>) -> Self {
+        Self { role: role.into(), content: Some(content.into()), tool_calls: None, tool_call_id: None }
+    }
+
+    pub fn tool_result(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        Self { role: "tool".into(), content: Some(content.into()), tool_calls: None, tool_call_id: Some(tool_call_id.into()) }
+    }
+
+    pub fn assistant_tool_calls(tool_calls: Vec<ToolCall>, content: Option<String>) -> Self {
+        Self { role: "assistant".into(), content, tool_calls: Some(tool_calls), tool_call_id: None }
+    }
+
+    pub fn content_text(&self) -> &str {
+        self.content.as_deref().unwrap_or("")
+    }
 }
 
 /// AI请求体
@@ -64,6 +102,10 @@ pub struct AIRequest {
     pub stream: Option<bool>,
     /// 是否开启深度思考（默认 false，始终随请求体发送）
     pub enable_thinking: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<serde_json::Value>,
 }
 
 /// AI响应选择
@@ -242,10 +284,7 @@ impl AIHttpClient {
                 // Claude没有专门的测试接口，发送一个简单的请求
                 let test_request = AIRequest {
                     model: "claude-3-haiku-20240307".to_string(),
-                    messages: vec![AIMessage {
-                        role: "user".to_string(),
-                        content: "Hello".to_string(),
-                    }],
+                    messages: vec![AIMessage::text("user", "Hello")],
                     temperature: 0.1,
                     max_tokens: 10,
                     top_p: None,
@@ -253,6 +292,8 @@ impl AIHttpClient {
                     presence_penalty: None,
                     stream: None,
                     enable_thinking: false,
+                    tools: None,
+                    tool_choice: None,
                 };
                 
                 match self.chat_completion(test_request).await {
@@ -298,7 +339,7 @@ impl AIHttpClient {
                 // Claude API 格式转换
                 let system_message = request.messages.iter()
                     .find(|msg| msg.role == "system")
-                    .map(|msg| msg.content.clone());
+                    .and_then(|msg| msg.content.clone());
                 
                 let user_messages: Vec<_> = request.messages.iter()
                     .filter(|msg| msg.role != "system")
@@ -326,7 +367,7 @@ impl AIHttpClient {
                 let contents: Vec<_> = request.messages.iter()
                     .filter(|msg| msg.role == "user")
                     .map(|msg| json!({
-                        "parts": [{"text": msg.content}]
+                        "parts": [{"text": msg.content_text()}]
                     }))
                     .collect();
                 
@@ -454,10 +495,7 @@ impl AIHttpClient {
             model: claude_response["model"].as_str().unwrap_or("").to_string(),
             choices: vec![AIChoice {
                 index: 0,
-                message: AIMessage {
-                    role: "assistant".to_string(),
-                    content,
-                },
+                message: AIMessage::text("assistant", content),
                 finish_reason: claude_response["stop_reason"].as_str().map(|s| s.to_string()),
             }],
             usage: claude_response["usage"].as_object().map(|usage| AIUsage {
@@ -486,10 +524,7 @@ impl AIHttpClient {
             model: "gemini".to_string(),
             choices: vec![AIChoice {
                 index: 0,
-                message: AIMessage {
-                    role: "assistant".to_string(),
-                    content,
-                },
+                message: AIMessage::text("assistant", content),
                 finish_reason: gemini_response["candidates"][0]["finishReason"]
                     .as_str().map(|s| s.to_string()),
             }],

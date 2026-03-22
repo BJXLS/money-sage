@@ -230,14 +230,8 @@ impl QuickNoteAgent {
         
         // 构建消息
         let messages = vec![
-            AIMessage {
-                role: "system".to_string(),
-                content: system_prompt.clone(),
-            },
-            AIMessage {
-                role: "user".to_string(),
-                content: processed_input.clone(),
-            },
+            AIMessage::text("system", &system_prompt),
+            AIMessage::text("user", &processed_input),
         ];
         
         // 创建AI请求
@@ -251,6 +245,8 @@ impl QuickNoteAgent {
             presence_penalty: None,
             stream: None,
             enable_thinking: self.enable_thinking,
+            tools: None,
+            tool_choice: None,
         };
         
         println!("📤 [QuickNote] 发送AI请求:");
@@ -279,7 +275,7 @@ impl QuickNoteAgent {
         // 解析AI响应
         let content = response.choices.get(0)
             .ok_or_else(|| anyhow::anyhow!("AI响应中没有choices"))?
-            .message.content.clone();
+            .message.content_text().to_string();
             
         println!("📄 [QuickNote] AI原始响应内容:\n{}", content);
         
@@ -328,7 +324,7 @@ impl QuickNoteAgent {
         // 解析AI响应
         let content = response.choices.get(0)
             .ok_or_else(|| anyhow::anyhow!("AI响应中没有choices"))?
-            .message.content.clone();
+            .message.content_text().to_string();
         self.parse_ai_response(&content).await
     }
     

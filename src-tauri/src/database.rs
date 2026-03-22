@@ -328,9 +328,19 @@ impl Database {
                 role        TEXT NOT NULL,
                 content     TEXT NOT NULL DEFAULT '',
                 created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                message_type     TEXT NOT NULL DEFAULT 'text',
+                tool_calls_json  TEXT,
+                tool_call_id     TEXT,
+                tool_name        TEXT,
                 FOREIGN KEY (session_id) REFERENCES analysis_sessions(id) ON DELETE CASCADE
             )
         "#).execute(pool).await?;
+
+        // 迁移：为已有 analysis_messages 表补齐新列
+        let _ = sqlx::query("ALTER TABLE analysis_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'text'").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE analysis_messages ADD COLUMN tool_calls_json TEXT").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE analysis_messages ADD COLUMN tool_call_id TEXT").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE analysis_messages ADD COLUMN tool_name TEXT").execute(pool).await;
 
         // 创建索引
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)").execute(pool).await?;
@@ -1110,7 +1120,7 @@ impl Database {
 
     pub async fn get_analysis_messages(&self, session_id: &str) -> Result<Vec<AnalysisMessageRecord>> {
         let rows = sqlx::query(
-            "SELECT id, session_id, role, content, created_at FROM analysis_messages WHERE session_id = ? ORDER BY id ASC"
+            "SELECT id, session_id, role, content, created_at, message_type, tool_calls_json, tool_call_id, tool_name FROM analysis_messages WHERE session_id = ? ORDER BY id ASC"
         )
         .bind(session_id)
         .fetch_all(&self.pool)
@@ -1124,14 +1134,19 @@ impl Database {
                 role: row.get("role"),
                 content: row.get("content"),
                 created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
+                message_type: row.try_get::<String, _>("message_type").unwrap_or_else(|_| "text".to_string()),
+                tool_calls_json: row.try_get::<Option<String>, _>("tool_calls_json").unwrap_or(None),
+                tool_call_id: row.try_get::<Option<String>, _>("tool_call_id").unwrap_or(None),
+                tool_name: row.try_get::<Option<String>, _>("tool_name").unwrap_or(None),
             }
         }).collect())
     }
 
-    /// 获取最近 N 条消息（用于上下文构建），按 id 正序
+    /// 获取最近 N 条 text 消息（用于 LLM 上下文构建），按 id 正序
+    /// 仅返回 message_type='text' 的消息，工具调用步骤不传递给后续 LLM 请求
     pub async fn get_recent_analysis_messages(&self, session_id: &str, limit: i64) -> Result<Vec<AnalysisMessageRecord>> {
         let rows = sqlx::query(
-            "SELECT * FROM (SELECT id, session_id, role, content, created_at FROM analysis_messages WHERE session_id = ? ORDER BY id DESC LIMIT ?) sub ORDER BY id ASC"
+            "SELECT * FROM (SELECT id, session_id, role, content, created_at, message_type, tool_calls_json, tool_call_id, tool_name FROM analysis_messages WHERE session_id = ? AND message_type = 'text' ORDER BY id DESC LIMIT ?) sub ORDER BY id ASC"
         )
         .bind(session_id)
         .bind(limit)
@@ -1146,6 +1161,10 @@ impl Database {
                 role: row.get("role"),
                 content: row.get("content"),
                 created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
+                message_type: row.try_get::<String, _>("message_type").unwrap_or_else(|_| "text".to_string()),
+                tool_calls_json: row.try_get::<Option<String>, _>("tool_calls_json").unwrap_or(None),
+                tool_call_id: row.try_get::<Option<String>, _>("tool_call_id").unwrap_or(None),
+                tool_name: row.try_get::<Option<String>, _>("tool_name").unwrap_or(None),
             }
         }).collect())
     }
@@ -1177,12 +1196,29 @@ impl Database {
     }
 
     pub async fn save_analysis_message(&self, session_id: &str, role: &str, content: &str) -> Result<i64> {
+        self.save_analysis_message_ext(session_id, role, content, "text", None, None, None).await
+    }
+
+    pub async fn save_analysis_message_ext(
+        &self,
+        session_id: &str,
+        role: &str,
+        content: &str,
+        message_type: &str,
+        tool_calls_json: Option<&str>,
+        tool_call_id: Option<&str>,
+        tool_name: Option<&str>,
+    ) -> Result<i64> {
         let result = sqlx::query(
-            "INSERT INTO analysis_messages (session_id, role, content) VALUES (?, ?, ?)"
+            "INSERT INTO analysis_messages (session_id, role, content, message_type, tool_calls_json, tool_call_id, tool_name) VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(session_id)
         .bind(role)
         .bind(content)
+        .bind(message_type)
+        .bind(tool_calls_json)
+        .bind(tool_call_id)
+        .bind(tool_name)
         .execute(&self.pool)
         .await?;
         Ok(result.last_insert_rowid())

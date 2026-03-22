@@ -274,10 +274,7 @@ async fn test_llm_connection(config: TestConnectionRequest) -> Result<String, St
 
     let request = AIRequest {
         model: config.model.clone(),
-        messages: vec![AIMessage {
-            role: "user".to_string(),
-            content: "Hi".to_string(),
-        }],
+        messages: vec![AIMessage::text("user", "Hi")],
         temperature: 0.1,
         max_tokens: 5,
         top_p: None,
@@ -285,6 +282,8 @@ async fn test_llm_connection(config: TestConnectionRequest) -> Result<String, St
         presence_penalty: None,
         stream: None,
         enable_thinking: false,
+        tools: None,
+        tool_choice: None,
     };
 
     match http_client.chat_completion(request).await {
@@ -727,7 +726,7 @@ async fn delete_analysis_session(
     db_state.db.delete_analysis_session(&session_id).await.map_err(|e| e.to_string())
 }
 
-/// 流式分析：接收用户消息 → 构建上下文 → 调用 LLM（SSE）→ 通过事件推送 chunk → 持久化
+/// 流式分析：接收用户消息 → 构建上下文 → 调用 LLM（SSE）→ 工具调用循环 → 持久化
 #[tauri::command]
 async fn send_analysis_message_stream(
     app: tauri::AppHandle,
@@ -736,7 +735,8 @@ async fn send_analysis_message_stream(
     request: AnalysisStreamRequest,
 ) -> Result<(), String> {
     use crate::ai::agent::analysis::{AnalysisAgent, FinancialContext, McpToolsContext};
-    use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider, AIMessage};
+    use crate::ai::tools::LocalToolRegistry;
+    use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider, AIMessage, ToolCall, FunctionCall};
     use chrono::{Local, Datelike};
 
     let sid = request.session_id.clone();
@@ -748,6 +748,7 @@ async fn send_analysis_message_stream(
             chunk: String::new(),
             done: true,
             error: Some(msg),
+            tool_status: None,
         });
     };
 
@@ -780,7 +781,7 @@ async fn send_analysis_message_stream(
         .unwrap_or_default();
     let history: Vec<AIMessage> = history_records
         .iter()
-        .map(|r| AIMessage { role: r.role.clone(), content: r.content.clone() })
+        .map(|r| AIMessage::text(&r.role, &r.content))
         .collect();
 
     // 3. 确保会话存在 + 持久化 user 消息
@@ -832,7 +833,12 @@ async fn send_analysis_message_stream(
         Some(McpToolsContext { tools: mcp_tools })
     };
 
-    // 7. 组装 AI 请求
+    // 7. 创建本地工具注册表
+    let tool_registry = LocalToolRegistry::new(db_state.db.pool.clone());
+    let tools_json = tool_registry.all_as_openai_tools();
+    let tools = if tools_json.is_empty() { None } else { Some(tools_json) };
+
+    // 8. 组装初始消息
     let agent = AnalysisAgent::new(
         llm_config.model.clone(),
         llm_config.temperature as f32,
@@ -841,86 +847,212 @@ async fn send_analysis_message_stream(
     );
 
     let system_prompt = agent.build_system_prompt_with_tools(&financial_context, mcp_ctx.as_ref());
-    let mut messages = vec![crate::utils::http_client::AIMessage {
-        role: "system".to_string(),
-        content: system_prompt,
-    }];
+    let mut messages: Vec<AIMessage> = vec![AIMessage::text("system", system_prompt)];
     let max_history = 20;
     let start = if history.len() > max_history { history.len() - max_history } else { 0 };
     messages.extend_from_slice(&history[start..]);
-    messages.push(crate::utils::http_client::AIMessage {
-        role: "user".to_string(),
-        content: request.message.clone(),
-    });
-    let ai_request = crate::utils::http_client::AIRequest {
-        model: llm_config.model.clone(),
-        messages,
-        temperature: llm_config.temperature as f32,
-        max_tokens: llm_config.max_tokens as u32,
-        top_p: None,
-        frequency_penalty: None,
-        presence_penalty: None,
-        stream: None,
-        enable_thinking: llm_config.enable_thinking,
-    };
+    messages.push(AIMessage::text("user", &request.message));
 
-    // 7. 发起流式请求
-    let mut response = match http_client.chat_completion_stream(ai_request).await {
-        Ok(r) => r,
-        Err(e) => { emit_err(&app, &sid, format!("请求失败: {}", e)); return Ok(()); }
-    };
-
-    // 8. 解析 SSE 并逐 chunk 推送
+    // 9. Tool call loop：支持多轮工具调用
+    const MAX_TOOL_ROUNDS: usize = 8;
     let mut full_content = String::new();
-    let mut buffer = String::new();
 
-    loop {
-        match response.chunk().await {
-            Ok(Some(chunk)) => {
-                buffer.push_str(&String::from_utf8_lossy(&chunk));
+    for _round in 0..MAX_TOOL_ROUNDS {
+        let ai_request = crate::utils::http_client::AIRequest {
+            model: llm_config.model.clone(),
+            messages: messages.clone(),
+            temperature: llm_config.temperature as f32,
+            max_tokens: llm_config.max_tokens as u32,
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stream: None,
+            enable_thinking: llm_config.enable_thinking,
+            tools: tools.clone(),
+            tool_choice: None,
+        };
 
-                while let Some(pos) = buffer.find('\n') {
-                    let line = buffer[..pos].trim_end_matches('\r').to_string();
-                    buffer = buffer[pos + 1..].to_string();
+        let mut response = match http_client.chat_completion_stream(ai_request).await {
+            Ok(r) => r,
+            Err(e) => { emit_err(&app, &sid, format!("请求失败: {}", e)); return Ok(()); }
+        };
 
-                    if !line.starts_with("data: ") { continue; }
-                    let data = line[6..].trim();
-                    if data == "[DONE]" { continue; }
+        // 解析 SSE，同时收集 content 和 tool_calls
+        let mut round_content = String::new();
+        let mut tool_calls_acc: std::collections::HashMap<usize, (String, String, String)> = std::collections::HashMap::new();
+        let mut finish_reason = String::new();
+        let mut buffer = String::new();
 
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                        if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
-                            if !content.is_empty() {
-                                full_content.push_str(content);
-                                let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
-                                    session_id: sid.clone(),
-                                    chunk: content.to_string(),
-                                    done: false,
-                                    error: None,
-                                });
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) => {
+                    buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+                    while let Some(pos) = buffer.find('\n') {
+                        let line = buffer[..pos].trim_end_matches('\r').to_string();
+                        buffer = buffer[pos + 1..].to_string();
+
+                        if !line.starts_with("data: ") { continue; }
+                        let data = line[6..].trim();
+                        if data == "[DONE]" { continue; }
+
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                            // 文本内容 delta
+                            if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
+                                if !content.is_empty() {
+                                    round_content.push_str(content);
+                                    full_content.push_str(content);
+                                    let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
+                                        session_id: sid.clone(),
+                                        chunk: content.to_string(),
+                                        done: false,
+                                        error: None,
+                                        tool_status: None,
+                                    });
+                                }
+                            }
+
+                            // tool_calls delta（增量累积）
+                            if let Some(tcs) = json["choices"][0]["delta"]["tool_calls"].as_array() {
+                                for tc in tcs {
+                                    let idx = tc["index"].as_u64().unwrap_or(0) as usize;
+                                    let entry = tool_calls_acc.entry(idx)
+                                        .or_insert_with(|| (String::new(), String::new(), String::new()));
+                                    if let Some(id) = tc["id"].as_str() {
+                                        entry.0 = id.to_string();
+                                    }
+                                    if let Some(name) = tc["function"]["name"].as_str() {
+                                        entry.1.push_str(name);
+                                    }
+                                    if let Some(args) = tc["function"]["arguments"].as_str() {
+                                        entry.2.push_str(args);
+                                    }
+                                }
+                            }
+
+                            // finish_reason
+                            if let Some(reason) = json["choices"][0]["finish_reason"].as_str() {
+                                finish_reason = reason.to_string();
                             }
                         }
                     }
                 }
-            }
-            Ok(None) => break,
-            Err(e) => {
-                emit_err(&app, &sid, format!("流式读取失败: {}", e));
-                return Ok(());
+                Ok(None) => break,
+                Err(e) => {
+                    emit_err(&app, &sid, format!("流式读取失败: {}", e));
+                    return Ok(());
+                }
             }
         }
+
+        // 判断是否需要执行工具
+        if finish_reason == "tool_calls" && !tool_calls_acc.is_empty() {
+            let mut sorted_indices: Vec<usize> = tool_calls_acc.keys().cloned().collect();
+            sorted_indices.sort();
+
+            let tool_calls: Vec<ToolCall> = sorted_indices.iter().map(|idx| {
+                let (id, name, args) = tool_calls_acc.get(idx).unwrap();
+                ToolCall {
+                    id: id.clone(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall { name: name.clone(), arguments: args.clone() },
+                }
+            }).collect();
+
+            // 追加 assistant 消息（含 tool_calls）
+            messages.push(AIMessage::assistant_tool_calls(
+                tool_calls.clone(),
+                if round_content.is_empty() { None } else { Some(round_content) },
+            ));
+
+            // 执行每个工具并追加结果
+            for tc in &tool_calls {
+                // 落表：assistant tool_call
+                let tool_calls_json_str = serde_json::to_string(&[serde_json::json!({
+                    "id": tc.id,
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments,
+                })]).unwrap_or_default();
+                let _ = db_state.db.save_analysis_message_ext(
+                    &sid, "assistant", "",
+                    "tool_call",
+                    Some(&tool_calls_json_str),
+                    None,
+                    Some(&tc.function.name),
+                ).await;
+
+                // emit tool_status calling (附带 tool_input)
+                let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
+                    session_id: sid.clone(),
+                    chunk: String::new(),
+                    done: false,
+                    error: None,
+                    tool_status: Some(ToolStatusPayload {
+                        tool_name: tc.function.name.clone(),
+                        status: "calling".to_string(),
+                        description: Some(format!("正在调用: {}", tc.function.name)),
+                        tool_input: Some(tc.function.arguments.clone()),
+                        tool_output: None,
+                    }),
+                });
+
+                let args: serde_json::Value = serde_json::from_str(&tc.function.arguments)
+                    .unwrap_or(serde_json::json!({}));
+
+                let result = match tool_registry.execute(&tc.function.name, args).await {
+                    Ok(r) => r,
+                    Err(e) => format!("工具执行失败: {}", e),
+                };
+
+                // 落表：tool result
+                let _ = db_state.db.save_analysis_message_ext(
+                    &sid, "tool", &result,
+                    "tool_result",
+                    None,
+                    Some(&tc.id),
+                    Some(&tc.function.name),
+                ).await;
+
+                // emit tool_status result (附带 tool_output)
+                let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
+                    session_id: sid.clone(),
+                    chunk: String::new(),
+                    done: false,
+                    error: None,
+                    tool_status: Some(ToolStatusPayload {
+                        tool_name: tc.function.name.clone(),
+                        status: "result".to_string(),
+                        description: None,
+                        tool_input: None,
+                        tool_output: Some(result.clone()),
+                    }),
+                });
+
+                messages.push(AIMessage::tool_result(&tc.id, result));
+            }
+
+            continue;
+        }
+
+        // 正常结束（finish_reason == "stop" 或其他）
+        break;
     }
 
-    // 9. 流结束
+    // 10. 流结束
     let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
         session_id: sid.clone(),
         chunk: String::new(),
         done: true,
         error: None,
+        tool_status: None,
     });
 
-    // 10. 持久化 assistant 回复 + 更新会话时间戳
+    // 11. 持久化 assistant 回复 + 更新会话时间戳
     if !full_content.is_empty() {
-        let _ = db_state.db.save_analysis_message(&sid, "assistant", &full_content).await;
+        let _ = db_state.db.save_analysis_message_ext(
+            &sid, "assistant", &full_content,
+            "text", None, None, None,
+        ).await;
     }
     let _ = db_state.db.touch_analysis_session(&sid).await;
 

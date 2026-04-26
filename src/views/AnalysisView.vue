@@ -77,7 +77,7 @@ const QUICK_QUESTIONS = [
 
 // ─── 状态 ────────────────────────────────────────────────────────────────────
 
-const sessionId = ref(crypto.randomUUID())
+const sessionId = ref<string>(crypto.randomUUID())
 const messages = ref<Message[]>([])
 const inputText = ref('')
 const isLoading = ref(false)

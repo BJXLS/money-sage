@@ -42,10 +42,10 @@
       </div>
     </el-card>
 
-    <!-- 记账对话框 -->
+    <!-- 收支记录对话框 -->
     <el-dialog
       v-model="showRecordDialog"
-      :title="editingTransactionId ? '编辑记录' : '记账'"
+      :title="editingTransactionId ? '编辑记录' : '新增记录'"
       width="500px"
       :before-close="handleDialogClose"
       class="record-dialog"

@@ -1,5 +1,8 @@
 <template>
-  <div class="dashboard">
+  <div class="dashboard-root">
+    <el-tabs v-model="activeTab" class="dashboard-tabs">
+      <el-tab-pane label="总览" name="overview">
+        <div class="dashboard">
     <!-- 统计卡片 -->
     <el-row :gutter="20" class="stats-cards">
       <el-col :xs="24" :sm="12" :md="8" :lg="6">
@@ -204,11 +207,20 @@
         </el-card>
       </el-col>
     </el-row>
+        </div>
+      </el-tab-pane>
+      <el-tab-pane label="深度分析" name="deep" lazy>
+        <div class="deep-tab-inner">
+          <StatisticsView />
+        </div>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
+import StatisticsView from './StatisticsView.vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, PieChart } from 'echarts/charts'
@@ -234,6 +246,7 @@ use([
 ])
 
 const store = useAppStore()
+const activeTab = ref('overview')
 const trendPeriod = ref('6')
 const currentMonth = ref(dayjs().format('YYYY-MM'))
 const trendChartRef = ref()
@@ -466,6 +479,43 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.dashboard-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dashboard-tabs :deep(.el-tabs__header) {
+  margin: 0 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dashboard-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.dashboard-tabs :deep(.el-tabs__item) {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.dashboard-tabs :deep(.el-tabs__item.is-active) {
+  color: #a5b4fc;
+}
+
+.dashboard-tabs :deep(.el-tabs__active-bar) {
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+}
+
+.dashboard-tabs :deep(.el-tabs__content) {
+  overflow: visible;
+}
+
+.deep-tab-inner {
+  margin: 0 -4px;
+  min-height: 0;
+}
+
 .dashboard {
   color: #e2e8f0;
 }

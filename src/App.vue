@@ -3,10 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useAppStore } from './stores'
 import DashboardView from './views/DashboardView.vue'
 import TransactionsView from './views/TransactionsView.vue'
-import CategoriesView from './views/CategoriesView.vue'
-import BudgetView from './views/BudgetView.vue'
-import StatisticsView from './views/StatisticsView.vue'
-import ImportExportView from './views/ImportExportView.vue'
+import CategoriesBudgetView from './views/CategoriesBudgetView.vue'
 import AnalysisView from './views/AnalysisView.vue'
 import QuickBookingDialog from './components/QuickBookingDialog.vue'
 import LLMConfigDialog from './components/LLMConfigDialog.vue'
@@ -29,13 +26,10 @@ const toggleSidebar = () => {
 
 const getPageTitle = () => {
   const titles: Record<string, string> = {
-    dashboard: '财务概览',
-    transactions: '记账',
-    categories: '分类管理',
-    budget: '预算设置',
-    statistics: '数据分析',
-    'smart-analysis': '智能分析',
-    'import-export': '导入导出'
+    dashboard: '仪表盘',
+    transactions: '收支记录',
+    'categories-budget': '分类与预算',
+    'smart-analysis': '智能分析'
   }
   return titles[activeMenu.value] || '记账本'
 }
@@ -93,32 +87,17 @@ onMounted(() => {
           
           <el-menu-item index="transactions">
             <el-icon><DocumentAdd /></el-icon>
-            <template #title>记账</template>
+            <template #title>收支记录</template>
           </el-menu-item>
           
-          <el-menu-item index="categories">
+          <el-menu-item index="categories-budget">
             <el-icon><Grid /></el-icon>
-            <template #title>分类管理</template>
-          </el-menu-item>
-          
-          <el-menu-item index="budget">
-            <el-icon><Setting /></el-icon>
-            <template #title>预算设置</template>
-          </el-menu-item>
-          
-          <el-menu-item index="statistics">
-            <el-icon><DataAnalysis /></el-icon>
-            <template #title>数据分析</template>
+            <template #title>分类与预算</template>
           </el-menu-item>
 
           <el-menu-item index="smart-analysis">
             <el-icon><ChatDotRound /></el-icon>
             <template #title>智能分析</template>
-          </el-menu-item>
-          
-          <el-menu-item index="import-export">
-            <el-icon><Upload /></el-icon>
-            <template #title>导入导出</template>
           </el-menu-item>
         </el-menu>
       </el-aside>
@@ -160,20 +139,11 @@ onMounted(() => {
           <!-- 交易记录 -->
           <TransactionsView v-else-if="activeMenu === 'transactions'" />
           
-          <!-- 分类管理 -->
-          <CategoriesView v-else-if="activeMenu === 'categories'" />
-          
-          <!-- 预算管理 -->
-          <BudgetView v-else-if="activeMenu === 'budget'" />
-          
-          <!-- 统计分析 -->
-          <StatisticsView v-else-if="activeMenu === 'statistics'" />
+          <!-- 分类与预算 -->
+          <CategoriesBudgetView v-else-if="activeMenu === 'categories-budget'" />
           
           <!-- 智能分析 -->
           <AnalysisView v-else-if="activeMenu === 'smart-analysis'" />
-
-          <!-- 导入导出 -->
-          <ImportExportView v-else-if="activeMenu === 'import-export'" />
         </div>
       </el-main>
     </el-container>

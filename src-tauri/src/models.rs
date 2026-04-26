@@ -267,7 +267,7 @@ pub struct SaveTransactionsRequest {
 }
 
 // 用户确认后的交易记录
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ConfirmedTransaction {
     pub date: String,           // YYYY-MM-DD格式
     pub amount: f64,
@@ -312,6 +312,54 @@ pub struct AnalysisMessageRecord {
     pub tool_calls_json: Option<String>,
     pub tool_call_id: Option<String>,
     pub tool_name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct QuickNoteDraft {
+    pub id: i64,
+    pub draft_id: String,
+    pub session_id: String,
+    pub source_message_id: Option<i64>,
+    pub status: String,
+    pub confirmation_token: Option<String>,
+    pub created_by_tool_call_id: Option<String>,
+    pub confirmed_by_message_id: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub items: Vec<QuickNoteDraftItem>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct QuickNoteDraftItem {
+    pub id: i64,
+    pub draft_id: String,
+    pub date: String,
+    pub amount: f64,
+    pub transaction_type: String,
+    pub category_id: Option<i64>,
+    pub budget_id: Option<i64>,
+    pub description: Option<String>,
+    pub note: Option<String>,
+    pub raw_category_name: Option<String>,
+    pub confidence: f64,
+    pub sort_order: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CreateQuickNoteDraftRequest {
+    pub session_id: String,
+    pub source_message_id: Option<i64>,
+    pub items: Vec<ConfirmedTransaction>,
+    pub created_by_tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConfirmQuickNoteDraftRequest {
+    pub draft_id: String,
+    pub confirmation_token: String,
+    pub items: Vec<ConfirmedTransaction>,
 }
 
 /// 流式分析请求（前端 → 后端）
@@ -384,3 +432,272 @@ pub struct FailedLine {
     pub original_text: String,
     pub error_reason: String,
 } 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Memory (阶段一)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FactType {
+    ClassificationRule,
+    RecurringEvent,
+    FinancialGoal,
+    UserProfile,
+    AgentRole,
+}
+
+impl FactType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::ClassificationRule => "classification_rule",
+            Self::RecurringEvent => "recurring_event",
+            Self::FinancialGoal => "financial_goal",
+            Self::UserProfile => "user_profile",
+            Self::AgentRole => "agent_role",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FactStatus {
+    Active,
+    Provisional,
+    Superseded,
+    Retired,
+}
+
+impl FactStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Provisional => "provisional",
+            Self::Superseded => "superseded",
+            Self::Retired => "retired",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FactSource {
+    User,
+    QuickNote,
+    Analysis,
+    Recap,
+    Import,
+    Preset,
+}
+
+impl FactSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::QuickNote => "quick_note",
+            Self::Analysis => "analysis",
+            Self::Recap => "recap",
+            Self::Import => "import",
+            Self::Preset => "preset",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RoleScope {
+    Global,
+    QuickNote,
+    Analysis,
+}
+
+impl RoleScope {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::QuickNote => "quick_note",
+            Self::Analysis => "analysis",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RoleTone {
+    pub style: Option<String>,
+    pub emoji: Option<bool>,
+    pub verbosity: Option<String>,
+    pub language_flavor: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RoleValue {
+    pub scope: RoleScope,
+    pub display_name: Option<String>,
+    pub self_reference: Option<String>,
+    pub user_address: Option<String>,
+    pub tone: Option<RoleTone>,
+    pub traits: Option<Vec<String>>,
+    pub r#do: Option<Vec<String>>,
+    pub dont: Option<Vec<String>>,
+    pub preset_id: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RolePreset {
+    pub preset_id: String,
+    pub display_name: String,
+    pub summary: String,
+    pub value: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Fact {
+    pub id: i64,
+    pub fact_type: FactType,
+    pub key: Option<String>,
+    pub value_json: serde_json::Value,
+    pub source: FactSource,
+    pub confidence: f32,
+    pub status: FactStatus,
+    pub supersedes_id: Option<i64>,
+    pub origin_session: Option<String>,
+    pub origin_message: Option<i64>,
+    pub usage_count: i64,
+    pub last_used_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UpsertInput {
+    pub fact_type: FactType,
+    pub key: Option<String>,
+    pub value_json: serde_json::Value,
+    pub source: Option<FactSource>,
+    pub confidence_hint: Option<f32>,
+    pub origin_session: Option<String>,
+    pub origin_message: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum UpsertOutcome {
+    Inserted { id: i64 },
+    Merged {
+        id: i64,
+        old_confidence: f32,
+        new_confidence: f32,
+    },
+    Superseded { new_id: i64, old_id: i64 },
+    Rejected { reason: String },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct FactFilter {
+    pub fact_type: Option<FactType>,
+    pub status: Option<FactStatus>,
+    pub key: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct UpdateFact {
+    pub key: Option<String>,
+    pub value_json: Option<serde_json::Value>,
+    pub confidence: Option<f32>,
+    pub status: Option<FactStatus>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HistoryEntry {
+    pub id: i64,
+    pub fact_id: i64,
+    pub op: String,
+    pub actor: String,
+    pub before_json: Option<serde_json::Value>,
+    pub after_json: Option<serde_json::Value>,
+    pub origin_session: Option<String>,
+    pub created_at: String,
+}
+
+// ─── Token 用量统计 ─────────────────────────────────────────────────────────
+
+/// 写入 token_usage_logs 时使用
+#[derive(Debug, Clone)]
+pub struct TokenUsageRecord {
+    pub agent_name: String,
+    pub session_id: Option<String>,
+    pub request_id: String,
+    pub round_index: i32,
+    pub config_id: Option<i64>,
+    pub config_name_snapshot: Option<String>,
+    pub provider: String,
+    pub model: String,
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
+    pub finish_reason: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub success: bool,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TokenUsageEntry {
+    pub id: i64,
+    pub agent_name: String,
+    pub session_id: Option<String>,
+    pub request_id: String,
+    pub round_index: i32,
+    pub config_id: Option<i64>,
+    pub config_name: Option<String>,
+    pub provider: String,
+    pub model: String,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub total_tokens: i64,
+    pub finish_reason: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct TokenUsageFilter {
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub config_id: Option<i64>,
+    pub model: Option<String>,
+    pub agent_name: Option<String>,
+    pub session_id: Option<String>,
+    pub success_only: Option<bool>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TokenUsageSummary {
+    pub group_key: String,
+    pub group_label: String,
+    pub config_id: Option<i64>,
+    pub config_name: Option<String>,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub call_count: i64,
+    pub success_count: i64,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub total_tokens: i64,
+    pub last_used_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum TokenUsageGroupBy {
+    Day,
+    Model,
+    Config,
+    ConfigDay,
+}

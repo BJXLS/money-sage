@@ -1,10 +1,15 @@
 pub mod get_schema;
+pub mod quick_note_parse;
+pub mod quick_note_save;
 pub mod query_database;
 
 use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value;
 use sqlx::SqlitePool;
+use std::sync::Arc;
+
+use crate::telemetry::TokenUsageRecorder;
 
 pub const ALLOWED_TABLES: &[&str] = &["categories", "transactions", "budgets"];
 
@@ -32,10 +37,23 @@ pub struct LocalToolRegistry {
 }
 
 impl LocalToolRegistry {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(
+        pool: SqlitePool,
+        session_id: Option<String>,
+        token_recorder: Option<Arc<TokenUsageRecorder>>,
+    ) -> Self {
         let mut registry = Self { tools: Vec::new() };
         registry.tools.push(Box::new(get_schema::GetDatabaseSchemaTool::new(pool.clone())));
-        registry.tools.push(Box::new(query_database::QueryDatabaseTool::new(pool)));
+        registry.tools.push(Box::new(query_database::QueryDatabaseTool::new(pool.clone())));
+        registry.tools.push(Box::new(quick_note_parse::QuickNoteParseTool::new(
+            pool.clone(),
+            session_id.clone(),
+            token_recorder,
+        )));
+        registry.tools.push(Box::new(quick_note_save::QuickNoteSaveTool::new(
+            pool,
+            session_id,
+        )));
         registry
     }
 

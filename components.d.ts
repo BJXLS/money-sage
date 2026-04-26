@@ -14,6 +14,7 @@ declare module 'vue' {
     ElButton: typeof import('element-plus/es')['ElButton']
     ElButtonGroup: typeof import('element-plus/es')['ElButtonGroup']
     ElCard: typeof import('element-plus/es')['ElCard']
+    ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElCol: typeof import('element-plus/es')['ElCol']
     ElColorPicker: typeof import('element-plus/es')['ElColorPicker']
     ElContainer: typeof import('element-plus/es')['ElContainer']
@@ -21,6 +22,9 @@ declare module 'vue' {
     ElDialog: typeof import('element-plus/es')['ElDialog']
     ElDivider: typeof import('element-plus/es')['ElDivider']
     ElDrawer: typeof import('element-plus/es')['ElDrawer']
+    ElDropdown: typeof import('element-plus/es')['ElDropdown']
+    ElDropdownItem: typeof import('element-plus/es')['ElDropdownItem']
+    ElDropdownMenu: typeof import('element-plus/es')['ElDropdownMenu']
     ElEmpty: typeof import('element-plus/es')['ElEmpty']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
@@ -35,6 +39,7 @@ declare module 'vue' {
     ElProgress: typeof import('element-plus/es')['ElProgress']
     ElRow: typeof import('element-plus/es')['ElRow']
     ElSelect: typeof import('element-plus/es')['ElSelect']
+    ElSpace: typeof import('element-plus/es')['ElSpace']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTable: typeof import('element-plus/es')['ElTable']
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
@@ -44,6 +49,16 @@ declare module 'vue' {
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     LLMConfigDialog: typeof import('./src/components/LLMConfigDialog.vue')['default']
     McpConfigDialog: typeof import('./src/components/McpConfigDialog.vue')['default']
+    MemoryChangeList: typeof import('./src/components/MemoryChangeList.vue')['default']
+    MemoryFactEditor: typeof import('./src/components/MemoryFactEditor.vue')['default']
+    MemoryManagerDialog: typeof import('./src/components/MemoryManagerDialog.vue')['default']
+    PersonaPresetCard: typeof import('./src/components/PersonaPresetCard.vue')['default']
+    PersonaQuickSwitcher: typeof import('./src/components/PersonaQuickSwitcher.vue')['default']
+    PersonaTab: typeof import('./src/components/PersonaTab.vue')['default']
     QuickBookingDialog: typeof import('./src/components/QuickBookingDialog.vue')['default']
+    QuickNoteInlineConfirmCard: typeof import('./src/components/analysis/QuickNoteInlineConfirmCard.vue')['default']
+  }
+  export interface ComponentCustomProperties {
+    vLoading: typeof import('element-plus/es')['ElLoadingDirective']
   }
 }

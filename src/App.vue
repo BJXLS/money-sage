@@ -5,6 +5,8 @@ import DashboardView from './views/DashboardView.vue'
 import TransactionsView from './views/TransactionsView.vue'
 import CategoriesBudgetView from './views/CategoriesBudgetView.vue'
 import AnalysisView from './views/AnalysisView.vue'
+import MemoryView from './views/MemoryView.vue'
+import UsageStatsView from './views/UsageStatsView.vue'
 import QuickBookingDialog from './components/QuickBookingDialog.vue'
 import LLMConfigDialog from './components/LLMConfigDialog.vue'
 import McpConfigDialog from './components/McpConfigDialog.vue'
@@ -29,7 +31,9 @@ const getPageTitle = () => {
     dashboard: '仪表盘',
     transactions: '收支记录',
     'categories-budget': '分类与预算',
-    'smart-analysis': '智能分析'
+    'smart-analysis': '智能分析',
+    memory: '记忆管理',
+    'usage-stats': '用量统计'
   }
   return titles[activeMenu.value] || '记账本'
 }
@@ -99,6 +103,16 @@ onMounted(() => {
             <el-icon><ChatDotRound /></el-icon>
             <template #title>智能分析</template>
           </el-menu-item>
+
+          <el-menu-item index="memory">
+            <el-icon><Files /></el-icon>
+            <template #title>记忆管理</template>
+          </el-menu-item>
+
+          <el-menu-item index="usage-stats">
+            <el-icon><DataLine /></el-icon>
+            <template #title>用量统计</template>
+          </el-menu-item>
         </el-menu>
       </el-aside>
       
@@ -144,6 +158,12 @@ onMounted(() => {
           
           <!-- 智能分析 -->
           <AnalysisView v-else-if="activeMenu === 'smart-analysis'" />
+          
+          <!-- 记忆管理 -->
+          <MemoryView v-else-if="activeMenu === 'memory'" />
+
+          <!-- 用量统计 -->
+          <UsageStatsView v-else-if="activeMenu === 'usage-stats'" />
         </div>
       </el-main>
     </el-container>

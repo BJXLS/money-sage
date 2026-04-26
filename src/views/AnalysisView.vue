@@ -3,6 +3,9 @@ import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { marked } from 'marked'
+import PersonaQuickSwitcher from '../components/PersonaQuickSwitcher.vue'
+import QuickNoteInlineConfirmCard from '../components/analysis/QuickNoteInlineConfirmCard.vue'
+import { useAppStore, type QuickNoteDraft } from '../stores'
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -59,11 +62,12 @@ interface Message {
   loading?: boolean
   error?: boolean
   toolStatus?: string
-  messageType?: 'text' | 'tool_call' | 'tool_result'
+  messageType?: 'text' | 'tool_call' | 'tool_result' | 'quick_note_draft'
   toolName?: string
   toolInput?: string
   toolOutput?: string
   collapsed?: boolean
+  draft?: QuickNoteDraft
 }
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
@@ -93,6 +97,7 @@ const deleteConfirmId = ref<string | null>(null)
 // LLM 配置
 const llmConfigs = ref<LLMConfig[]>([])
 const selectedConfigId = ref<number | null>(null)
+const appStore = useAppStore()
 
 // 流式监听
 let currentUnlisten: UnlistenFn | null = null
@@ -272,6 +277,9 @@ const sendMessage = async (text?: string) => {
           toolOutput: ts.tool_output,
           collapsed: true,
         })
+        if (ts.tool_name === 'quick_note_parse') {
+          void loadPendingDraftMessages(sessionId.value)
+        }
         scrollToBottom()
         return
       }
@@ -380,10 +388,53 @@ const restoreSession = async (session: AnalysisSession) => {
 
     if (session.config_id) selectedConfigId.value = session.config_id
 
+    await loadPendingDraftMessages(session.id)
+
     await scrollToBottom()
   } catch (err) {
     console.error('恢复会话失败:', err)
   }
+}
+
+const loadPendingDraftMessages = async (sid: string) => {
+  const drafts = await appStore.fetchSessionPendingDrafts(sid)
+  if (sid !== sessionId.value) return
+  const tokens = await Promise.all(
+    drafts.map(draft =>
+      invoke<string>('get_quick_note_draft_token', { draftId: draft.draft_id }).catch(() => '')
+    )
+  )
+  if (sid !== sessionId.value) return
+  for (let i = 0; i < drafts.length; i++) {
+    const draft = drafts[i]
+    const token = tokens[i] || ''
+    const mergedDraft = { ...draft, confirmation_token: token || draft.confirmation_token }
+    const existingIndex = messages.value.findIndex(m => m.messageType === 'quick_note_draft' && m.draft?.draft_id === draft.draft_id)
+    if (existingIndex >= 0) {
+      messages.value[existingIndex] = {
+        ...messages.value[existingIndex],
+        draft: mergedDraft
+      }
+    } else {
+      messages.value.push({
+        id: ++msgIdCounter,
+        role: 'assistant',
+        content: '',
+        messageType: 'quick_note_draft',
+        draft: mergedDraft,
+      })
+    }
+  }
+}
+
+const handleConfirmDraft = async (payload: { draftId: string; token: string; items: any[] }) => {
+  await appStore.confirmQuickNoteDraft(payload.draftId, payload.token, payload.items)
+  messages.value = messages.value.filter(m => m.draft?.draft_id !== payload.draftId)
+}
+
+const handleCancelDraft = async (draftId: string) => {
+  await appStore.cancelQuickNoteDraft(draftId)
+  messages.value = messages.value.filter(m => m.draft?.draft_id !== draftId)
 }
 
 // ─── 删除历史会话 ─────────────────────────────────────────────────────────────
@@ -487,6 +538,7 @@ onUnmounted(() => {
           <span class="header-subtitle">ChatBI · 对话式财务分析</span>
         </div>
         <div class="header-right">
+          <PersonaQuickSwitcher scope="analysis" />
           <!-- 模型选择 -->
           <el-select
             v-if="llmConfigs.length > 0"
@@ -557,6 +609,16 @@ onUnmounted(() => {
                 <pre class="tool-result-code">{{ msg.toolOutput || msg.content }}</pre>
               </div>
             </div>
+          </div>
+
+          <div v-else-if="msg.messageType === 'quick_note_draft'" class="msg-ai-wrapper">
+            <div class="ai-avatar tool-avatar">🧾</div>
+            <QuickNoteInlineConfirmCard
+              v-if="msg.draft"
+              :draft="msg.draft"
+              @confirm="handleConfirmDraft"
+              @cancel="handleCancelDraft"
+            />
           </div>
 
           <!-- AI 文本消息 -->

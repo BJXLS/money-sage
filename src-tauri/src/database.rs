@@ -367,6 +367,121 @@ impl Database {
             )
         "#).execute(pool).await?;
 
+        // Memory facts（阶段一）
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS memory_facts (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                fact_type       TEXT NOT NULL
+                    CHECK (fact_type IN (
+                        'classification_rule','recurring_event',
+                        'financial_goal','user_profile','agent_role'
+                    )),
+                key             TEXT,
+                value_json      TEXT NOT NULL,
+                source          TEXT NOT NULL DEFAULT 'user'
+                    CHECK (source IN ('user','quick_note','analysis','recap','import','preset')),
+                confidence      REAL NOT NULL DEFAULT 0.7,
+                status          TEXT NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','provisional','superseded','retired')),
+                supersedes_id   INTEGER REFERENCES memory_facts(id),
+                origin_session  TEXT,
+                origin_message  INTEGER,
+                usage_count     INTEGER NOT NULL DEFAULT 0,
+                last_used_at    DATETIME,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
+
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS memory_facts_history (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                fact_id         INTEGER NOT NULL,
+                op              TEXT NOT NULL
+                    CHECK (op IN ('insert','update','retire','auto_merge','auto_decay','auto_retire','supersede','preset_apply','undo','rejected')),
+                actor           TEXT NOT NULL,
+                before_json     TEXT,
+                after_json      TEXT,
+                origin_session  TEXT,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_facts_type ON memory_facts(fact_type, status)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_facts_key ON memory_facts(fact_type, key)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_facts_status ON memory_facts(status, confidence)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_history_fact ON memory_facts_history(fact_id)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_history_time ON memory_facts_history(created_at DESC)").execute(pool).await?;
+
+        // Quick note drafts（Analysis 内联确认）
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS quick_note_drafts (
+                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                draft_id                TEXT NOT NULL UNIQUE,
+                session_id              TEXT NOT NULL,
+                source_message_id       INTEGER,
+                status                  TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','confirmed','cancelled')),
+                confirmation_token_hash TEXT NOT NULL,
+                created_by_tool_call_id TEXT,
+                confirmed_by_message_id INTEGER,
+                created_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES analysis_sessions(id) ON DELETE CASCADE
+            )
+        "#).execute(pool).await?;
+
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS quick_note_draft_items (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                draft_id            TEXT NOT NULL,
+                date                DATE NOT NULL,
+                amount              REAL NOT NULL,
+                transaction_type    TEXT NOT NULL CHECK (transaction_type IN ('income','expense')),
+                category_id         INTEGER,
+                budget_id           INTEGER,
+                description         TEXT,
+                note                TEXT,
+                raw_category_name   TEXT,
+                confidence          REAL NOT NULL DEFAULT 0.9,
+                sort_order          INTEGER NOT NULL DEFAULT 0,
+                created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (draft_id) REFERENCES quick_note_drafts(draft_id) ON DELETE CASCADE
+            )
+        "#).execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_qnd_session_status ON quick_note_drafts(session_id, status, updated_at DESC)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_qnd_items_draft ON quick_note_draft_items(draft_id, sort_order)").execute(pool).await?;
+
+        // Token 用量日志（每次 LLM 请求一行）
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS token_usage_logs (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name            TEXT NOT NULL,
+                session_id            TEXT,
+                request_id            TEXT NOT NULL,
+                round_index           INTEGER NOT NULL DEFAULT 0,
+                config_id             INTEGER,
+                config_name_snapshot  TEXT,
+                provider              TEXT NOT NULL,
+                model                 TEXT NOT NULL,
+                prompt_tokens         INTEGER NOT NULL DEFAULT 0,
+                completion_tokens     INTEGER NOT NULL DEFAULT 0,
+                total_tokens          INTEGER NOT NULL DEFAULT 0,
+                finish_reason         TEXT,
+                duration_ms           INTEGER,
+                success               INTEGER NOT NULL DEFAULT 1,
+                error_message         TEXT,
+                created_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_tul_created ON token_usage_logs(created_at DESC)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_tul_config  ON token_usage_logs(config_id, created_at DESC)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_tul_model   ON token_usage_logs(model, created_at DESC)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_tul_request ON token_usage_logs(request_id, round_index)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_tul_session ON token_usage_logs(session_id, created_at DESC)").execute(pool).await?;
+
         Ok(())
     }
 
@@ -1234,6 +1349,233 @@ impl Database {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    pub async fn list_pending_drafts_by_session(&self, session_id: &str) -> Result<Vec<QuickNoteDraft>> {
+        let draft_rows = sqlx::query(
+            "SELECT * FROM quick_note_drafts WHERE session_id = ? AND status = 'pending' ORDER BY updated_at DESC"
+        )
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut drafts = Vec::new();
+        for row in draft_rows {
+            let draft_id: String = row.get("draft_id");
+            let item_rows = sqlx::query(
+                "SELECT * FROM quick_note_draft_items WHERE draft_id = ? ORDER BY sort_order ASC, id ASC"
+            )
+            .bind(&draft_id)
+            .fetch_all(&self.pool)
+            .await?;
+
+            let items = item_rows.into_iter().map(|it| QuickNoteDraftItem {
+                id: it.get("id"),
+                draft_id: it.get("draft_id"),
+                date: it.get("date"),
+                amount: it.get("amount"),
+                transaction_type: it.get("transaction_type"),
+                category_id: it.try_get("category_id").ok(),
+                budget_id: it.try_get("budget_id").ok(),
+                description: it.try_get("description").ok(),
+                note: it.try_get("note").ok(),
+                raw_category_name: it.try_get("raw_category_name").ok(),
+                confidence: it.try_get("confidence").unwrap_or(0.9),
+                sort_order: it.try_get("sort_order").unwrap_or(0),
+                created_at: it.get("created_at"),
+                updated_at: it.get("updated_at"),
+            }).collect();
+
+            drafts.push(QuickNoteDraft {
+                id: row.get("id"),
+                draft_id,
+                session_id: row.get("session_id"),
+                source_message_id: row.try_get("source_message_id").ok(),
+                status: row.get("status"),
+                confirmation_token: None,
+                created_by_tool_call_id: row.try_get("created_by_tool_call_id").ok(),
+                confirmed_by_message_id: row.try_get("confirmed_by_message_id").ok(),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+                items,
+            });
+        }
+
+        Ok(drafts)
+    }
+
+    pub async fn create_quick_note_draft(&self, request: &CreateQuickNoteDraftRequest) -> Result<QuickNoteDraft> {
+        use sha2::{Digest, Sha256};
+        let token_raw = uuid::Uuid::new_v4().to_string();
+        let token_hash = format!("{:x}", Sha256::digest(token_raw.as_bytes()));
+        let draft_id = uuid::Uuid::new_v4().to_string();
+
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "INSERT INTO quick_note_drafts (
+                draft_id, session_id, source_message_id, status,
+                confirmation_token_hash, created_by_tool_call_id
+             ) VALUES (?, ?, ?, 'pending', ?, ?)"
+        )
+        .bind(&draft_id)
+        .bind(&request.session_id)
+        .bind(request.source_message_id)
+        .bind(token_hash)
+        .bind(&request.created_by_tool_call_id)
+        .execute(&mut *tx)
+        .await?;
+
+        for (idx, item) in request.items.iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO quick_note_draft_items (
+                    draft_id, date, amount, transaction_type, category_id, budget_id,
+                    description, note, raw_category_name, confidence, sort_order
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            )
+            .bind(&draft_id)
+            .bind(&item.date)
+            .bind(item.amount)
+            .bind(&item.transaction_type)
+            .bind(item.category_id)
+            .bind(item.budget_id)
+            .bind(&item.description)
+            .bind(&item.description)
+            .bind(&item.description)
+            .bind(0.9f64)
+            .bind(idx as i64)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        let mut drafts = self.list_pending_drafts_by_session(&request.session_id).await?;
+        let mut draft = drafts
+            .drain(..)
+            .find(|d| d.draft_id == draft_id)
+            .ok_or_else(|| anyhow::anyhow!("草稿创建后读取失败"))?;
+        draft.confirmation_token = Some(token_raw);
+        Ok(draft)
+    }
+
+    pub async fn confirm_quick_note_draft(&self, request: &ConfirmQuickNoteDraftRequest) -> Result<SaveTransactionsResult> {
+        use sha2::{Digest, Sha256};
+        let row = sqlx::query(
+            "SELECT status, confirmation_token_hash FROM quick_note_drafts WHERE draft_id = ?"
+        )
+        .bind(&request.draft_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("草稿不存在"))?;
+
+        let status: String = row.get("status");
+        if status == "confirmed" {
+            return Ok(SaveTransactionsResult {
+                success: true,
+                message: "草稿已确认，无需重复保存".to_string(),
+                saved_count: 0,
+                failed_count: 0,
+            });
+        }
+        if status != "pending" {
+            return Err(anyhow::anyhow!("草稿状态不可确认"));
+        }
+
+        let token_hash: String = row.get("confirmation_token_hash");
+        let req_hash = format!("{:x}", Sha256::digest(request.confirmation_token.as_bytes()));
+        if token_hash != req_hash {
+            return Err(anyhow::anyhow!("确认令牌无效"));
+        }
+
+        let mut tx = self.pool.begin().await?;
+        let mut saved_count = 0usize;
+        let mut failed_count = 0usize;
+        for item in &request.items {
+            let date = NaiveDate::parse_from_str(&item.date, "%Y-%m-%d")
+                .map_err(|_| anyhow::anyhow!("草稿存在无效日期: {}", item.date))?;
+            let new_tx = NewTransaction {
+                date,
+                r#type: item.transaction_type.clone(),
+                amount: item.amount,
+                category_id: item.category_id,
+                budget_id: item.budget_id,
+                description: Some(item.description.clone()),
+                note: Some(item.description.clone()),
+            };
+            let res = sqlx::query(
+                "INSERT INTO transactions (date, type, amount, category_id, budget_id, description, note, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            )
+            .bind(new_tx.date)
+            .bind(new_tx.r#type)
+            .bind(new_tx.amount)
+            .bind(new_tx.category_id)
+            .bind(new_tx.budget_id)
+            .bind(new_tx.description)
+            .bind(new_tx.note)
+            .bind(Utc::now())
+            .bind(Utc::now())
+            .execute(&mut *tx)
+            .await;
+            if res.is_ok() {
+                saved_count += 1;
+            } else {
+                failed_count += 1;
+            }
+        }
+
+        if failed_count == 0 && saved_count > 0 {
+            sqlx::query(
+                "UPDATE quick_note_drafts SET status='confirmed', updated_at=CURRENT_TIMESTAMP WHERE draft_id = ?"
+            )
+            .bind(&request.draft_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+
+        Ok(SaveTransactionsResult {
+            success: saved_count > 0 && failed_count == 0,
+            message: if failed_count == 0 {
+                format!("已保存 {} 条，草稿已确认", saved_count)
+            } else {
+                format!("已保存 {} 条，失败 {} 条，草稿保持待确认", saved_count, failed_count)
+            },
+            saved_count,
+            failed_count,
+        })
+    }
+
+    pub async fn cancel_quick_note_draft(&self, draft_id: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE quick_note_drafts SET status='cancelled', updated_at=CURRENT_TIMESTAMP WHERE draft_id = ? AND status='pending'"
+        )
+        .bind(draft_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn refresh_quick_note_draft_token(&self, draft_id: &str) -> Result<String> {
+        use sha2::{Digest, Sha256};
+        let token = uuid::Uuid::new_v4().to_string();
+        let token_hash = format!("{:x}", Sha256::digest(token.as_bytes()));
+        let result = sqlx::query(
+            "UPDATE quick_note_drafts
+             SET confirmation_token_hash = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE draft_id = ? AND status = 'pending'",
+        )
+        .bind(token_hash)
+        .bind(draft_id)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(anyhow::anyhow!("草稿不存在或已不可确认"));
+        }
+        Ok(token)
+    }
+
+    pub async fn get_quick_note_draft_token(&self, draft_id: &str) -> Result<String> {
+        self.refresh_quick_note_draft_token(draft_id).await
     }
 
     // ── MCP 服务器配置相关方法 ──────────────────────────────────────────

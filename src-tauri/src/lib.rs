@@ -3,12 +3,15 @@ use tauri::{Emitter, Manager, State};
 use chrono::NaiveDate;
 use anyhow::Result;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 mod models;
 mod database;
 mod utils;
 mod ai;
 mod mcp;
+mod memory;
+mod telemetry;
 
 #[cfg(test)]
 mod tests;
@@ -18,6 +21,8 @@ use models::*;
 
 pub struct DatabaseState {
     pub db: Database,
+    pub memory: Arc<memory::MemoryFacade>,
+    pub token_recorder: Arc<telemetry::TokenUsageRecorder>,
 }
 
 pub struct McpState {
@@ -298,7 +303,7 @@ async fn test_llm_connection(config: TestConnectionRequest) -> Result<String, St
 // 快速记账文本处理命令
 #[tauri::command]
 async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: String) -> Result<QuickBookingResult, String> {
-    use crate::ai::agent::{QuickNoteAgent, Agent};
+    use crate::ai::agent::QuickNoteAgent;
     
     // 验证输入
     if text.trim().is_empty() {
@@ -373,19 +378,72 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
             });
         }
     };
+
+    let memory_snapshot = state
+        .memory
+        .render_quick_note_snapshot()
+        .await
+        .unwrap_or_default();
     
     // 4. 使用AI模型解析文本（使用动态提示词）
     println!("🔥 [QuickBooking] 开始快速记账处理");
     println!("👤 [QuickBooking] 用户输入文本: {}", text);
     println!("🗂️ [QuickBooking] 当前可用分类数量: {}", all_categories.len());
     
-    let parse_result = match quick_note_agent.parse_quick_note_with_categories(&text, &all_categories, &http_client).await {
-        Ok(result) => {
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let parse_started = std::time::Instant::now();
+    let parse_outcome = quick_note_agent
+        .parse_quick_note_with_categories_reported(&text, &all_categories, &memory_snapshot, &http_client)
+        .await;
+
+    let parse_result = match parse_outcome {
+        Ok((result, report)) => {
             println!("✅ [QuickBooking] AI解析成功，共解析出{}条记录", result.transactions.len());
+            let usage_record = models::TokenUsageRecord {
+                agent_name: "QuickNoteAgent".into(),
+                session_id: None,
+                request_id: request_id.clone(),
+                round_index: 0,
+                config_id: Some(llm_config.id),
+                config_name_snapshot: Some(llm_config.config_name.clone()),
+                provider: llm_config.provider.clone(),
+                model: if report.model.is_empty() { llm_config.model.clone() } else { report.model.clone() },
+                prompt_tokens: report.usage.as_ref().map(|u| u.prompt_tokens as i32).unwrap_or(0),
+                completion_tokens: report.usage.as_ref().map(|u| u.completion_tokens as i32).unwrap_or(0),
+                total_tokens: report.usage.as_ref().map(|u| u.total_tokens as i32).unwrap_or(0),
+                finish_reason: report.finish_reason.clone(),
+                duration_ms: Some(report.duration_ms),
+                success: true,
+                error_message: None,
+            };
+            if let Err(e) = state.token_recorder.record(usage_record).await {
+                eprintln!("[QuickBooking] 记录 token 用量失败: {}", e);
+            }
             result
         },
         Err(e) => {
             println!("❌ [QuickBooking] AI解析失败: {}", e);
+            let duration_ms = parse_started.elapsed().as_millis() as i64;
+            let usage_record = models::TokenUsageRecord {
+                agent_name: "QuickNoteAgent".into(),
+                session_id: None,
+                request_id: request_id.clone(),
+                round_index: 0,
+                config_id: Some(llm_config.id),
+                config_name_snapshot: Some(llm_config.config_name.clone()),
+                provider: llm_config.provider.clone(),
+                model: llm_config.model.clone(),
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+                finish_reason: None,
+                duration_ms: Some(duration_ms),
+                success: false,
+                error_message: Some(e.to_string()),
+            };
+            if let Err(re) = state.token_recorder.record(usage_record).await {
+                eprintln!("[QuickBooking] 记录 token 用量失败: {}", re);
+            }
             return Ok(QuickBookingResult {
                 success: false,
                 message: format!("AI解析失败: {}", e),
@@ -678,6 +736,55 @@ async fn save_confirmed_transactions(
     })
 }
 
+#[tauri::command]
+async fn list_session_pending_drafts(
+    state: State<'_, DatabaseState>,
+    session_id: String,
+) -> Result<Vec<QuickNoteDraft>, String> {
+    let drafts = state
+        .db
+        .list_pending_drafts_by_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(drafts)
+}
+
+#[tauri::command]
+async fn get_quick_note_draft_token(
+    state: State<'_, DatabaseState>,
+    draft_id: String,
+) -> Result<String, String> {
+    state
+        .db
+        .get_quick_note_draft_token(&draft_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn confirm_quick_note_draft(
+    state: State<'_, DatabaseState>,
+    request: ConfirmQuickNoteDraftRequest,
+) -> Result<SaveTransactionsResult, String> {
+    state
+        .db
+        .confirm_quick_note_draft(&request)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cancel_quick_note_draft(
+    state: State<'_, DatabaseState>,
+    draft_id: String,
+) -> Result<(), String> {
+    state
+        .db
+        .cancel_quick_note_draft(&draft_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // 辅助函数：解析单行文本为交易记录（供您实现时参考）
 async fn parse_text_line_to_transaction(
     line: &str, 
@@ -724,6 +831,98 @@ async fn delete_analysis_session(
     session_id: String,
 ) -> Result<(), String> {
     db_state.db.delete_analysis_session(&session_id).await.map_err(|e| e.to_string())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Memory 阶段一命令
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn list_memory_facts(
+    state: State<'_, DatabaseState>,
+    filter: FactFilter,
+) -> Result<Vec<Fact>, String> {
+    state.memory.list_facts(filter).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn upsert_memory_fact(
+    state: State<'_, DatabaseState>,
+    input: UpsertInput,
+) -> Result<UpsertOutcome, String> {
+    state.memory.upsert_fact(input).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn edit_memory_fact(
+    state: State<'_, DatabaseState>,
+    id: i64,
+    patch: UpdateFact,
+) -> Result<(), String> {
+    state.memory.edit_fact(id, patch).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn retire_memory_fact(
+    state: State<'_, DatabaseState>,
+    id: i64,
+) -> Result<(), String> {
+    state.memory.retire_fact(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn undo_memory_change(
+    state: State<'_, DatabaseState>,
+    history_id: i64,
+) -> Result<(), String> {
+    state.memory.undo(history_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_memory_recent_changes(
+    state: State<'_, DatabaseState>,
+    limit: Option<i64>,
+) -> Result<Vec<HistoryEntry>, String> {
+    state
+        .memory
+        .list_recent_changes(limit.unwrap_or(100))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_agent_role(
+    state: State<'_, DatabaseState>,
+    scope: RoleScope,
+) -> Result<Option<Fact>, String> {
+    state.memory.get_role(scope).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_agent_role(
+    state: State<'_, DatabaseState>,
+    scope: RoleScope,
+    value: RoleValue,
+) -> Result<UpsertOutcome, String> {
+    state.memory.set_role(scope, value).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_role_presets(state: State<'_, DatabaseState>) -> Result<Vec<RolePreset>, String> {
+    Ok(state.memory.list_role_presets())
+}
+
+#[tauri::command]
+async fn apply_role_preset(
+    state: State<'_, DatabaseState>,
+    preset_id: String,
+    scope: RoleScope,
+) -> Result<UpsertOutcome, String> {
+    state
+        .memory
+        .apply_role_preset(preset_id, scope)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 流式分析：接收用户消息 → 构建上下文 → 调用 LLM（SSE）→ 工具调用循环 → 持久化
@@ -834,7 +1033,11 @@ async fn send_analysis_message_stream(
     };
 
     // 7. 创建本地工具注册表
-    let tool_registry = LocalToolRegistry::new(db_state.db.pool.clone());
+    let tool_registry = LocalToolRegistry::new(
+        db_state.db.pool.clone(),
+        Some(sid.clone()),
+        Some(db_state.token_recorder.clone()),
+    );
     let tools_json = tool_registry.all_as_openai_tools();
     let tools = if tools_json.is_empty() { None } else { Some(tools_json) };
 
@@ -846,7 +1049,16 @@ async fn send_analysis_message_stream(
         llm_config.enable_thinking,
     );
 
-    let system_prompt = agent.build_system_prompt_with_tools(&financial_context, mcp_ctx.as_ref());
+    let analysis_snapshot = db_state
+        .memory
+        .render_analysis_snapshot()
+        .await
+        .unwrap_or_default();
+    let system_prompt = format!(
+        "{}\n\n## Memory Snapshot\n{}",
+        agent.build_system_prompt_with_tools(&financial_context, mcp_ctx.as_ref()),
+        analysis_snapshot
+    );
     let mut messages: Vec<AIMessage> = vec![AIMessage::text("system", system_prompt)];
     let max_history = 20;
     let start = if history.len() > max_history { history.len() - max_history } else { 0 };
@@ -856,6 +1068,8 @@ async fn send_analysis_message_stream(
     // 9. Tool call loop：支持多轮工具调用
     const MAX_TOOL_ROUNDS: usize = 8;
     let mut full_content = String::new();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let mut round_index: i32 = 0;
 
     for _round in 0..MAX_TOOL_ROUNDS {
         let ai_request = crate::utils::http_client::AIRequest {
@@ -872,16 +1086,46 @@ async fn send_analysis_message_stream(
             tool_choice: None,
         };
 
+        let round_started = std::time::Instant::now();
         let mut response = match http_client.chat_completion_stream(ai_request).await {
             Ok(r) => r,
-            Err(e) => { emit_err(&app, &sid, format!("请求失败: {}", e)); return Ok(()); }
+            Err(e) => {
+                let duration_ms = round_started.elapsed().as_millis() as i64;
+                let rec = models::TokenUsageRecord {
+                    agent_name: "AnalysisAgent".into(),
+                    session_id: Some(sid.clone()),
+                    request_id: request_id.clone(),
+                    round_index,
+                    config_id: Some(llm_config.id),
+                    config_name_snapshot: Some(llm_config.config_name.clone()),
+                    provider: llm_config.provider.clone(),
+                    model: llm_config.model.clone(),
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                    finish_reason: None,
+                    duration_ms: Some(duration_ms),
+                    success: false,
+                    error_message: Some(e.to_string()),
+                };
+                if let Err(re) = db_state.token_recorder.record(rec).await {
+                    eprintln!("[Analysis] 记录 token 用量失败: {}", re);
+                }
+                emit_err(&app, &sid, format!("请求失败: {}", e));
+                return Ok(());
+            }
         };
 
-        // 解析 SSE，同时收集 content 和 tool_calls
+        // 解析 SSE，同时收集 content / tool_calls / usage
         let mut round_content = String::new();
         let mut tool_calls_acc: std::collections::HashMap<usize, (String, String, String)> = std::collections::HashMap::new();
         let mut finish_reason = String::new();
         let mut buffer = String::new();
+        let mut usage_prompt: i32 = 0;
+        let mut usage_completion: i32 = 0;
+        let mut usage_total: i32 = 0;
+        let mut response_model = String::new();
+        let mut stream_error: Option<String> = None;
 
         loop {
             match response.chunk().await {
@@ -897,6 +1141,20 @@ async fn send_analysis_message_stream(
                         if data == "[DONE]" { continue; }
 
                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                            // 服务端在末尾块返回的模型名 / usage
+                            if let Some(m) = json["model"].as_str() {
+                                if response_model.is_empty() {
+                                    response_model = m.to_string();
+                                }
+                            }
+                            if let Some(usage) = json["usage"].as_object() {
+                                usage_prompt = usage.get("prompt_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                usage_completion = usage.get("completion_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                usage_total = usage.get("total_tokens").and_then(|v| v.as_i64()).unwrap_or(
+                                    (usage_prompt + usage_completion) as i64,
+                                ) as i32;
+                            }
+
                             // 文本内容 delta
                             if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
                                 if !content.is_empty() {
@@ -939,10 +1197,39 @@ async fn send_analysis_message_stream(
                 }
                 Ok(None) => break,
                 Err(e) => {
-                    emit_err(&app, &sid, format!("流式读取失败: {}", e));
-                    return Ok(());
+                    stream_error = Some(format!("流式读取失败: {}", e));
+                    break;
                 }
             }
+        }
+
+        // 记录本轮 token 用量
+        let duration_ms = round_started.elapsed().as_millis() as i64;
+        let rec = models::TokenUsageRecord {
+            agent_name: "AnalysisAgent".into(),
+            session_id: Some(sid.clone()),
+            request_id: request_id.clone(),
+            round_index,
+            config_id: Some(llm_config.id),
+            config_name_snapshot: Some(llm_config.config_name.clone()),
+            provider: llm_config.provider.clone(),
+            model: if response_model.is_empty() { llm_config.model.clone() } else { response_model.clone() },
+            prompt_tokens: usage_prompt,
+            completion_tokens: usage_completion,
+            total_tokens: usage_total,
+            finish_reason: if finish_reason.is_empty() { None } else { Some(finish_reason.clone()) },
+            duration_ms: Some(duration_ms),
+            success: stream_error.is_none(),
+            error_message: stream_error.clone(),
+        };
+        if let Err(re) = db_state.token_recorder.record(rec).await {
+            eprintln!("[Analysis] 记录 token 用量失败: {}", re);
+        }
+        round_index += 1;
+
+        if let Some(err_msg) = stream_error {
+            emit_err(&app, &sid, err_msg);
+            return Ok(());
         }
 
         // 判断是否需要执行工具
@@ -1057,6 +1344,47 @@ async fn send_analysis_message_stream(
     let _ = db_state.db.touch_analysis_session(&sid).await;
 
     Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Token 用量统计命令
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn list_token_usage(
+    state: State<'_, DatabaseState>,
+    filter: Option<TokenUsageFilter>,
+) -> Result<Vec<TokenUsageEntry>, String> {
+    state
+        .token_recorder
+        .list(filter.unwrap_or_default())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_token_usage_summary(
+    state: State<'_, DatabaseState>,
+    group_by: TokenUsageGroupBy,
+    filter: Option<TokenUsageFilter>,
+) -> Result<Vec<TokenUsageSummary>, String> {
+    state
+        .token_recorder
+        .summary(group_by, filter.unwrap_or_default())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn purge_token_usage_logs(
+    state: State<'_, DatabaseState>,
+    before: String,
+) -> Result<u64, String> {
+    state
+        .token_recorder
+        .purge_before(&before)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1192,7 +1520,10 @@ pub fn run() {
                 match Database::new(&database_url).await {
                     Ok(db) => {
                         println!("数据库初始化成功");
-                        app_handle.manage(DatabaseState { db });
+                        let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
+                        let _ = memory.seed_default_roles().await;
+                        let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
+                        app_handle.manage(DatabaseState { db, memory, token_recorder });
                     }
                     Err(e) => {
                         eprintln!("数据库初始化失败: {}", e);
@@ -1202,7 +1533,10 @@ pub fn run() {
                         match Database::new(&simple_url).await {
                             Ok(db) => {
                                 println!("使用简单URL格式成功");
-                                app_handle.manage(DatabaseState { db });
+                                let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
+                                let _ = memory.seed_default_roles().await;
+                                let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
+                                app_handle.manage(DatabaseState { db, memory, token_recorder });
                             }
                             Err(e) => {
                                 eprintln!("简单URL格式也失败: {}", e);
@@ -1210,7 +1544,10 @@ pub fn run() {
                                 match Database::new("sqlite::memory:").await {
                                     Ok(db) => {
                                         println!("内存数据库初始化成功");
-                                        app_handle.manage(DatabaseState { db });
+                                        let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
+                                        let _ = memory.seed_default_roles().await;
+                                        let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
+                                        app_handle.manage(DatabaseState { db, memory, token_recorder });
                                     }
                                     Err(e) => {
                                         eprintln!("内存数据库也失败: {}", e);
@@ -1254,10 +1591,29 @@ pub fn run() {
             test_llm_connection,
             process_quick_booking_text,
             save_confirmed_transactions,
+            list_session_pending_drafts,
+            get_quick_note_draft_token,
+            confirm_quick_note_draft,
+            cancel_quick_note_draft,
             get_analysis_sessions,
             get_analysis_messages,
             delete_analysis_session,
             send_analysis_message_stream,
+            // Memory 命令
+            list_memory_facts,
+            upsert_memory_fact,
+            edit_memory_fact,
+            retire_memory_fact,
+            undo_memory_change,
+            list_memory_recent_changes,
+            get_agent_role,
+            set_agent_role,
+            list_role_presets,
+            apply_role_preset,
+            // Token 用量命令
+            list_token_usage,
+            get_token_usage_summary,
+            purge_token_usage_logs,
             // MCP 命令
             get_mcp_servers,
             create_mcp_server,

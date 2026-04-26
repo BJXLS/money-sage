@@ -93,6 +93,129 @@ export interface CategoryStats {
   percentage: number
 }
 
+export type FactType = 'classification_rule' | 'recurring_event' | 'financial_goal' | 'user_profile' | 'agent_role'
+export type FactStatus = 'active' | 'provisional' | 'superseded' | 'retired'
+export type RoleScope = 'global' | 'quick_note' | 'analysis'
+
+export interface MemoryFact {
+  id: number
+  fact_type: FactType
+  key?: string
+  value_json: any
+  source: string
+  confidence: number
+  status: FactStatus
+  updated_at: string
+  created_at: string
+}
+
+export interface MemoryHistoryEntry {
+  id: number
+  fact_id: number
+  op: string
+  actor: string
+  before_json?: any
+  after_json?: any
+  created_at: string
+}
+
+export interface RolePreset {
+  preset_id: string
+  display_name: string
+  summary: string
+  value: any
+}
+
+export interface RoleTone {
+  style?: string
+  emoji?: boolean
+  verbosity?: string
+  language_flavor?: string
+}
+
+export interface RoleValue {
+  scope: RoleScope
+  display_name?: string
+  self_reference?: string
+  user_address?: string
+  tone?: RoleTone
+  traits?: string[]
+  do?: string[]
+  dont?: string[]
+  preset_id?: string
+  notes?: string
+}
+
+export interface QuickNoteDraftItem {
+  id: number
+  draft_id: string
+  date: string
+  amount: number
+  transaction_type: 'income' | 'expense'
+  category_id?: number | null
+  budget_id?: number | null
+  description?: string
+  note?: string
+}
+
+export interface QuickNoteDraft {
+  id: number
+  draft_id: string
+  session_id: string
+  status: string
+  confirmation_token?: string
+  items: QuickNoteDraftItem[]
+}
+
+export type TokenUsageGroupBy = 'day' | 'model' | 'config' | 'config_day'
+
+export interface TokenUsageEntry {
+  id: number
+  agent_name: string
+  session_id?: string | null
+  request_id: string
+  round_index: number
+  config_id?: number | null
+  config_name?: string | null
+  provider: string
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  finish_reason?: string | null
+  duration_ms?: number | null
+  success: boolean
+  error_message?: string | null
+  created_at: string
+}
+
+export interface TokenUsageFilter {
+  start_date?: string
+  end_date?: string
+  config_id?: number
+  model?: string
+  agent_name?: string
+  session_id?: string
+  success_only?: boolean
+  limit?: number
+  offset?: number
+}
+
+export interface TokenUsageSummary {
+  group_key: string
+  group_label: string
+  config_id?: number | null
+  config_name?: string | null
+  provider?: string | null
+  model?: string | null
+  call_count: number
+  success_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  last_used_at?: string | null
+}
+
 export const useAppStore = defineStore('app', () => {
   // 状态
   const categories = ref<Category[]>([])
@@ -100,6 +223,10 @@ export const useAppStore = defineStore('app', () => {
   const budgets = ref<BudgetProgress[]>([])
   const monthlyStats = ref<MonthlyStats[]>([])
   const categoryStats = ref<CategoryStats[]>([])
+  const memoryFacts = ref<MemoryFact[]>([])
+  const memoryChanges = ref<MemoryHistoryEntry[]>([])
+  const rolePresets = ref<RolePreset[]>([])
+  const pendingDrafts = ref<QuickNoteDraft[]>([])
   const loading = ref(false)
   const currentPage = ref(1)
   const pageSize = ref(20)
@@ -447,6 +574,103 @@ export const useAppStore = defineStore('app', () => {
       loading.value = false
     }
   }
+
+  const fetchMemoryFacts = async (factType?: FactType, status?: FactStatus) => {
+    const result = await safeInvoke<MemoryFact[]>('list_memory_facts', {
+      filter: {
+        fact_type: factType,
+        status,
+      }
+    })
+    memoryFacts.value = result || []
+    return memoryFacts.value
+  }
+
+  const upsertMemoryFact = async (input: any) => {
+    return await invoke('upsert_memory_fact', { input })
+  }
+
+  const editMemoryFact = async (id: number, patch: any) => {
+    await invoke('edit_memory_fact', { id, patch })
+  }
+
+  const retireMemoryFact = async (id: number) => {
+    await invoke('retire_memory_fact', { id })
+  }
+
+  const fetchMemoryChanges = async (limit = 100) => {
+    const result = await safeInvoke<MemoryHistoryEntry[]>('list_memory_recent_changes', { limit })
+    memoryChanges.value = result || []
+    return memoryChanges.value
+  }
+
+  const undoMemoryChange = async (historyId: number) => {
+    await invoke('undo_memory_change', { historyId })
+  }
+
+  const fetchRolePresets = async () => {
+    const result = await safeInvoke<RolePreset[]>('list_role_presets')
+    rolePresets.value = result || []
+    return rolePresets.value
+  }
+
+  const applyRolePreset = async (presetId: string, scope: RoleScope) => {
+    return await invoke('apply_role_preset', { presetId, scope })
+  }
+
+  const getAgentRole = async (scope: RoleScope) => {
+    return await safeInvoke<MemoryFact>('get_agent_role', { scope })
+  }
+
+  const setAgentRole = async (scope: RoleScope, value: RoleValue) => {
+    return await invoke('set_agent_role', { scope, value })
+  }
+
+  const fetchSessionPendingDrafts = async (sessionId: string) => {
+    const result = await safeInvoke<QuickNoteDraft[]>('list_session_pending_drafts', { sessionId })
+    pendingDrafts.value = result || []
+    return pendingDrafts.value
+  }
+
+  const confirmQuickNoteDraft = async (draftId: string, confirmationToken: string, items: any[]) => {
+    return await invoke('confirm_quick_note_draft', {
+      request: {
+        draft_id: draftId,
+        confirmation_token: confirmationToken,
+        items,
+      }
+    })
+  }
+
+  const cancelQuickNoteDraft = async (draftId: string) => {
+    await invoke('cancel_quick_note_draft', { draftId })
+  }
+
+  // ── Token 用量统计 ────────────────────────────────────────────────────
+  const tokenUsageEntries = ref<TokenUsageEntry[]>([])
+  const tokenUsageSummary = ref<TokenUsageSummary[]>([])
+
+  const listTokenUsage = async (filter?: TokenUsageFilter) => {
+    const result = await safeInvoke<TokenUsageEntry[]>('list_token_usage', { filter })
+    tokenUsageEntries.value = result || []
+    return tokenUsageEntries.value
+  }
+
+  const getTokenUsageSummary = async (
+    groupBy: TokenUsageGroupBy,
+    filter?: TokenUsageFilter,
+  ) => {
+    const result = await safeInvoke<TokenUsageSummary[]>('get_token_usage_summary', {
+      groupBy,
+      filter,
+    })
+    tokenUsageSummary.value = result || []
+    return tokenUsageSummary.value
+  }
+
+  const purgeTokenUsageLogs = async (before: string) => {
+    return await invoke<number>('purge_token_usage_logs', { before })
+  }
   
   return {
     // 状态
@@ -455,6 +679,12 @@ export const useAppStore = defineStore('app', () => {
     budgets,
     monthlyStats,
     categoryStats,
+    memoryFacts,
+    memoryChanges,
+    rolePresets,
+    pendingDrafts,
+    tokenUsageEntries,
+    tokenUsageSummary,
     loading,
     currentPage,
     pageSize,
@@ -491,6 +721,22 @@ export const useAppStore = defineStore('app', () => {
     deleteBudget,
     importCSV,
     exportCSV,
-    initializeData
+    initializeData,
+    fetchMemoryFacts,
+    upsertMemoryFact,
+    editMemoryFact,
+    retireMemoryFact,
+    fetchMemoryChanges,
+    undoMemoryChange,
+    fetchRolePresets,
+    applyRolePreset,
+    getAgentRole,
+    setAgentRole,
+    fetchSessionPendingDrafts,
+    confirmQuickNoteDraft,
+    cancelQuickNoteDraft,
+    listTokenUsage,
+    getTokenUsageSummary,
+    purgeTokenUsageLogs,
   }
 }) 

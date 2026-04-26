@@ -328,10 +328,15 @@ impl AIHttpClient {
         match &self.config.provider {
             AIProvider::OpenAI | AIProvider::Local | AIProvider::Custom(_) => {
                 let enable_thinking = request.enable_thinking;
+                let stream_on = request.stream.unwrap_or(false);
                 let mut body = serde_json::to_value(&request)?;
                 // 阿里百炼额外要求在 parameters 中再传一次
                 if enable_thinking {
                     body["parameters"] = json!({ "enable_thinking": true });
+                }
+                // 流式请求时附带 stream_options.include_usage，让服务端在最终块中返回 usage
+                if stream_on {
+                    body["stream_options"] = json!({ "include_usage": true });
                 }
                 Ok(body)
             }

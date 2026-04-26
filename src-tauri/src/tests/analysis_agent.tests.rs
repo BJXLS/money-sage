@@ -4,7 +4,7 @@ mod tests {
     use reqwest::Client;
     use serde_json::{json, Value};
 
-    const API_KEY: &str = "sk-90140f4fffb44b65bee452cf5e4100c1";
+    const API_KEY_ENV: &str = "DASHSCOPE_API_KEY";
     const API_URL: &str = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
     const MODEL: &str = "qwen-plus";
 
@@ -20,6 +20,12 @@ mod tests {
     /// # 返回
     /// 模型回复的文本内容（choices[0].message.content）
     async fn call_llm(messages: Value) -> String {
+        let api_key = std::env::var(API_KEY_ENV).unwrap_or_default();
+        assert!(
+            !api_key.trim().is_empty(),
+            "未设置 {}，无法运行真实 LLM 测试",
+            API_KEY_ENV
+        );
         let body = json!({
             "model": MODEL,
             "messages": messages
@@ -28,7 +34,7 @@ mod tests {
         let client = Client::new();
         let response = client
             .post(API_URL)
-            .header("Authorization", format!("Bearer {}", API_KEY))
+            .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .json(&body)
             .send()

@@ -21,8 +21,17 @@ use std::collections::HashMap;
 use anyhow::Result;
 use chrono::{Local, NaiveDate};
 
-use crate::utils::http_client::AIHttpClient;
+use crate::utils::http_client::{AIHttpClient, AIUsage};
 use super::base::{Agent, AgentConfig, AgentContext, AgentResult};
+
+/// 单次 AI 调用的元数据，便于上报到 token_usage_logs
+#[derive(Debug, Clone, Default)]
+pub struct AICallReport {
+    pub usage: Option<AIUsage>,
+    pub finish_reason: Option<String>,
+    pub model: String,
+    pub duration_ms: i64,
+}
 
 /// 快速记账交易记录
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,11 +158,16 @@ impl QuickNoteAgent {
 
 ## 额外信息
 1. 今天是{#current_date}
+2. 记忆快照（高优先级）：
+{#memory_snapshot}
 "#.to_string()
     }
     
     /// 根据数据库分类数据构建完整的系统提示词
-    pub fn build_dynamic_system_prompt(categories: &[crate::models::Category]) -> String {
+    pub fn build_dynamic_system_prompt(
+        categories: &[crate::models::Category],
+        memory_snapshot: &str,
+    ) -> String {
         use std::collections::HashMap;
         use chrono::Local;
         
@@ -194,17 +208,33 @@ impl QuickNoteAgent {
         // 填充当前日期
         let current_date = Local::now().format("%Y-%m-%d").to_string();
         template = template.replace("{#current_date}", &current_date);
+        template = template.replace("{#memory_snapshot}", memory_snapshot);
         
         template
     }
     
-    /// 解析快速记账文本（使用动态系统提示词）
+    /// 解析快速记账文本（兼容签名）
     pub async fn parse_quick_note_with_categories(
-        &self, 
-        input: &str, 
+        &self,
+        input: &str,
         categories: &[crate::models::Category],
-        client: &AIHttpClient
+        memory_snapshot: &str,
+        client: &AIHttpClient,
     ) -> Result<QuickNoteResult> {
+        let (result, _) = self
+            .parse_quick_note_with_categories_reported(input, categories, memory_snapshot, client)
+            .await?;
+        Ok(result)
+    }
+
+    /// 解析快速记账文本（动态提示词），同时返回 AI 调用的元数据用于 token 用量上报
+    pub async fn parse_quick_note_with_categories_reported(
+        &self,
+        input: &str,
+        categories: &[crate::models::Category],
+        memory_snapshot: &str,
+        client: &AIHttpClient,
+    ) -> Result<(QuickNoteResult, AICallReport)> {
         use crate::utils::http_client::{AIRequest, AIMessage};
         
         println!("🚀 [QuickNote] 开始处理快速记账请求");
@@ -214,7 +244,7 @@ impl QuickNoteAgent {
         self.validate_input(input)?;
         
         // 构建动态系统提示词
-        let system_prompt = Self::build_dynamic_system_prompt(categories);
+        let system_prompt = Self::build_dynamic_system_prompt(categories, memory_snapshot);
         println!("🤖 [QuickNote] 动态系统提示词已构建，包含{}个分类", categories.len());
         println!("📋 [QuickNote] 系统提示词内容:\n{}", system_prompt);
         
@@ -257,8 +287,10 @@ impl QuickNoteAgent {
         
         // 调用AI模型
         println!("⏳ [QuickNote] 正在调用AI模型...");
+        let started = std::time::Instant::now();
         let response = client.chat_completion(request).await?;
-        
+        let duration_ms = started.elapsed().as_millis() as i64;
+
         println!("✅ [QuickNote] AI响应成功");
         println!("📥 [QuickNote] AI响应详情:");
         println!("   ID: {}", response.id);
@@ -287,6 +319,13 @@ impl QuickNoteAgent {
             println!("   AI解释: {}", explanation);
         }
         
+        let report = AICallReport {
+            usage: response.usage.clone(),
+            finish_reason: response.choices.get(0).and_then(|c| c.finish_reason.clone()),
+            model: response.model.clone(),
+            duration_ms,
+        };
+
         for (index, transaction) in result.transactions.iter().enumerate() {
             println!("   交易{}:", index + 1);
             println!("     日期: {}", transaction.date);
@@ -296,7 +335,7 @@ impl QuickNoteAgent {
             println!("     备注: {}", transaction.remark);
         }
         
-        Ok(result)
+        Ok((result, report))
     }
     
     /// 解析快速记账文本（兼容旧版本）

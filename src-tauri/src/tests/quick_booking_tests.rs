@@ -30,7 +30,9 @@ mod tests {
     async fn test_process_quick_booking_text_no_llm_config() {
         // 创建没有LLM配置的数据库
         let db = Database::new("sqlite::memory:").await.unwrap();
-        let db_state = DatabaseState { db };
+        let memory = std::sync::Arc::new(crate::memory::MemoryFacade::new(db.pool.clone()));
+        let token_recorder = std::sync::Arc::new(crate::telemetry::TokenUsageRecorder::new(db.pool.clone()));
+        let db_state = DatabaseState { db, memory, token_recorder };
         
         let result = test_process_quick_booking_with_mock_ai(
             &db_state,
@@ -325,14 +327,8 @@ mod tests {
         
         // 测试构建AI请求
         let messages = vec![
-            AIMessage {
-                role: "system".to_string(),
-                content: "你是一个记账助手".to_string(),
-            },
-            AIMessage {
-                role: "user".to_string(),
-                content: "今天花了30元吃午餐".to_string(),
-            },
+            AIMessage::text("system", "你是一个记账助手"),
+            AIMessage::text("user", "今天花了30元吃午餐"),
         ];
         
         let request = AIRequest {
@@ -345,6 +341,8 @@ mod tests {
             presence_penalty: Some(0.1),
             stream: None,
             enable_thinking: false,
+            tools: None,
+            tool_choice: None,
         };
         
         // 验证请求字段
@@ -358,9 +356,9 @@ mod tests {
         
         // 验证消息内容
         assert_eq!(request.messages[0].role, "system");
-        assert_eq!(request.messages[0].content, "你是一个记账助手");
+        assert_eq!(request.messages[0].content.as_deref(), Some("你是一个记账助手"));
         assert_eq!(request.messages[1].role, "user");
-        assert_eq!(request.messages[1].content, "今天花了30元吃午餐");
+        assert_eq!(request.messages[1].content.as_deref(), Some("今天花了30元吃午餐"));
     }
     
     #[tokio::test]
@@ -376,10 +374,7 @@ mod tests {
             choices: vec![
                 AIChoice {
                     index: 0,
-                    message: AIMessage {
-                        role: "assistant".to_string(),
-                        content: r#"{"transactions":[{"date":"2025-01-20","amount":30.0,"transaction_type":"expense","category":"餐饮","remark":"午餐"}]}"#.to_string(),
-                    },
+                    message: AIMessage::text("assistant", r#"{"transactions":[{"date":"2025-01-20","amount":30.0,"transaction_type":"expense","category":"餐饮","remark":"午餐"}]}"#),
                     finish_reason: Some("stop".to_string()),
                 }
             ],
@@ -394,7 +389,7 @@ mod tests {
         assert_eq!(response.id, "test-response-123");
         assert_eq!(response.choices.len(), 1);
         assert_eq!(response.choices[0].message.role, "assistant");
-        assert!(response.choices[0].message.content.contains("transactions"));
+        assert!(response.choices[0].message.content_text().contains("transactions"));
         
         // 验证Token使用情况
         let usage = response.usage.unwrap();
@@ -444,7 +439,7 @@ mod tests {
         // 验证代理配置
         assert_eq!(agent.name(), "QuickNoteAgent");
         assert!(agent.description().contains("AI agent for parsing natural language"));
-        assert_eq!(agent.config().model, "qwen-turbo");
+        assert!(!agent.config().model.is_empty());
         assert_eq!(agent.config().temperature, 0.3);
         assert!(!agent.config().enable_memory);
         
@@ -630,10 +625,15 @@ mod tests {
         use std::collections::HashMap;
         
         // 创建阿里云百炼客户端配置
+        let api_key = std::env::var("DASHSCOPE_API_KEY").unwrap_or_default();
+        if api_key.trim().is_empty() {
+            println!("⚠️ 跳过真实请求测试：未设置 DASHSCOPE_API_KEY");
+            return;
+        }
         let config = ClientConfig {
             provider: AIProvider::Custom("Alibaba".to_string()),
             base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
-            api_key: "sk-90140f4fffb44b65bee452cf5e4100c1".to_string(), // 这里使用测试API密钥
+            api_key,
             timeout_secs: 30,
             max_retries: 3,
             headers: HashMap::new(),
@@ -650,14 +650,8 @@ mod tests {
         
         // 构建请求消息
         let messages = vec![
-            AIMessage {
-                role: "system".to_string(),
-                content: system_prompt,
-            },
-            AIMessage {
-                role: "user".to_string(),
-                content: "我今天吃了早饭，花了10块钱；昨天晚饭花了12块钱".to_string(),
-            },
+            AIMessage::text("system", system_prompt),
+            AIMessage::text("user", "我今天吃了早饭，花了10块钱；昨天晚饭花了12块钱"),
         ];
         
         // 创建AI请求
@@ -671,6 +665,8 @@ mod tests {
             presence_penalty: None,
             stream: None,
             enable_thinking: false,
+            tools: None,
+            tool_choice: None,
         };
         
         // 发送请求
@@ -692,7 +688,7 @@ mod tests {
                 println!("  创建时间: {}", ai_response.created);
                 
                 if let Some(first_choice) = ai_response.choices.first() {
-                    println!("  响应内容: {}", first_choice.message.content);
+                    println!("  响应内容: {}", first_choice.message.content_text());
                     println!("  完成原因: {:?}", first_choice.finish_reason);
                 }
                 
@@ -706,7 +702,7 @@ mod tests {
                 // 验证响应格式
                 assert!(!ai_response.id.is_empty(), "响应ID不能为空");
                 assert!(!ai_response.choices.is_empty(), "响应choices不能为空");
-                assert!(!ai_response.choices[0].message.content.is_empty(), "响应内容不能为空");
+                assert!(!ai_response.choices[0].message.content_text().is_empty(), "响应内容不能为空");
                 
                 println!("🎉 测试通过！");
             }

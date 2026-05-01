@@ -21,7 +21,10 @@ const pageSize = 50
 const currentFilter = computed<TokenUsageFilter>(() => {
   const f: TokenUsageFilter = {}
   if (dateRange.value && dateRange.value[0]) f.start_date = `${dateRange.value[0]} 00:00:00`
-  if (dateRange.value && dateRange.value[1]) f.end_date = `${dateRange.value[1]} 23:59:59`
+  // 后端 SQL 使用 `< end_date`，这里传次日零点确保结束日整天被覆盖
+  if (dateRange.value && dateRange.value[1]) {
+    f.end_date = dayjs(dateRange.value[1]).add(1, 'day').format('YYYY-MM-DD 00:00:00')
+  }
   if (configFilter.value != null) f.config_id = configFilter.value
   if (modelFilter.value.trim()) f.model = modelFilter.value.trim()
   if (successOnly.value) f.success_only = true
@@ -33,8 +36,9 @@ const refresh = async () => {
   try {
     const filter = currentFilter.value
     const [byConfig, byModel, list] = await Promise.all([
-      store.getTokenUsageSummary('config', filter).then(() => structuredClone(store.tokenUsageSummary)),
-      store.getTokenUsageSummary('model', filter).then(() => structuredClone(store.tokenUsageSummary)),
+      // 直接使用每次调用返回值，避免并发时读取共享 state 导致统计串数据
+      store.getTokenUsageSummary('config', filter).then((res) => structuredClone(res || [])),
+      store.getTokenUsageSummary('model', filter).then((res) => structuredClone(res || [])),
       store.listTokenUsage({ ...filter, limit: pageSize, offset: (page.value - 1) * pageSize }),
     ])
     configSummary.value = byConfig as TokenUsageSummary[]

@@ -167,6 +167,44 @@ export interface QuickNoteDraft {
   items: QuickNoteDraftItem[]
 }
 
+export type DataExportFormat = 'excel' | 'money_sage'
+export type ImportConflictStrategy = 'skip' | 'upsert' | 'replace_all'
+
+export interface ExportDataResult {
+  file_path: string
+  categories: number
+  budgets: number
+  transactions: number
+  memory_facts: number
+}
+
+export interface ImportPreviewItem {
+  table: string
+  rows: number
+  estimated_insert: number
+  estimated_update: number
+  estimated_skip: number
+}
+
+export interface ImportPreviewResult {
+  file_type: string
+  schema_version?: number
+  checksum_valid?: boolean
+  items: ImportPreviewItem[]
+  warnings: string[]
+}
+
+export interface ImportDataResult {
+  categories: number
+  budgets: number
+  transactions: number
+  memory_facts: number
+  inserted: number
+  updated: number
+  skipped: number
+  warnings: string[]
+}
+
 export type TokenUsageGroupBy = 'day' | 'model' | 'config' | 'config_day'
 
 export interface TokenUsageEntry {
@@ -557,6 +595,29 @@ export const useAppStore = defineStore('app', () => {
       throw error
     }
   }
+
+  const previewImportData = async (filePath: string) => {
+    return await invoke<ImportPreviewResult>('preview_import_data', { filePath })
+  }
+
+  const importDataFile = async (filePath: string, strategy: ImportConflictStrategy) => {
+    const result = await invoke<ImportDataResult>('import_data_file', {
+      request: { file_path: filePath, strategy }
+    })
+    await Promise.all([
+      fetchCategories(),
+      fetchTransactions(),
+      fetchMonthlyStats(),
+      fetchBudgets()
+    ])
+    return result
+  }
+
+  const exportDataFile = async (filePath: string, format: DataExportFormat) => {
+    return await invoke<ExportDataResult>('export_data_file', {
+      request: { file_path: filePath, format }
+    })
+  }
   
   // 初始化数据
   const initializeData = async () => {
@@ -721,6 +782,9 @@ export const useAppStore = defineStore('app', () => {
     deleteBudget,
     importCSV,
     exportCSV,
+    previewImportData,
+    importDataFile,
+    exportDataFile,
     initializeData,
     fetchMemoryFacts,
     upsertMemoryFact,

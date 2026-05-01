@@ -17,6 +17,7 @@
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-opener": "^2",
     "@vueuse/core": "^11.2.0",
     "dayjs": "^1.11.13",

@@ -37,6 +37,8 @@ declare module 'vue' {
     ElOption: typeof import('element-plus/es')['ElOption']
     ElOptionGroup: typeof import('element-plus/es')['ElOptionGroup']
     ElProgress: typeof import('element-plus/es')['ElProgress']
+    ElRadio: typeof import('element-plus/es')['ElRadio']
+    ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElRow: typeof import('element-plus/es')['ElRow']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSpace: typeof import('element-plus/es')['ElSpace']

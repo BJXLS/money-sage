@@ -12,6 +12,7 @@ mod ai;
 mod mcp;
 mod memory;
 mod telemetry;
+mod data_io;
 
 #[cfg(test)]
 mod tests;
@@ -223,6 +224,36 @@ async fn export_csv_transactions(state: State<'_, DatabaseState>, file_path: Str
     
     writer.flush().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+async fn preview_import_data(
+    state: State<'_, DatabaseState>,
+    file_path: String,
+) -> Result<ImportPreviewResult, String> {
+    data_io::preview_import(&state.db.pool, &file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn import_data_file(
+    state: State<'_, DatabaseState>,
+    request: ImportDataRequest,
+) -> Result<ImportDataResult, String> {
+    data_io::import_data(&state.db.pool, request)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn export_data_file(
+    state: State<'_, DatabaseState>,
+    request: ExportDataRequest,
+) -> Result<ExportDataResult, String> {
+    data_io::export_data(&state.db.pool, request)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ── 大模型配置相关命令（泛化重设计）────────────────────────────────────
@@ -1583,6 +1614,9 @@ pub fn run() {
             delete_budget,
             import_transactions,
             export_csv_transactions,
+            preview_import_data,
+            import_data_file,
+            export_data_file,
             get_llm_configs,
             get_active_llm_config,
             save_llm_config,

@@ -287,6 +287,76 @@ pub struct SaveTransactionsResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 数据导入导出
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum DataExportFormat {
+    Excel,
+    MoneySage,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExportDataRequest {
+    pub file_path: String,
+    pub format: DataExportFormat,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExportDataResult {
+    pub file_path: String,
+    pub categories: usize,
+    pub budgets: usize,
+    pub transactions: usize,
+    pub memory_facts: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ImportConflictStrategy {
+    Skip,
+    Upsert,
+    ReplaceAll,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImportPreviewItem {
+    pub table: String,
+    pub rows: usize,
+    pub estimated_insert: usize,
+    pub estimated_update: usize,
+    pub estimated_skip: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImportPreviewResult {
+    pub file_type: String,
+    pub schema_version: Option<i32>,
+    pub checksum_valid: Option<bool>,
+    pub items: Vec<ImportPreviewItem>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImportDataRequest {
+    pub file_path: String,
+    pub strategy: ImportConflictStrategy,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImportDataResult {
+    pub categories: usize,
+    pub budgets: usize,
+    pub transactions: usize,
+    pub memory_facts: usize,
+    pub inserted: usize,
+    pub updated: usize,
+    pub skipped: usize,
+    pub warnings: Vec<String>,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 智能分析 (ChatBI) 相关结构
 // ─────────────────────────────────────────────────────────────────────────────
 

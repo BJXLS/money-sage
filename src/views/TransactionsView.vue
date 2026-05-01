@@ -7,6 +7,11 @@
         <span class="current-month">{{ currentMonthText }}</span>
         <el-button @click="nextMonth" :icon="ArrowRight" size="small" />
       </div>
+      <div class="data-tools">
+        <el-button size="small" @click="handleExportExcel">导出 Excel</el-button>
+        <el-button size="small" @click="handleExportBackup">导出备份</el-button>
+        <el-button size="small" type="primary" @click="handlePickImportFile">导入数据</el-button>
+      </div>
     </div>
 
     <!-- 日历视图 -->
@@ -283,6 +288,58 @@
         </div>
       </div>
     </el-dialog>
+
+    <el-dialog v-model="showImportDialog" title="导入数据" width="640px">
+      <div class="import-panel">
+        <p v-if="importFilePath"><strong>文件：</strong>{{ importFilePath }}</p>
+        <p v-if="importPreview"><strong>类型：</strong>{{ importPreview.file_type }}</p>
+        <p v-if="importPreview?.schema_version !== undefined">
+          <strong>Schema：</strong>v{{ importPreview?.schema_version }}
+        </p>
+        <el-alert
+          v-if="importPreview?.checksum_valid === false"
+          title="备份校验失败：文件可能已被篡改，系统将拒绝导入"
+          type="error"
+          :closable="false"
+          style="margin-top: 8px"
+        />
+        <el-table v-if="importPreview" :data="importPreview.items" size="small" style="margin-top: 8px">
+          <el-table-column prop="table" label="数据表" width="180" />
+          <el-table-column prop="rows" label="行数" />
+          <el-table-column prop="estimated_insert" label="预计新增" />
+          <el-table-column prop="estimated_update" label="预计更新" />
+          <el-table-column prop="estimated_skip" label="预计跳过" />
+        </el-table>
+        <el-alert
+          v-for="(w, idx) in importWarnings"
+          :key="idx"
+          :title="w"
+          type="warning"
+          :closable="false"
+          style="margin-top: 8px"
+        />
+        <el-form label-width="120px" style="margin-top: 12px">
+          <el-form-item label="冲突策略">
+            <el-radio-group v-model="importStrategy">
+              <el-radio label="upsert">更新并插入（推荐）</el-radio>
+              <el-radio label="skip">冲突跳过</el-radio>
+              <el-radio label="replace_all">清空后全量导入</el-radio>
+            </el-radio-group>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="showImportDialog = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="importing"
+          :disabled="importPreview?.checksum_valid === false"
+          @click="confirmImport"
+        >
+          确认导入
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -291,7 +348,9 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, ArrowDown, Money, Edit, Delete } from '@element-plus/icons-vue'
 import { useAppStore } from '../stores'
+import type { ImportConflictStrategy, ImportPreviewResult } from '../stores'
 import dayjs from 'dayjs'
+import { open, save } from '@tauri-apps/plugin-dialog'
 
 const store = useAppStore()
 
@@ -299,6 +358,12 @@ const store = useAppStore()
 const currentDate = ref(dayjs())
 const selectedDate = ref(dayjs().format('YYYY-MM-DD'))
 const showRecordDialog = ref(false)
+const showImportDialog = ref(false)
+const importing = ref(false)
+const importFilePath = ref('')
+const importPreview = ref<ImportPreviewResult | null>(null)
+const importWarnings = ref<string[]>([])
+const importStrategy = ref<ImportConflictStrategy>('upsert')
 
 // 分类选择相关
 const showCategoryPanel = ref(false)
@@ -525,6 +590,99 @@ const formatTime = (dateTime: string) => {
   return dayjs(dateTime).format('HH:mm')
 }
 
+const normalizeDialogPath = (picked: string | string[] | null) => {
+  if (!picked) return null
+  if (Array.isArray(picked)) return picked[0] || null
+  return picked
+}
+
+const handleExportExcel = async () => {
+  try {
+    const filePath = await save({
+      title: '导出 Excel',
+      defaultPath: `money-note-export-${dayjs().format('YYYYMMDD-HHmmss')}.xlsx`,
+      filters: [{ name: 'Excel 文件', extensions: ['xlsx'] }]
+    })
+    const path = normalizeDialogPath(filePath)
+    if (!path) return
+    const result = await store.exportDataFile(path, 'excel')
+    ElMessage.success(`导出成功：${result.transactions} 条交易`)
+  } catch (e: any) {
+    ElMessage.error(`导出失败：${e?.toString?.() || e}`)
+  }
+}
+
+const handleExportBackup = async () => {
+  try {
+    const filePath = await save({
+      title: '导出 MoneySage 备份',
+      defaultPath: `money-note-backup-${dayjs().format('YYYYMMDD-HHmmss')}.moneysage`,
+      filters: [{ name: 'MoneySage 备份', extensions: ['moneysage', 'json'] }]
+    })
+    const path = normalizeDialogPath(filePath)
+    if (!path) return
+    const result = await store.exportDataFile(path, 'money_sage')
+    ElMessage.success(`备份成功：${result.transactions} 条交易，${result.memory_facts} 条记忆`)
+  } catch (e: any) {
+    ElMessage.error(`备份失败：${e?.toString?.() || e}`)
+  }
+}
+
+const handlePickImportFile = async () => {
+  try {
+    const picked = await open({
+      title: '选择导入文件',
+      multiple: false,
+      filters: [
+        { name: '支持文件', extensions: ['xlsx', 'moneysage', 'json'] },
+        { name: 'Excel 文件', extensions: ['xlsx'] },
+        { name: 'MoneySage 文件', extensions: ['moneysage', 'json'] }
+      ]
+    })
+    const path = normalizeDialogPath(picked)
+    if (!path) return
+    importFilePath.value = path
+    const preview = await store.previewImportData(path)
+    importPreview.value = preview
+    importWarnings.value = preview.warnings || []
+    showImportDialog.value = true
+  } catch (e: any) {
+    ElMessage.error(`读取导入预览失败：${e?.toString?.() || e}`)
+  }
+}
+
+const confirmImport = async () => {
+  if (!importFilePath.value) {
+    ElMessage.warning('请先选择导入文件')
+    return
+  }
+
+  if (importStrategy.value === 'replace_all') {
+    try {
+      await ElMessageBox.confirm(
+        '你选择了“清空后全量导入”，会覆盖当前数据。是否继续？',
+        '高风险操作确认',
+        { type: 'warning', confirmButtonText: '继续导入', cancelButtonText: '取消' }
+      )
+    } catch {
+      return
+    }
+  }
+
+  importing.value = true
+  try {
+    const result = await store.importDataFile(importFilePath.value, importStrategy.value)
+    showImportDialog.value = false
+    ElMessage.success(
+      `导入完成：新增 ${result.inserted}，更新 ${result.updated}，跳过 ${result.skipped}（分类 ${result.categories} / 预算 ${result.budgets} / 交易 ${result.transactions} / 记忆 ${result.memory_facts}）`
+    )
+  } catch (e: any) {
+    ElMessage.error(`导入失败：${e?.toString?.() || e}`)
+  } finally {
+    importing.value = false
+  }
+}
+
 // 分类选择相关方法
 const toggleCategoryPanel = () => {
   showCategoryPanel.value = !showCategoryPanel.value
@@ -622,6 +780,11 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+}
+
+.data-tools {
+  display: flex;
+  gap: 8px;
 }
 
 .date-navigation {
@@ -753,6 +916,10 @@ onUnmounted(() => {
 
 .record-form {
   color: #e2e8f0;
+}
+
+.import-panel {
+  color: #cbd5e1;
 }
 
 .date-header {

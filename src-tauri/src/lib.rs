@@ -1037,6 +1037,7 @@ async fn send_analysis_message_stream(
         db_state.db.pool.clone(),
         Some(sid.clone()),
         Some(db_state.token_recorder.clone()),
+        db_state.memory.clone(),
     );
     let tools_json = tool_registry.all_as_openai_tools();
     let tools = if tools_json.is_empty() { None } else { Some(tools_json) };

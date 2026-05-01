@@ -5,6 +5,7 @@ use crate::memory::config::MemoryConfig;
 use crate::memory::facts::FactsStore;
 use crate::memory::history::HistoryStore;
 use crate::memory::role::default_presets;
+use crate::memory::search::{MemorySearchBackend, SearchQuery, SearchResult};
 use crate::memory::snapshot::{SnapshotAgent, SnapshotBuilder};
 use crate::models::{
     Fact, FactFilter, HistoryEntry, RolePreset, RoleScope, RoleValue, UpdateFact, UpsertInput, UpsertOutcome,
@@ -15,6 +16,7 @@ pub struct MemoryFacade {
     facts: std::sync::Arc<FactsStore>,
     history: std::sync::Arc<HistoryStore>,
     snapshots: std::sync::Arc<SnapshotBuilder>,
+    search: std::sync::Arc<MemorySearchBackend>,
 }
 
 impl MemoryFacade {
@@ -23,8 +25,13 @@ impl MemoryFacade {
         Self {
             facts: std::sync::Arc::new(FactsStore::new(pool.clone(), cfg.clone())),
             history: std::sync::Arc::new(HistoryStore::new(pool.clone())),
-            snapshots: std::sync::Arc::new(SnapshotBuilder::new(pool, cfg)),
+            snapshots: std::sync::Arc::new(SnapshotBuilder::new(pool.clone(), cfg)),
+            search: std::sync::Arc::new(MemorySearchBackend::new(pool)),
         }
+    }
+
+    pub async fn search(&self, query: SearchQuery) -> Result<SearchResult> {
+        self.search.search(query).await
     }
 
     pub async fn seed_default_roles(&self) -> Result<()> {

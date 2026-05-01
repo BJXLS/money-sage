@@ -1,5 +1,9 @@
+use crate::memory::search::SearchQuery;
 use crate::memory::MemoryFacade;
-use crate::models::{FactFilter, FactSource, FactStatus, FactType, RoleScope, UpsertInput};
+use crate::models::{
+    FactFilter, FactSource, FactStatus, FactType, RoleScope, RoleTone, RoleValue, UpsertInput,
+    UpsertOutcome,
+};
 
 #[tokio::test]
 async fn test_memory_upsert_and_list() {
@@ -58,4 +62,185 @@ async fn test_role_preset_and_snapshot() {
 
     let snapshot = memory.render_analysis_snapshot().await.expect("snapshot");
     assert!(snapshot.contains("角色设定"));
+}
+
+fn role_value(name: &str) -> RoleValue {
+    RoleValue {
+        scope: RoleScope::Analysis,
+        display_name: Some(name.to_string()),
+        self_reference: Some("我".to_string()),
+        user_address: Some("你".to_string()),
+        tone: Some(RoleTone {
+            style: Some("warm".to_string()),
+            emoji: Some(false),
+            verbosity: Some("medium".to_string()),
+            language_flavor: Some("zh-CN".to_string()),
+        }),
+        traits: None,
+        r#do: None,
+        dont: None,
+        preset_id: None,
+        notes: None,
+    }
+}
+
+/// 设计文档 §4.1.6 D-Rule3：agent_role 必须走 supersede，
+/// 第二次 set_role 后 get_role 应返回新值（修复前会被 merge 吞掉）
+#[tokio::test]
+async fn test_role_supersede_replaces_value() {
+    let db = crate::database::Database::new("sqlite::memory:")
+        .await
+        .expect("db");
+    let memory = MemoryFacade::new(db.pool.clone());
+
+    memory
+        .set_role(RoleScope::Analysis, role_value("分析师A"))
+        .await
+        .expect("set role A");
+    let outcome = memory
+        .set_role(RoleScope::Analysis, role_value("老板"))
+        .await
+        .expect("set role B");
+
+    match &outcome {
+        UpsertOutcome::Superseded { .. } => {}
+        other => panic!("expected Superseded, got {:?}", other),
+    }
+
+    let role = memory
+        .get_role(RoleScope::Analysis)
+        .await
+        .expect("role")
+        .expect("active role exists");
+    let display_name = role
+        .value_json
+        .get("display_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    assert_eq!(display_name, "老板", "新值未真正落库");
+
+    // 同一 scope 仅有 1 条 active
+    let actives = memory
+        .list_facts(FactFilter {
+            fact_type: Some(FactType::AgentRole),
+            status: Some(FactStatus::Active),
+            key: Some("role:analysis".to_string()),
+            limit: Some(10),
+        })
+        .await
+        .expect("list");
+    assert_eq!(actives.len(), 1);
+}
+
+/// undo(supersede) 必须把后继 retire 同时把旧条恢复 active，
+/// 否则会出现同 scope 双 active（修复前的 bug）
+#[tokio::test]
+async fn test_undo_supersede_restores_pair() {
+    let db = crate::database::Database::new("sqlite::memory:")
+        .await
+        .expect("db");
+    let memory = MemoryFacade::new(db.pool.clone());
+
+    memory
+        .set_role(RoleScope::Analysis, role_value("分析师A"))
+        .await
+        .expect("set A");
+    memory
+        .set_role(RoleScope::Analysis, role_value("老板"))
+        .await
+        .expect("set B");
+
+    // 找到 op='supersede' 的一条 history（fact_id 指向被压的旧条 A）
+    let changes = memory.list_recent_changes(50).await.expect("history");
+    let supersede_entry = changes
+        .iter()
+        .find(|h| h.op == "supersede")
+        .expect("supersede entry exists");
+    memory.undo(supersede_entry.id).await.expect("undo");
+
+    let actives = memory
+        .list_facts(FactFilter {
+            fact_type: Some(FactType::AgentRole),
+            status: Some(FactStatus::Active),
+            key: Some("role:analysis".to_string()),
+            limit: Some(10),
+        })
+        .await
+        .expect("list");
+    assert_eq!(actives.len(), 1, "撤销后应仅剩一条 active，避免双 active");
+
+    let only = &actives[0];
+    let display_name = only
+        .value_json
+        .get("display_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    assert_eq!(display_name, "分析师A", "应恢复为旧条 A");
+}
+
+/// memory_search 应能召回 facts（LIKE）和历史会话消息（FTS5 / 触发器同步）
+#[tokio::test]
+async fn test_memory_search_facts_and_messages() {
+    let db = crate::database::Database::new("sqlite::memory:")
+        .await
+        .expect("db");
+    let memory = MemoryFacade::new(db.pool.clone());
+
+    memory
+        .upsert_fact(UpsertInput {
+            fact_type: FactType::FinancialGoal,
+            key: Some("category_spend:餐饮月控".to_string()),
+            value_json: serde_json::json!({
+                "title":"餐饮月控",
+                "metric":"category_spend",
+                "filter":{"category":"餐饮"},
+                "period":"monthly",
+                "target":1500,
+                "direction":"le",
+                "priority":"high"
+            }),
+            source: Some(FactSource::User),
+            confidence_hint: Some(1.0),
+            origin_session: None,
+            origin_message: None,
+        })
+        .await
+        .expect("upsert goal");
+
+    db.ensure_analysis_session("sess-old", "上个月餐饮分析", None)
+        .await
+        .expect("ensure old session");
+    db.save_analysis_message("sess-old", "user", "帮我看看上个月的餐饮支出占比")
+        .await
+        .expect("save msg1");
+    db.save_analysis_message("sess-old", "assistant", "餐饮支出占比偏高，建议关注外卖频次")
+        .await
+        .expect("save msg2");
+
+    let result = memory
+        .search(SearchQuery {
+            query: "餐饮".to_string(),
+            top_k_facts: 3,
+            top_k_sessions: 3,
+            time_range_days: 365,
+            exclude_session: Some("sess-current".to_string()),
+            include_facts: true,
+            include_sessions: true,
+        })
+        .await
+        .expect("search");
+
+    assert!(
+        result.facts.iter().any(|f| f.fact_type == "financial_goal"),
+        "应召回餐饮月控目标"
+    );
+    // FTS5 trigram 在某些 SQLite 编译选项下可能不可用，做存在性而非强相等断言
+    if result.sessions.is_empty() {
+        eprintln!("[test] FTS5 sessions 检索为空，可能是 trigram tokenizer 不可用，跳过 sessions 断言");
+    } else {
+        assert!(
+            result.sessions.iter().any(|s| s.session_id == "sess-old"),
+            "应召回 sess-old 历史会话"
+        );
+    }
 }

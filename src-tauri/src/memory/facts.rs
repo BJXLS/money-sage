@@ -56,6 +56,11 @@ impl FactsStore {
 
     pub async fn upsert(&self, mut input: UpsertInput) -> Result<UpsertOutcome> {
         let source = input.source.clone().unwrap_or(FactSource::User);
+        // 设计文档 §4.1.8(4)：AgentRole 来自 Analysis 时 confidence 钳到 [0, 0.75]，
+        // 给 user (1.0) 和 preset (0.9) 留出足够空间，避免 LLM 写入碾压用户偏好。
+        if input.fact_type == FactType::AgentRole && source == FactSource::Analysis {
+            input.confidence_hint = Some(input.confidence_hint.unwrap_or(0.7).min(0.75).max(0.0));
+        }
         if source != FactSource::User {
             if let Err(reason) = scan_for_injection(&input) {
                 self.log_rejected(&input, source.as_str(), &reason).await?;
@@ -289,18 +294,42 @@ impl FactsStore {
         let op: String = r.get("op");
         let before_json: Option<String> = r.try_get("before_json").ok();
 
+        let mut tx = self.pool.begin().await?;
         match op.as_str() {
             "insert" | "preset_apply" => {
-                sqlx::query("UPDATE memory_facts SET status='retired', updated_at=CURRENT_TIMESTAMP WHERE id=?")
-                    .bind(fact_id)
-                    .execute(&self.pool)
+                // 检查这条 fact 是否由 supersede 创建（supersedes_id 非空）。
+                // 若是，需要在退役新条的同时，把被压过的旧条恢复为 active。
+                let predecessor_id: Option<i64> = sqlx::query_scalar(
+                    "SELECT supersedes_id FROM memory_facts WHERE id = ?",
+                )
+                .bind(fact_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .flatten();
+
+                sqlx::query(
+                    "UPDATE memory_facts SET status='retired', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                )
+                .bind(fact_id)
+                .execute(&mut *tx)
+                .await?;
+
+                if let Some(pid) = predecessor_id {
+                    sqlx::query(
+                        "UPDATE memory_facts SET status='active', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    )
+                    .bind(pid)
+                    .execute(&mut *tx)
                     .await?;
+                }
             }
             "retire" => {
-                sqlx::query("UPDATE memory_facts SET status='active', updated_at=CURRENT_TIMESTAMP WHERE id=?")
-                    .bind(fact_id)
-                    .execute(&self.pool)
-                    .await?;
+                sqlx::query(
+                    "UPDATE memory_facts SET status='active', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                )
+                .bind(fact_id)
+                .execute(&mut *tx)
+                .await?;
             }
             "update" | "auto_merge" => {
                 if let Some(before) = before_json {
@@ -319,21 +348,41 @@ impl FactsStore {
                         .bind(confidence)
                         .bind(status)
                         .bind(fact_id)
-                        .execute(&self.pool)
+                        .execute(&mut *tx)
                         .await?;
                     }
                 }
             }
             "supersede" => {
-                sqlx::query("UPDATE memory_facts SET status='active', updated_at=CURRENT_TIMESTAMP WHERE id=?")
-                    .bind(fact_id)
-                    .execute(&self.pool)
+                // history.fact_id 指向被压的旧条，需同时把后继(supersedes_id=fact_id)退役
+                let successor_id: Option<i64> = sqlx::query_scalar(
+                    "SELECT id FROM memory_facts WHERE supersedes_id = ? AND status != 'retired' ORDER BY id DESC LIMIT 1",
+                )
+                .bind(fact_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+
+                if let Some(sid) = successor_id {
+                    sqlx::query(
+                        "UPDATE memory_facts SET status='retired', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    )
+                    .bind(sid)
+                    .execute(&mut *tx)
                     .await?;
+                }
+
+                sqlx::query(
+                    "UPDATE memory_facts SET status='active', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                )
+                .bind(fact_id)
+                .execute(&mut *tx)
+                .await?;
             }
             _ => {}
         }
 
-        self.insert_history(
+        self.insert_history_with_tx(
+            &mut tx,
             fact_id,
             "undo",
             "user",
@@ -343,6 +392,7 @@ impl FactsStore {
         )
         .await?;
 
+        tx.commit().await?;
         Ok(())
     }
 
@@ -561,13 +611,9 @@ fn normalize_key(key: Option<String>) -> Option<String> {
 fn semantic_equivalent(old: &Fact, input: &UpsertInput) -> bool {
     match input.fact_type {
         FactType::AgentRole => {
-            let old_scope = old.value_json.get("scope").and_then(|x| x.as_str()).unwrap_or("global");
-            let new_scope = input
-                .value_json
-                .get("scope")
-                .and_then(|x| x.as_str())
-                .unwrap_or("global");
-            old_scope == new_scope
+            // agent_role 永不走 merge：scope 单例约束 + value 任意差异都视为冲突，
+            // 交给 arbitrate -> Supersede，永远保留旧版本可 undo（设计文档 §4.1.6 D-Rule3）
+            false
         }
         FactType::ClassificationRule => {
             let old_pattern = old.value_json.get("pattern").and_then(|x| x.as_str()).unwrap_or("").to_lowercase();

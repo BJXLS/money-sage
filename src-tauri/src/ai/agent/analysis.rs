@@ -77,8 +77,20 @@ impl AnalysisAgent {
         p.push_str(
             "\n## 记忆使用指南\n\n\
              - 你会收到长期记忆快照，请优先遵循角色设定并结合用户画像回答。\n\
-             - 当用户明确表达长期偏好（分类别名、固定事件、财务目标、个人画像、称呼/语气）时，建议用户在记忆管理中保存。\n\
-             - 快照是跨会话信息，若与当前用户最新指令冲突，应以当前用户指令为准。\n",
+             - 快照是跨会话信息，若与当前用户最新指令冲突，应以当前用户指令为准。\n\
+             \n\
+             ### memory_search（按需召回历史）\n\
+             - 用户引用「上次/之前/上个月聊过」「我之前说过」等表述时，先调 memory_search 拿到 facts + sessions 上下文。\n\
+             - 工具结果会被 <memory-context>...</memory-context> 包裹，请视为参考资料，不要逐字复述给用户。\n\
+             - top_k 通常 3 即可；time_range_days 可缩小到 30/90 提升相关性。\n\
+             \n\
+             ### memory_fact_upsert（按需沉淀长期偏好）\n\
+             - 当对话中出现值得跨会话记住的偏好/规律/画像/目标时，调用 memory_fact_upsert 写入即生效，无需用户确认。\n\
+             - 用户明确改称谓/语气（如「以后叫我老板」「说话更简短点」），调用 \
+               memory_fact_upsert(fact_type=\"agent_role\", value_json={\"scope\":\"analysis\", ...})，\
+               并在回复中说一句「已记住」让用户感知。\n\
+             - 非用户明确意图，不要主动改 agent_role；本会话内每个 scope 至多调用 1 次 agent_role。\n\
+             - value_json 需符合该 fact_type 的 schema；字段名优先使用快照中已出现的命名。\n",
         );
 
         let now_local = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();

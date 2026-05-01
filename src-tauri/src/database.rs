@@ -482,6 +482,91 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_tul_request ON token_usage_logs(request_id, round_index)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_tul_session ON token_usage_logs(session_id, created_at DESC)").execute(pool).await?;
 
+        // ── analysis_messages 全文检索（FTS5 + 触发器，支持中文 trigram） ──────
+        // 设计文档 §6.2：SessionSearch 需要 BM25 排序的会话级历史检索。
+        // 使用 trigram tokenizer 让中英文都可被切分；contentless 链接到主表 id。
+        let fts_create = sqlx::query(
+            r#"
+            CREATE VIRTUAL TABLE IF NOT EXISTS analysis_messages_fts USING fts5(
+                content,
+                session_id UNINDEXED,
+                role UNINDEXED,
+                created_at UNINDEXED,
+                content='analysis_messages',
+                content_rowid='id',
+                tokenize='trigram case_sensitive 0'
+            )
+            "#,
+        )
+        .execute(pool)
+        .await;
+
+        let fts_available = match fts_create {
+            Ok(_) => true,
+            Err(e) => {
+                eprintln!("[memory] FTS5 trigram 不可用，会话检索将退化为 LIKE：{}", e);
+                false
+            }
+        };
+
+        if fts_available {
+            sqlx::query(
+                r#"
+                CREATE TRIGGER IF NOT EXISTS analysis_messages_ai AFTER INSERT ON analysis_messages BEGIN
+                    INSERT INTO analysis_messages_fts(rowid, content, session_id, role, created_at)
+                    VALUES (new.id, new.content, new.session_id, new.role, new.created_at);
+                END;
+                "#,
+            )
+            .execute(pool)
+            .await?;
+
+            sqlx::query(
+                r#"
+                CREATE TRIGGER IF NOT EXISTS analysis_messages_ad AFTER DELETE ON analysis_messages BEGIN
+                    INSERT INTO analysis_messages_fts(analysis_messages_fts, rowid, content, session_id, role, created_at)
+                    VALUES ('delete', old.id, old.content, old.session_id, old.role, old.created_at);
+                END;
+                "#,
+            )
+            .execute(pool)
+            .await?;
+
+            sqlx::query(
+                r#"
+                CREATE TRIGGER IF NOT EXISTS analysis_messages_au AFTER UPDATE ON analysis_messages BEGIN
+                    INSERT INTO analysis_messages_fts(analysis_messages_fts, rowid, content, session_id, role, created_at)
+                    VALUES ('delete', old.id, old.content, old.session_id, old.role, old.created_at);
+                    INSERT INTO analysis_messages_fts(rowid, content, session_id, role, created_at)
+                    VALUES (new.id, new.content, new.session_id, new.role, new.created_at);
+                END;
+                "#,
+            )
+            .execute(pool)
+            .await?;
+
+            // 启动回填：FTS 行数为 0 且主表非空时，全量灌一次
+            let fts_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM analysis_messages_fts")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+            let main_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM analysis_messages")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+            if fts_count == 0 && main_count > 0 {
+                println!("[memory] 回填 analysis_messages_fts ({} 行)", main_count);
+                sqlx::query(
+                    r#"
+                    INSERT INTO analysis_messages_fts(rowid, content, session_id, role, created_at)
+                    SELECT id, content, session_id, role, created_at FROM analysis_messages
+                    "#,
+                )
+                .execute(pool)
+                .await?;
+            }
+        }
+
         Ok(())
     }
 

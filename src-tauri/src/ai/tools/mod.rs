@@ -1,4 +1,6 @@
 pub mod get_schema;
+pub mod memory_fact_upsert;
+pub mod memory_search;
 pub mod quick_note_parse;
 pub mod quick_note_save;
 pub mod query_database;
@@ -9,6 +11,7 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
+use crate::memory::MemoryFacade;
 use crate::telemetry::TokenUsageRecorder;
 
 pub const ALLOWED_TABLES: &[&str] = &["categories", "transactions", "budgets"];
@@ -41,6 +44,7 @@ impl LocalToolRegistry {
         pool: SqlitePool,
         session_id: Option<String>,
         token_recorder: Option<Arc<TokenUsageRecorder>>,
+        memory: Arc<MemoryFacade>,
     ) -> Self {
         let mut registry = Self { tools: Vec::new() };
         registry.tools.push(Box::new(get_schema::GetDatabaseSchemaTool::new(pool.clone())));
@@ -52,6 +56,14 @@ impl LocalToolRegistry {
         )));
         registry.tools.push(Box::new(quick_note_save::QuickNoteSaveTool::new(
             pool,
+            session_id.clone(),
+        )));
+        registry.tools.push(Box::new(memory_search::MemorySearchTool::new(
+            memory.clone(),
+            session_id.clone(),
+        )));
+        registry.tools.push(Box::new(memory_fact_upsert::MemoryFactUpsertTool::new(
+            memory,
             session_id,
         )));
         registry

@@ -2,14 +2,14 @@
 
 # 💰 MoneySage
 
-一款现代化的智能记账应用，采用 AI 辅助快速记账
+一款现代化的智能记账桌面应用，结合 AI 快速记账、对话式财务分析与本地数据存储
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8DB.svg)](https://tauri.app)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D.svg)](https://vuejs.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://rust-lang.org)
 
-[功能特性](#功能特性) • [快速开始](#快速开始) • [开发指南](#开发指南) • [技术栈](#技术栈) • [构建发布](#构建发布)
+[功能概览](#功能概览) • [界面导航](#界面导航) • [快速开始](#快速开始) • [开发指南](#开发指南) • [技术栈](#技术栈) • [构建发布](#构建发布)
 
 </div>
 
@@ -17,104 +17,103 @@
 
 ## 📖 简介
 
-**MoneySage** 是一款功能强大的桌面记账应用，专为追求效率的用户设计。通过 AI 自然语言处理技术，让记账变得前所未有的简单。只需用自然语言描述你的收支，AI 会自动识别金额、分类和时间，大幅提升记账效率。
+**MoneySage** 是一款基于 **Tauri 2 + Vue 3** 的 Windows 桌面记账应用。支持自然语言快速记账、多会话「智能分析」对话（可调用数据库工具）、本地 **SQLite** 持久化，以及 **LLM / MCP** 的可选扩展。数据默认保存在本机应用数据目录，便于离线使用与隐私控制。
 
 ### ✨ 核心亮点
 
-- 🤖 **AI 智能记账** - 自然语言输入，AI 自动解析金额、分类、日期
-- 📊 **数据可视化** - 精美的图表展示收支趋势和支出分布
-- 💼 **预算管理** - 设置预算目标，实时监控执行情况
-- 🎨 **现代化 UI** - 深色主题界面，优雅流畅的用户体验
-- 🔐 **隐私优先** - 本地数据存储，保护个人财务隐私
-- ⚡ **高性能** - Rust 后端 + Vue 前端，极速运行
-- 📦 **轻量级** - 安装包小巧，占用资源少
+- 🤖 **AI 快速记账** — 自然语言解析金额、分类、日期；支持批量解析与确认后入库  
+- 💬 **智能分析（ChatBI）** — 多分析会话、流式回复、工具调用状态；可联动快速记账草稿确认  
+- 🧠 **记忆管理** — 维护结构化记忆事实与 Agent 人设（角色预设等），供 AI 场景使用  
+- 📊 **仪表盘与统计** — 月度汇总、趋势与分类分布；仪表盘内嵌统计分析图表  
+- 📈 **用量统计** — 记录每次 LLM 调用的 token 用量（写入本地数据库，可按配置/模型汇总）  
+- 🔌 **大模型与 MCP** — 支持多套 OpenAI 兼容 API 配置；可连接 MCP 工具服务器扩展能力  
+- 🔐 **本地优先** — 默认 SQLite 文件库（`money_note.db`）；异常情况下可能回退内存库（重启不保留）  
 
 ---
 
-## 🎯 功能特性
+## 功能概览
 
-### 📊 仪表盘概览
+### 仪表盘
 
-- **收支汇总** - 实时显示本月收入、支出、结余和交易笔数
-- **趋势分析** - 可视化展示近 3/6/12 个月的收支变化趋势
-- **支出分布** - 饼图显示各分类支出占比，一目了然
-- **最近交易** - 快速查看最新的交易记录
-- **预算执行** - 监控各分类预算使用情况和进度
+- 本月收入、支出、结余与交易概况  
+- 近 **3 / 6 / 12** 个月收支趋势  
+- 支出分布与预算执行概览  
+- 内嵌 **统计分析**（`StatisticsView`），无需单独入口  
 
-### 🤖 AI 快速记账
+### AI 快速记账
 
 ```
 输入: "今天中午在餐厅花了38元吃午饭"
-AI识别: ✓ 金额:38元 ✓ 分类:餐饮 ✓ 类型:支出 ✓ 日期:今天
+识别: 金额、分类、收支类型、日期（可编辑确认）
 ```
 
-- 支持自然语言输入，无需填写复杂表单
-- 自动识别金额、分类、日期、收支类型
-- 支持批量输入，一次添加多条记录
-- 识别结果可编辑确认，确保准确性
+- 支持多条文本批量解析  
+- 解析结果可修改后再保存  
 
-### 💰 交易记录管理
+### 收支记录
 
-- **快速添加** - 一键"记一笔"，快速记录收支
-- **智能筛选** - 按类型、分类、日期范围快速筛选
-- **灵活编辑** - 支持修改和删除交易记录
-- **分页浏览** - 高效管理大量历史数据
-- **多维排序** - 按日期、金额等字段排序
+- 添加、编辑、删除交易；按条件浏览  
+- **数据导入 / 导出**：支持应用自定义格式（Excel、`money_sage` 包等，具体以界面与后端命令为准），用于备份与迁移  
 
-### 🏷️ 分类管理
+### 分类与预算
 
-**预设分类体系**:
+- **分类管理**：系统预设与自定义分类；支持父子层级（大类 / 小类）  
+- **预算设置**：按分类与周期监控进度（含事件类预算等）  
 
-- 支出：🍽️ 餐饮 | 🚗 交通 | 🛍️ 购物 | 🎬 娱乐 | 🏠 住房 | ⚕️ 医疗 | 📚 教育 | 💰 其他
-- 收入：💼 工资 | 💪 兼职 | 📈 投资 | 💰 其他
+### 智能分析
 
-**自定义能力**:
+- 持久化 **分析会话** 与历史消息  
+- **流式输出**、工具调用过程展示  
+- 与 **快速记账草稿** 联动，可在对话流中确认入账  
 
-- 添加自定义分类
-- 自定义图标和颜色
-- 管理和删除非系统分类
+### 记忆管理
 
-### 📈 预算管理
+- 查看与管理记忆条目、变更历史（含撤销类操作，以实际界面为准）  
+- **人设 / 角色**：全局、快速记账、智能分析等范围可分别配置  
 
-- **灵活设置** - 为各支出分类设置周/月/年度预算
-- **实时监控** - 动态显示预算使用百分比和剩余额度
-- **超支提醒** - 接近或超过预算时智能提醒
-- **图表展示** - 可视化预算执行情况
+### 用量统计
 
-### 📊 统计分析
+- 按 **LLM 配置**、**模型** 等维度汇总调用次数与 **prompt / completion / total** tokens  
+- 每次请求一行日志，**持久化**在本地表 `token_usage_logs`（除非当前运行使用了内存数据库）  
+- 支持按日期筛选与清理历史日志（如「清理 90 天前」）  
 
-- **趋势图表** - 查看历史收支变化趋势
-- **分类统计** - 深入分析各分类支出分布
-- **时间维度** - 灵活选择统计时间段
-- **数据洞察** - 帮助发现消费模式，优化财务规划
+### 顶部快捷入口
 
-### 📁 数据导入导出
+- **快速记账** — 打开 AI 记账对话框  
+- **MCP** — 配置 MCP 工具服务器（可选）  
+- **大模型配置** — 管理多套 API、模型与连接参数  
 
-- **CSV 导入** - 批量导入交易记录
-- **CSV 导出** - 导出数据进行备份或深度分析
-- **标准格式** - 兼容常见表格软件
+---
+
+## 界面导航
+
+与 `src/App.vue` 侧边栏一致：
+
+| 菜单       | 说明 |
+|------------|------|
+| 仪表盘     | 总览 + 内嵌统计图表 |
+| 收支记录   | 交易 CRUD + 导入导出 |
+| 分类与预算 | 分类管理 / 预算设置（标签页） |
+| 智能分析   | 对话式财务分析 |
+| 记忆管理   | 记忆与人设 |
+| 用量统计   | LLM token 用量 |
 
 ---
 
 ## 🚀 快速开始
 
-### 安装使用
+### 安装使用（Windows）
 
-#### Windows 用户
+1. 在 [Releases](../../releases) 下载最新安装包（若已发布）  
+2. 常见产物名称示例：`money-sage_*_x64-setup.exe`（NSIS）、`money-sage_*_x64_zh-CN.msi`（MSI）  
+3. 安装后启动应用  
 
-1. 前往 [Releases](../../releases) 页面
-2. 下载最新版本的安装包：
-   - `money-sage_x.x.x_x64-setup.exe` (NSIS 安装程序，推荐)
-   - `money-sage_x.x.x_x64_zh-CN.msi` (MSI 安装包)
-3. 双击运行安装程序
-4. 启动 MoneySage 开始记账
+### 系统要求
 
-#### 系统要求
-
-- **操作系统**: Windows 10 / Windows 11
-- **内存**: 至少 2GB RAM
-- **磁盘空间**: 约 100MB
-- **WebView2**: Windows 11 自带，Windows 10 会自动安装
+- **操作系统**：Windows 10 / 11（x64）  
+- **内存**：建议 4GB 及以上（启用 AI 时）  
+- **磁盘**：约 100MB 量级（随数据增长）  
+- **WebView2**：Windows 11 通常已自带；Windows 10 若缺失需安装 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)  
 
 ---
 
@@ -122,89 +121,70 @@ AI识别: ✓ 金额:38元 ✓ 分类:餐饮 ✓ 类型:支出 ✓ 日期:今天
 
 ### 环境准备
 
-#### 1. 安装必需工具
+- [Node.js](https://nodejs.org/) 18+  
+- [Rust](https://rustup.rs/)（stable）及 Windows 对应构建依赖（用于 `tauri build`）  
+
+### 克隆与安装
 
 ```bash
-# Node.js 18+
-https://nodejs.org/
-
-# Rust (通过 rustup)
-https://rustup.rs/
-```
-
-#### 2. 克隆项目
-
-```bash
-git clone https://github.com/yourusername/money-sage.git
-cd money-sage
-```
-
-#### 3. 安装依赖
-
-```bash
+git clone <你的仓库地址>
+cd money-note
 npm install
 ```
 
 ### 开发运行
 
 ```bash
-# 启动开发服务器（热重载）
+# 推荐：前端 + Tauri 热重载
 npm run tauri:dev
-
-# 或分开运行
-npm run dev          # 启动前端开发服务器
-npm run tauri        # 启动 Tauri 开发模式
 ```
 
-### 代码结构
+或拆分：
+
+```bash
+npm run dev    # 仅 Vite
+npm run tauri  # 需另开终端配合 dev server
+```
+
+### 代码结构（摘要）
 
 ```
-money-sage/
-├── src/                      # Vue 前端代码
-│   ├── components/           # 组件
-│   │   ├── QuickBookingDialog.vue    # AI 快速记账
-│   │   ├── LLMConfigDialog.vue       # AI 模型配置
-│   │   ├── EditTransactionDialog.vue # 编辑交易
-│   │   └── AddBudgetDialog.vue       # 添加预算
-│   ├── views/                # 页面视图
-│   │   ├── DashboardView.vue         # 仪表盘
-│   │   ├── TransactionsView.vue      # 交易记录
-│   │   ├── CategoriesView.vue        # 分类管理
-│   │   ├── BudgetView.vue            # 预算设置
-│   │   ├── StatisticsView.vue        # 统计分析
-│   │   └── ImportExportView.vue      # 导入导出
-│   ├── stores/               # Pinia 状态管理
-│   ├── App.vue               # 主应用组件
-│   └── main.ts               # 入口文件
-├── src-tauri/                # Rust 后端代码
+money-note/
+├── src/                         # Vue 前端
+│   ├── views/
+│   │   ├── DashboardView.vue       # 仪表盘（内嵌 StatisticsView）
+│   │   ├── TransactionsView.vue    # 收支 + 导入导出
+│   │   ├── CategoriesBudgetView.vue# 分类 / 预算标签容器
+│   │   ├── CategoriesView.vue
+│   │   ├── BudgetView.vue
+│   │   ├── StatisticsView.vue
+│   │   ├── AnalysisView.vue        # 智能分析
+│   │   ├── MemoryView.vue          # 记忆管理
+│   │   └── UsageStatsView.vue      # Token 用量统计
+│   ├── components/
+│   │   ├── QuickBookingDialog.vue
+│   │   ├── LLMConfigDialog.vue
+│   │   └── McpConfigDialog.vue
+│   ├── stores/index.ts             # Pinia + Tauri invoke
+│   └── App.vue
+├── src-tauri/
 │   ├── src/
-│   │   ├── ai/               # AI 功能模块
-│   │   │   ├── agent/        # AI Agent 实现
-│   │   │   │   ├── quick_note.rs    # 快速记账 AI
-│   │   │   │   ├── analysis.rs      # 数据分析 AI
-│   │   │   │   └── base.rs          # AI 基础接口
-│   │   │   └── mod.rs
-│   │   ├── database.rs       # 数据库操作
-│   │   ├── models.rs         # 数据模型
-│   │   ├── utils/            # 工具函数
-│   │   ├── lib.rs            # 库入口
-│   │   └── main.rs           # 主程序
-│   ├── icons/                # 应用图标
-│   ├── Cargo.toml            # Rust 依赖配置
-│   └── tauri.conf.json       # Tauri 配置
-├── package.json              # Node.js 依赖
-└── vite.config.ts            # Vite 配置
+│   │   ├── ai/                     # Agent、工具与流式分析
+│   │   ├── telemetry/              # token_usage 记录与汇总
+│   │   ├── database.rs             # SQLite 与迁移
+│   │   ├── models.rs
+│   │   └── lib.rs                  # Tauri 命令注册
+│   ├── Cargo.toml
+│   └── tauri.conf.json
+├── package.json
+└── vite.config.ts
 ```
 
 ### 测试
 
 ```bash
-# 运行后端测试
 cd src-tauri
 cargo test
-
-# 查看测试覆盖率
-cargo test -- --nocapture
 ```
 
 ---
@@ -213,269 +193,102 @@ cargo test -- --nocapture
 
 ### 前端
 
-- **框架**: [Vue 3](https://vuejs.org/) - 渐进式 JavaScript 框架
-- **构建工具**: [Vite](https://vitejs.dev/) - 下一代前端构建工具
-- **UI 库**: [Element Plus](https://element-plus.org/) - Vue 3 组件库
-- **图表**: [ECharts](https://echarts.apache.org/) + [vue-echarts](https://github.com/ecomfe/vue-echarts) - 数据可视化
-- **状态管理**: [Pinia](https://pinia.vuejs.org/) - Vue 状态管理
-- **工具库**: [VueUse](https://vueuse.org/) - Vue 组合式工具集
-- **日期处理**: [Day.js](https://day.js.org/) - 轻量级日期库
-- **CSV 处理**: [PapaParse](https://www.papaparse.com/) - CSV 解析器
+| 用途 | 技术 |
+|------|------|
+| 框架 | [Vue 3](https://vuejs.org/) |
+| 构建 | [Vite](https://vitejs.dev/) |
+| UI | [Element Plus](https://element-plus.org/) |
+| 图表 | [ECharts](https://echarts.apache.org/) + [vue-echarts](https://github.com/ecomfe/vue-echarts) |
+| 状态 | [Pinia](https://pinia.vuejs.org/) |
+| 工具 | [VueUse](https://vueuse.org/)、[Day.js](https://day.js.org/) |
+| 表格 | [PapaParse](https://www.papaparse.com/)（CSV） |
+| 正文渲染 | [marked](https://github.com/markedjs/marked)（分析消息等） |
 
 ### 后端
 
-- **框架**: [Tauri 2.0](https://tauri.app/) - 构建桌面应用
-- **语言**: [Rust](https://www.rust-lang.org/) - 高性能系统语言
-- **数据库**: [SQLite](https://www.sqlite.org/) + [sqlx](https://github.com/launchbadge/sqlx) - 轻量级数据库
-- **HTTP 客户端**: [reqwest](https://github.com/seanmonstar/reqwest) - AI API 调用
-- **序列化**: [serde](https://serde.rs/) - Rust 序列化框架
-- **异步运行时**: [tokio](https://tokio.rs/) - 异步运行时
-- **错误处理**: [anyhow](https://github.com/dtolnay/anyhow) + [thiserror](https://github.com/dtolnay/thiserror)
+| 用途 | 技术 |
+|------|------|
+| 桌面壳 | [Tauri 2](https://tauri.app/) |
+| 语言 | [Rust](https://www.rust-lang.org/) |
+| 数据库 | [SQLite](https://www.sqlite.org/) + [sqlx](https://github.com/launchbadge/sqlx) |
+| HTTP | [reqwest](https://github.com/seanmonstar/reqwest)（流式响应等） |
+| 异步 | [tokio](https://tokio.rs/) |
+| Excel | [calamine](https://github.com/tafia/calamine)、[rust_xlsxwriter](https://github.com/jmcnamara/rust_xlsxwriter) |
 
-### 开发工具
+### Tauri 插件（节选）
 
-- **语言**: TypeScript + Rust
-- **代码格式化**: Prettier + rustfmt
-- **包管理**: npm + Cargo
+- `tauri-plugin-dialog`、`tauri-plugin-fs`、`tauri-plugin-opener` 等（见 `src-tauri/Cargo.toml`）  
 
 ---
 
 ## 📦 构建发布
 
-### 快速构建
-
-#### 方法一：使用自动化脚本（推荐）
+### 一键构建安装包
 
 ```bash
-# Windows
-.\build-installer.bat
-
-# 或 PowerShell
-.\build-installer.ps1
-```
-
-#### 方法二：手动命令
-
-```bash
-# 安装依赖
-npm install
-
-# 构建前端并打包
 npm run build:installer
-
-# 或分步执行
-npm run build        # 构建前端
-npm run tauri:build  # 打包应用
 ```
 
-### 构建环境要求
+等价于 `npm run build` 后执行 `tauri build`。调试包可使用：
 
-#### Windows 安装包构建
-
-需要安装以下工具之一：
-
-**MSI 安装包**（企业级）:
-
-- [WiX Toolset 3.11](https://github.com/wixtoolset/wix3/releases)
-- 添加到系统 PATH 环境变量
-
-**NSIS 安装包**（推荐）:
-
-- [NSIS 3.08+](https://nsis.sourceforge.io/Download)
-- 添加到系统 PATH 环境变量
-
-### 输出文件
-
-构建成功后，安装包位于：
-
-```
-src-tauri/target/release/bundle/
-├── msi/
-│   └── money-sage_0.1.0_x64_zh-CN.msi
-└── nsis/
-    └── money-sage_0.1.0_x64-setup.exe
+```bash
+npm run build:installer:debug
 ```
 
-### 版本发布流程
+若仓库内提供脚本，也可使用 `build-installer.bat` / `build-installer.ps1`（视本仓库是否包含而定）。
 
-1. **更新版本号** - 同步修改三个文件：
+### Windows 打包依赖（可选）
 
-   ```bash
-   package.json             # "version": "x.x.x"
-   src-tauri/tauri.conf.json # "version": "x.x.x"
-   src-tauri/Cargo.toml     # version = "x.x.x"
-   ```
+- **NSIS**：生成 `.exe` 安装向导  
+- **WiX**：生成 `.msi`  
 
-2. **构建安装包**:
+详见仓库内 [BUILD.md](BUILD.md)、[打包说明.md](打包说明.md)（若存在）。
 
-   ```bash
-   npm run build:installer
-   ```
+### 输出目录
 
-3. **测试安装包** - 在干净的 Windows 环境中测试
+构建成功后，安装包通常位于：
 
-4. **创建 GitHub Release** - 上传安装包并附带更新说明
+`src-tauri/target/release/bundle/`（`nsis/`、`msi/` 等子目录）
 
-详细构建说明请查看 [BUILD.md](BUILD.md) 和 [打包说明.md](打包说明.md)
+### 发版前同步版本号
+
+保持以下文件中版本号一致：
+
+- `package.json` 的 `version`  
+- `src-tauri/tauri.conf.json`  
+- `src-tauri/Cargo.toml`  
 
 ---
 
 ## 📚 使用文档
 
-详细使用说明请查看 [使用说明.md](使用说明.md)
+更详细的操作说明见 [使用说明.md](使用说明.md)（若与本 README 有出入，以当前软件界面为准）。
 
-### 快速上手
-
-1. **首次使用**
-
-   - 启动应用，系统自动创建数据库
-   - 默认分类已预设，可直接开始记账
-
-2. **快速记账**
-
-   - 点击右上角"快速记账"按钮
-   - 用自然语言描述收支，如："今天午饭花了 35 元"
-   - AI 自动识别并填充信息，确认后保存
-
-3. **查看数据**
-
-   - **仪表盘** - 查看整体财务状况
-   - **记账** - 浏览和管理所有交易记录
-   - **数据分析** - 查看收支趋势和分类统计
-
-4. **设置预算**
-   - 进入"预算设置"
-   - 为各支出分类设置预算金额和周期
-   - 系统自动跟踪预算执行情况
+**首次运行建议**：在「大模型配置」中填写可用的 API；使用「智能分析」「快速记账」前请确认网络与密钥有效。  
 
 ---
 
-## 🎨 截图预览
+## 🤝 贡献与问题
 
-<details>
-<summary>点击展开查看应用截图</summary>
-
-> 注：待添加实际应用截图
-
-### 仪表盘
-
-![仪表盘](docs/screenshots/dashboard.png)
-
-### AI 快速记账
-
-![快速记账](docs/screenshots/quick-booking.png)
-
-### 交易记录
-
-![交易记录](docs/screenshots/transactions.png)
-
-### 数据分析
-
-![数据分析](docs/screenshots/statistics.png)
-
-</details>
-
----
-
-## 🤝 贡献指南
-
-欢迎贡献代码、报告问题或提出建议！
-
-### 贡献方式
-
-1. **Fork** 本仓库
-2. **创建特性分支** (`git checkout -b feature/AmazingFeature`)
-3. **提交更改** (`git commit -m 'Add some AmazingFeature'`)
-4. **推送到分支** (`git push origin feature/AmazingFeature`)
-5. **开启 Pull Request**
-
-### 代码规范
-
-- **前端**: 遵循 Vue 3 官方风格指南
-- **后端**: 遵循 Rust 官方代码规范 (`cargo fmt`)
-- **提交信息**: 使用清晰的提交信息描述更改内容
-
-### 报告问题
-
-如果发现 Bug 或有功能建议，请：
-
-1. 搜索已有 [Issues](../../issues) 避免重复
-2. 创建新 Issue，详细描述问题或建议
-3. 提供复现步骤、截图或日志（如适用）
+欢迎提交 Issue / PR。提交前可本地执行 `cargo fmt`、`cargo test` 与前端构建检查。
 
 ---
 
 ## 📄 许可证
 
-本项目采用 [MIT License](LICENSE) 开源许可证。
-
-这意味着你可以自由地：
-
-- ✅ 商业使用
-- ✅ 修改
-- ✅ 分发
-- ✅ 私人使用
-
-但需要保留版权声明和许可证声明。
+本项目采用 [MIT License](LICENSE)。
 
 ---
 
 ## 🙏 致谢
 
-感谢以下优秀的开源项目：
-
-- [Tauri](https://tauri.app/) - 让我们能够用 Web 技术构建高性能桌面应用
-- [Vue.js](https://vuejs.org/) - 优雅的渐进式 JavaScript 框架
-- [Element Plus](https://element-plus.org/) - 精美的 Vue 3 组件库
-- [Rust](https://www.rust-lang.org/) - 高性能且内存安全的系统语言
-- 所有其他依赖的开源项目
-
----
-
-## 📮 联系方式
-
-- **Issues**: [GitHub Issues](../../issues)
-- **Discussions**: [GitHub Discussions](../../discussions)
-- **Email**: your-email@example.com
-
----
-
-## 🗺️ 路线图
-
-### v0.2.0 (计划中)
-
-- [ ] 支持多账户管理
-- [ ] 添加周期性交易自动记录
-- [ ] 数据云同步功能
-- [ ] 移动端适配
-
-### v0.3.0 (计划中)
-
-- [ ] 支持多币种
-- [ ] 高级财务报表
-- [ ] 数据加密功能
-- [ ] macOS / Linux 版本
-
-### 长期目标
-
-- [ ] 投资组合管理
-- [ ] 账单提醒
-- [ ] 家庭账本模式
-- [ ] 更多 AI 智能分析功能
-
----
-
-## ⭐ Star History
-
-如果这个项目对你有帮助，请给它一个 Star ⭐️
-
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/money-sage&type=Date)](https://star-history.com/#yourusername/money-sage&Date)
+[Tauri](https://tauri.app/)、[Vue.js](https://vuejs.org/)、[Element Plus](https://element-plus.org/)、[Rust](https://www.rust-lang.org/) 及生态中所有依赖项目。
 
 ---
 
 <div align="center">
 
-**用 ❤️ 和 ☕ 构建**
+**用 ❤️ 构建**
 
 [⬆ 回到顶部](#-moneysage)
 

@@ -157,13 +157,23 @@ pub async fn preview_import(_pool: &SqlitePool, file_path: &str) -> Result<Impor
 
 pub async fn import_data(pool: &SqlitePool, req: ImportDataRequest) -> Result<ImportDataResult> {
     let parsed = parse_bundle_from_file(&req.file_path)?;
-    let bundle = parsed.data;
+    let mut bundle = parsed.data;
     let mut warnings = parsed.warnings;
     if let Some(false) = parsed.checksum_valid {
-        warnings.push("检测到备份校验和不一致，已拒绝导入".to_string());
-        return Err(anyhow!("导入失败：备份文件校验和不一致"));
+        if req.skip_checksum {
+            warnings.push("检测到备份校验和不一致，已强制跳过校验导入".to_string());
+        } else {
+            warnings.push("检测到备份校验和不一致，已拒绝导入".to_string());
+            return Err(anyhow!("导入失败：备份文件校验和不一致。如果确认文件来源可信，可在导入时选择强制导入。"));
+        }
     }
+    normalize_imported_bundle(&mut bundle);
     let mut tx = pool.begin().await?;
+    // 旧版导出文件可能存在父子记录顺序倒置（如 memory_facts.supersedes_id
+    // 指向后插入的行）。延后到事务提交时再校验外键，避免顺序问题。
+    sqlx::query("PRAGMA defer_foreign_keys = 1")
+        .execute(&mut *tx)
+        .await?;
     let mut result = ImportDataResult {
         categories: 0,
         budgets: 0,
@@ -447,7 +457,7 @@ fn parse_bundle_from_file(file_path: &str) -> Result<ParsedBundle> {
             warnings.push("文件格式标识异常，已按 moneysage 尝试解析".to_string());
         }
         if !checksum_valid {
-            warnings.push("数据校验和不匹配，文件可能已被修改".to_string());
+            warnings.push("数据校验和不匹配，文件可能已被修改或损坏".to_string());
         }
         Ok(ParsedBundle {
             data: env.data,
@@ -662,6 +672,48 @@ fn parse_bool(s: String) -> Option<bool> {
     }
 }
 
+/// 将金额规范化为保留2位小数，消除浮点精度噪声对校验和的影响
+fn canonical_round(bundle: &mut DataBundle) {
+    for t in &mut bundle.transactions {
+        t.amount = (t.amount * 100.0).round() / 100.0;
+    }
+    for b in &mut bundle.budgets {
+        b.amount = (b.amount * 100.0).round() / 100.0;
+    }
+    for m in &mut bundle.memory_facts {
+        if let Some(ref mut c) = m.confidence {
+            *c = (*c * 10000.0).round() / 10000.0;
+        }
+    }
+}
+
+/// 规范化外部导入数据：将旧版/Excel 中常用的 0、空串等"哨兵值"
+/// 转换为 NULL，避免 SQLite 外键约束失败。
+fn normalize_imported_bundle(bundle: &mut DataBundle) {
+    for c in &mut bundle.categories {
+        if matches!(c.parent_id, Some(0)) {
+            c.parent_id = None;
+        }
+    }
+    for b in &mut bundle.budgets {
+        if let Some(ref s) = b.end_date {
+            if s.trim().is_empty() {
+                b.end_date = None;
+            }
+        }
+    }
+    for t in &mut bundle.transactions {
+        if matches!(t.budget_id, Some(0)) {
+            t.budget_id = None;
+        }
+    }
+    for m in &mut bundle.memory_facts {
+        if matches!(m.supersedes_id, Some(0)) {
+            m.supersedes_id = None;
+        }
+    }
+}
+
 fn parse_date(s: &str) -> Option<NaiveDate> {
     let trimmed = s.trim();
     NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
@@ -669,6 +721,11 @@ fn parse_date(s: &str) -> Option<NaiveDate> {
         .or_else(|| NaiveDate::parse_from_str(trimmed, "%Y/%m/%d").ok())
         .or_else(|| {
             trimmed.parse::<f64>().ok().and_then(|serial| {
+                // Excel 日期序列号有效范围大致为 1 ~ 50000（1900年~2070年）
+                // 防止纯数字日期字符串（如 "20240101"）被误解析
+                if serial < 1.0 || serial > 50000.0 {
+                    return None;
+                }
                 let base = NaiveDate::from_ymd_opt(1899, 12, 30)?;
                 Some(base + Duration::days(serial as i64))
             })
@@ -859,14 +916,16 @@ fn sha256_hex(input: &[u8]) -> String {
 }
 
 fn export_moneysage(file_path: &str, data: &DataBundle) -> Result<()> {
-    let data_checksum = checksum_for_bundle(data)?;
+    let mut canonical_data = data.clone();
+    canonical_round(&mut canonical_data);
+    let data_checksum = checksum_for_bundle(&canonical_data)?;
     let env = MoneySageExport {
         format: "money-sage-export".to_string(),
         version: 1,
         schema_version: 1,
         exported_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         data_checksum,
-        data: data.clone(),
+        data: canonical_data,
     };
     let body = serde_json::to_string_pretty(&env)?;
     std::fs::write(file_path, body)?;

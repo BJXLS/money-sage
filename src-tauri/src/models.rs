@@ -342,6 +342,8 @@ pub struct ImportPreviewResult {
 pub struct ImportDataRequest {
     pub file_path: String,
     pub strategy: ImportConflictStrategy,
+    #[serde(default)]
+    pub skip_checksum: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

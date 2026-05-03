@@ -298,7 +298,7 @@
         </p>
         <el-alert
           v-if="importPreview?.checksum_valid === false"
-          title="备份校验失败：文件可能已被篡改，系统将拒绝导入"
+          title="备份校验未通过：文件可能已被修改或损坏。如确认来源可信，可点击下方“强制导入”继续。"
           type="error"
           :closable="false"
           style="margin-top: 8px"
@@ -331,12 +331,20 @@
       <template #footer>
         <el-button @click="showImportDialog = false">取消</el-button>
         <el-button
+          v-if="importPreview?.checksum_valid !== false"
           type="primary"
           :loading="importing"
-          :disabled="importPreview?.checksum_valid === false"
-          @click="confirmImport"
+          @click="confirmImport(false)"
         >
           确认导入
+        </el-button>
+        <el-button
+          v-else
+          type="danger"
+          :loading="importing"
+          @click="confirmImport(true)"
+        >
+          强制导入
         </el-button>
       </template>
     </el-dialog>
@@ -651,10 +659,22 @@ const handlePickImportFile = async () => {
   }
 }
 
-const confirmImport = async () => {
+const confirmImport = async (forceImport = false) => {
   if (!importFilePath.value) {
     ElMessage.warning('请先选择导入文件')
     return
+  }
+
+  if (forceImport) {
+    try {
+      await ElMessageBox.confirm(
+        '备份文件校验未通过，强制导入可能引入不一致或损坏的数据。是否仍要继续？',
+        '强制导入确认',
+        { type: 'warning', confirmButtonText: '继续强制导入', cancelButtonText: '取消' }
+      )
+    } catch {
+      return
+    }
   }
 
   if (importStrategy.value === 'replace_all') {
@@ -671,7 +691,11 @@ const confirmImport = async () => {
 
   importing.value = true
   try {
-    const result = await store.importDataFile(importFilePath.value, importStrategy.value)
+    const result = await store.importDataFile(
+      importFilePath.value,
+      importStrategy.value,
+      forceImport,
+    )
     showImportDialog.value = false
     ElMessage.success(
       `导入完成：新增 ${result.inserted}，更新 ${result.updated}，跳过 ${result.skipped}（分类 ${result.categories} / 预算 ${result.budgets} / 交易 ${result.transactions} / 记忆 ${result.memory_facts}）`

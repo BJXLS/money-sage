@@ -75,3 +75,5 @@ docs/.vuepress/dist/
 # Lock files (keep package-lock.json for consistent builds)
 # yarn.lock
 # pnpm-lock.yaml
+
+local-files/

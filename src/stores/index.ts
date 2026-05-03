@@ -600,9 +600,13 @@ export const useAppStore = defineStore('app', () => {
     return await invoke<ImportPreviewResult>('preview_import_data', { filePath })
   }
 
-  const importDataFile = async (filePath: string, strategy: ImportConflictStrategy) => {
+  const importDataFile = async (
+    filePath: string,
+    strategy: ImportConflictStrategy,
+    skipChecksum = false,
+  ) => {
     const result = await invoke<ImportDataResult>('import_data_file', {
-      request: { file_path: filePath, strategy }
+      request: { file_path: filePath, strategy, skip_checksum: skipChecksum }
     })
     await Promise.all([
       fetchCategories(),

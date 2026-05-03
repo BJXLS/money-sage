@@ -407,11 +407,31 @@ impl Database {
             )
         "#).execute(pool).await?;
 
+        // memory_facts 迁移：新增 embedding 列（用于未来语义搜索）
+        let _ = sqlx::query("ALTER TABLE memory_facts ADD COLUMN embedding TEXT")
+            .execute(pool)
+            .await;
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_facts_type ON memory_facts(fact_type, status)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_facts_key ON memory_facts(fact_type, key)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_facts_status ON memory_facts(status, confidence)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_history_fact ON memory_facts_history(fact_id)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_history_time ON memory_facts_history(created_at DESC)").execute(pool).await?;
+
+        // 人格预设表（用户可增删改的人格模板，区别于 memory_facts.agent_role 这种已应用的角色）
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS role_presets (
+                preset_id    TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                summary      TEXT NOT NULL DEFAULT '',
+                value_json   TEXT NOT NULL,
+                is_builtin   INTEGER NOT NULL DEFAULT 0,
+                sort_order   INTEGER NOT NULL DEFAULT 0,
+                created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_role_presets_order ON role_presets(sort_order, created_at)").execute(pool).await?;
 
         // Quick note drafts（Analysis 内联确认）
         sqlx::query(r#"

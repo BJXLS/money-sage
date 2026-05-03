@@ -51,9 +51,9 @@ async fn test_role_preset_and_snapshot() {
         .await
         .expect("db");
     let memory = MemoryFacade::new(db.pool.clone());
-    memory.seed_default_roles().await.expect("seed");
+    memory.ensure_default_role_seed().await.expect("seed");
     let _ = memory
-        .apply_role_preset("gentle_coach".to_string(), RoleScope::Analysis)
+        .apply_role_preset("default".to_string(), RoleScope::Analysis)
         .await
         .expect("apply");
 
@@ -62,6 +62,103 @@ async fn test_role_preset_and_snapshot() {
 
     let snapshot = memory.render_analysis_snapshot().await.expect("snapshot");
     assert!(snapshot.contains("角色设定"));
+}
+
+#[tokio::test]
+async fn test_role_preset_crud() {
+    use crate::models::{NewRolePreset, UpdateRolePreset};
+    let db = crate::database::Database::new("sqlite::memory:")
+        .await
+        .expect("db");
+    let memory = MemoryFacade::new(db.pool.clone());
+    memory.ensure_default_role_seed().await.expect("seed");
+
+    // 初始仅有 1 条内置预设
+    let presets = memory.list_role_presets().await.expect("list");
+    assert_eq!(presets.len(), 1);
+    assert!(presets[0].is_builtin);
+    assert_eq!(presets[0].preset_id, "default");
+
+    // 重复 seed 不应再插入
+    memory.ensure_default_role_seed().await.expect("re-seed");
+    let presets2 = memory.list_role_presets().await.expect("list2");
+    assert_eq!(presets2.len(), 1);
+
+    // 创建一个用户预设
+    let created = memory
+        .create_role_preset(NewRolePreset {
+            display_name: "极简".to_string(),
+            summary: Some("只给结论".to_string()),
+            value: serde_json::json!({"display_name":"极简","tone":{"style":"concise"}}),
+            sort_order: Some(1),
+        })
+        .await
+        .expect("create");
+    assert!(!created.is_builtin);
+
+    // 更新
+    memory
+        .update_role_preset(
+            created.preset_id.clone(),
+            UpdateRolePreset {
+                display_name: Some("极简 2".to_string()),
+                summary: None,
+                value: None,
+                sort_order: None,
+            },
+        )
+        .await
+        .expect("update");
+    let updated = memory
+        .list_role_presets()
+        .await
+        .expect("list3")
+        .into_iter()
+        .find(|p| p.preset_id == created.preset_id)
+        .expect("found");
+    assert_eq!(updated.display_name, "极简 2");
+
+    // 删除内置应失败
+    let err = memory
+        .delete_role_preset("default".to_string())
+        .await
+        .err()
+        .expect("delete builtin should fail");
+    assert!(err.to_string().contains("内置"));
+
+    // 删除用户预设
+    memory
+        .delete_role_preset(created.preset_id.clone())
+        .await
+        .expect("delete user");
+    let after = memory.list_role_presets().await.expect("list4");
+    assert_eq!(after.len(), 1);
+
+    // 重置内置：先改一下，再 reset
+    memory
+        .update_role_preset(
+            "default".to_string(),
+            UpdateRolePreset {
+                display_name: Some("被改过".to_string()),
+                summary: None,
+                value: None,
+                sort_order: None,
+            },
+        )
+        .await
+        .expect("update builtin");
+    memory
+        .reset_role_preset("default".to_string())
+        .await
+        .expect("reset");
+    let reset_back = memory
+        .list_role_presets()
+        .await
+        .expect("list5")
+        .into_iter()
+        .find(|p| p.preset_id == "default")
+        .expect("found");
+    assert_eq!(reset_back.display_name, "理财助手");
 }
 
 fn role_value(name: &str) -> RoleValue {

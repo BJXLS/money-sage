@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration as StdDuration, Instant};
 
 use anyhow::Result;
 use chrono::{Duration, Utc};
@@ -13,10 +14,15 @@ use crate::models::{
     Fact, FactFilter, FactSource, FactStatus, FactType, UpdateFact, UpsertInput, UpsertOutcome,
 };
 
+struct RateLimiterEntry {
+    count: i32,
+    first_seen: Instant,
+}
+
 #[derive(Default)]
 struct RateLimiterState {
-    session_insert_count: HashMap<String, i32>,
-    role_change_set: HashSet<String>,
+    session_insert_count: HashMap<String, RateLimiterEntry>,
+    role_change_set: HashMap<String, Instant>,
 }
 
 pub struct FactsStore {
@@ -227,20 +233,23 @@ impl FactsStore {
         let status = status_value.as_str().to_string();
         let confidence = patch.confidence.unwrap_or(before_fact.confidence);
 
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query(
             "UPDATE memory_facts
              SET key = ?1, value_json = ?2, status = ?3, confidence = ?4, updated_at=CURRENT_TIMESTAMP
              WHERE id = ?5",
         )
-        .bind(key)
+        .bind(&key)
         .bind(value_json.to_string())
-        .bind(status)
+        .bind(&status)
         .bind(confidence)
         .bind(id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
-        self.insert_history(
+        self.insert_history_with_tx(
+            &mut tx,
             id,
             "update",
             "user",
@@ -249,6 +258,22 @@ impl FactsStore {
             None,
         )
         .await?;
+
+        tx.commit().await?;
+
+        // 如果用户将 Provisional 改为 Active，触发自动晋升记录
+        if before_fact.status == FactStatus::Provisional && status == "active" {
+            self.insert_history(
+                id,
+                "auto_promote",
+                "user",
+                Some(serde_json::json!({ "old_status": "provisional" })),
+                Some(serde_json::json!({ "new_status": "active" })),
+                None,
+            )
+            .await?;
+        }
+
         Ok(())
     }
 
@@ -261,11 +286,16 @@ impl FactsStore {
             return Ok(());
         };
         let before_fact = row_to_fact(before_row);
+
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query("UPDATE memory_facts SET status='retired', updated_at=CURRENT_TIMESTAMP WHERE id = ?")
             .bind(id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
-        self.insert_history(
+
+        self.insert_history_with_tx(
+            &mut tx,
             id,
             "retire",
             "user",
@@ -274,7 +304,94 @@ impl FactsStore {
             None,
         )
         .await?;
+
+        tx.commit().await?;
         Ok(())
+    }
+
+    /// 检查并自动晋升 Provisional 记忆
+    pub async fn maybe_promote_provisional(&self, fact_id: i64) -> Result<bool> {
+        let row = sqlx::query(
+            "SELECT fact_type, status, usage_count
+             FROM memory_facts
+             WHERE id = ? AND status = 'provisional'"
+        )
+        .bind(fact_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let Some(r) = row else { return Ok(false); };
+        let usage_count: i64 = r.get("usage_count");
+
+        if usage_count >= self.config.provisional_promote_hits {
+            let mut tx = self.pool.begin().await?;
+
+            sqlx::query(
+                "UPDATE memory_facts
+                 SET status = 'active', updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?"
+            )
+            .bind(fact_id)
+            .execute(&mut *tx)
+            .await?;
+
+            self.insert_history_with_tx(
+                &mut tx,
+                fact_id,
+                "auto_promote",
+                "system",
+                Some(serde_json::json!({ "old_status": "provisional", "usage_count": usage_count })),
+                Some(serde_json::json!({ "new_status": "active" })),
+                None,
+            )
+            .await?;
+
+            tx.commit().await?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// 自动衰减：将超过 N 天未使用且 confidence 低于阈值的记忆退役
+    pub async fn auto_decay(&self) -> Result<usize> {
+        let rows = sqlx::query(
+            "UPDATE memory_facts
+             SET status = 'retired', updated_at = CURRENT_TIMESTAMP
+             WHERE status IN ('active', 'provisional')
+               AND confidence <= ?
+               AND (
+                 last_used_at IS NULL
+                 OR last_used_at < datetime('now', '-' || ? || ' days')
+               )
+               AND created_at < datetime('now', '-' || ? || ' days')
+             RETURNING id"
+        )
+        .bind(self.config.auto_decay_confidence_threshold)
+        .bind(self.config.auto_decay_days)
+        .bind(self.config.auto_decay_days)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut count = 0;
+        for row in rows {
+            let id: i64 = row.get("id");
+            self.insert_history(
+                id,
+                "auto_retire",
+                "system",
+                None,
+                Some(serde_json::json!({
+                    "reason": "auto_decay",
+                    "days": self.config.auto_decay_days,
+                    "confidence_threshold": self.config.auto_decay_confidence_threshold
+                })),
+                None,
+            )
+            .await?;
+            count += 1;
+        }
+
+        Ok(count)
     }
 
     pub async fn undo(&self, history_id: i64) -> Result<()> {
@@ -426,6 +543,28 @@ impl FactsStore {
         let source = input.source.clone().unwrap_or(FactSource::User);
         let confidence = default_confidence(source.clone(), input.confidence_hint);
         let status = default_status(input.fact_type.clone(), source.clone(), confidence);
+
+        // agent_role 单例约束：同一 scope 下只允许一条 active
+        if input.fact_type == FactType::AgentRole {
+            let scope = input
+                .value_json
+                .get("scope")
+                .and_then(|x| x.as_str())
+                .unwrap_or("global");
+            sqlx::query(
+                "UPDATE memory_facts
+                 SET status = 'superseded', updated_at = CURRENT_TIMESTAMP
+                 WHERE fact_type = 'agent_role'
+                   AND status = 'active'
+                   AND json_extract(value_json, '$.scope') = ?
+                   AND id != COALESCE(?, 0)"
+            )
+            .bind(scope)
+            .bind(supersedes_id)
+            .execute(tx.as_mut())
+            .await?;
+        }
+
         let res = sqlx::query(
             "INSERT INTO memory_facts (
                 fact_type, key, value_json, source, confidence, status,
@@ -507,8 +646,10 @@ impl FactsStore {
         }
 
         let mut lock = self.limiter.lock().await;
-        let count = *lock.session_insert_count.get(&session).unwrap_or(&0);
-        if count >= self.config.max_facts_per_session {
+        self.gc_rate_limiter_locked(&mut lock);
+
+        let entry = lock.session_insert_count.get(&session);
+        if entry.map(|e| e.count).unwrap_or(0) >= self.config.max_facts_per_session {
             return Some("rate_limited_session_quota".to_string());
         }
 
@@ -519,7 +660,7 @@ impl FactsStore {
                 .and_then(|x| x.as_str())
                 .unwrap_or("global");
             let key = format!("{}:{}", session, scope);
-            if lock.role_change_set.contains(&key) {
+            if lock.role_change_set.contains_key(&key) {
                 return Some("rate_limited_role_change".to_string());
             }
         }
@@ -536,15 +677,27 @@ impl FactsStore {
             return;
         }
         let mut lock = self.limiter.lock().await;
-        *lock.session_insert_count.entry(session.clone()).or_insert(0) += 1;
+        let entry = lock.session_insert_count.entry(session.clone()).or_insert(RateLimiterEntry {
+            count: 0,
+            first_seen: Instant::now(),
+        });
+        entry.count += 1;
+
         if input.fact_type == FactType::AgentRole && source == &FactSource::Analysis {
             let scope = input
                 .value_json
                 .get("scope")
                 .and_then(|x| x.as_str())
                 .unwrap_or("global");
-            lock.role_change_set.insert(format!("{}:{}", session, scope));
+            lock.role_change_set.insert(format!("{}:{}", session, scope), Instant::now());
         }
+    }
+
+    fn gc_rate_limiter_locked(&self, lock: &mut RateLimiterState) {
+        let now = Instant::now();
+        let ttl = StdDuration::from_secs(3600); // 1 小时 TTL
+        lock.session_insert_count.retain(|_, v| now.duration_since(v.first_seen) < ttl);
+        lock.role_change_set.retain(|_, t| now.duration_since(*t) < ttl);
     }
 
     fn arbitrate(&self, input: &UpsertInput, old: &Fact) -> Arbitrate {

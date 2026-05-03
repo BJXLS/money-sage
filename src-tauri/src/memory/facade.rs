@@ -4,11 +4,12 @@ use sqlx::SqlitePool;
 use crate::memory::config::MemoryConfig;
 use crate::memory::facts::FactsStore;
 use crate::memory::history::HistoryStore;
-use crate::memory::role::default_presets;
+use crate::memory::role_presets_store::RolePresetsStore;
 use crate::memory::search::{MemorySearchBackend, SearchQuery, SearchResult};
 use crate::memory::snapshot::{SnapshotAgent, SnapshotBuilder};
 use crate::models::{
-    Fact, FactFilter, HistoryEntry, RolePreset, RoleScope, RoleValue, UpdateFact, UpsertInput, UpsertOutcome,
+    Fact, FactFilter, HistoryEntry, NewRolePreset, RolePreset, RoleScope, RoleValue, UpdateFact,
+    UpdateRolePreset, UpsertInput, UpsertOutcome,
 };
 
 #[derive(Clone)]
@@ -17,6 +18,7 @@ pub struct MemoryFacade {
     history: std::sync::Arc<HistoryStore>,
     snapshots: std::sync::Arc<SnapshotBuilder>,
     search: std::sync::Arc<MemorySearchBackend>,
+    presets: std::sync::Arc<RolePresetsStore>,
 }
 
 impl MemoryFacade {
@@ -26,7 +28,8 @@ impl MemoryFacade {
             facts: std::sync::Arc::new(FactsStore::new(pool.clone(), cfg.clone())),
             history: std::sync::Arc::new(HistoryStore::new(pool.clone())),
             snapshots: std::sync::Arc::new(SnapshotBuilder::new(pool.clone(), cfg)),
-            search: std::sync::Arc::new(MemorySearchBackend::new(pool)),
+            search: std::sync::Arc::new(MemorySearchBackend::new(pool.clone())),
+            presets: std::sync::Arc::new(RolePresetsStore::new(pool)),
         }
     }
 
@@ -34,28 +37,9 @@ impl MemoryFacade {
         self.search.search(query).await
     }
 
-    pub async fn seed_default_roles(&self) -> Result<()> {
-        for preset in default_presets() {
-            let mut value = preset.value.clone();
-            value["preset_id"] = serde_json::Value::String(preset.preset_id);
-            let input = UpsertInput {
-                fact_type: crate::models::FactType::AgentRole,
-                key: Some(format!(
-                    "role:{}",
-                    value
-                        .get("scope")
-                        .and_then(|x| x.as_str())
-                        .unwrap_or("global")
-                )),
-                value_json: value,
-                source: Some(crate::models::FactSource::Preset),
-                confidence_hint: Some(0.9),
-                origin_session: None,
-                origin_message: None,
-            };
-            let _ = self.facts.upsert(input).await?;
-        }
-        Ok(())
+    /// 启动时调用：仅在 role_presets 表为空时插入唯一内置预设
+    pub async fn ensure_default_role_seed(&self) -> Result<()> {
+        self.presets.ensure_default_seeded().await
     }
 
     pub async fn list_facts(&self, filter: FactFilter) -> Result<Vec<Fact>> {
@@ -90,16 +74,37 @@ impl MemoryFacade {
         self.snapshots.render(SnapshotAgent::Analysis).await
     }
 
-    pub fn list_role_presets(&self) -> Vec<RolePreset> {
-        default_presets()
+    pub async fn list_role_presets(&self) -> Result<Vec<RolePreset>> {
+        self.presets.list().await
+    }
+
+    pub async fn create_role_preset(&self, input: NewRolePreset) -> Result<RolePreset> {
+        self.presets.create(input).await
+    }
+
+    pub async fn update_role_preset(&self, preset_id: String, patch: UpdateRolePreset) -> Result<()> {
+        self.presets.update(&preset_id, patch).await
+    }
+
+    pub async fn delete_role_preset(&self, preset_id: String) -> Result<()> {
+        self.presets.delete(&preset_id).await
+    }
+
+    pub async fn reset_role_preset(&self, preset_id: String) -> Result<()> {
+        self.presets.reset_builtin(&preset_id).await
     }
 
     pub async fn apply_role_preset(&self, preset_id: String, scope: RoleScope) -> Result<UpsertOutcome> {
-        let preset = default_presets()
-            .into_iter()
-            .find(|p| p.preset_id == preset_id)
+        let preset = self
+            .presets
+            .get(&preset_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("preset_not_found"))?;
         let mut value = preset.value;
+        // 注入 scope 与 preset_id 元信息
+        if !value.is_object() {
+            value = serde_json::json!({});
+        }
         value["scope"] = serde_json::Value::String(scope.as_str().to_string());
         value["preset_id"] = serde_json::Value::String(preset_id);
         self.facts
@@ -139,5 +144,9 @@ impl MemoryFacade {
             origin_message: None,
         };
         self.facts.upsert(input).await
+    }
+
+    pub async fn auto_decay(&self) -> Result<usize> {
+        self.facts.auto_decay().await
     }
 }

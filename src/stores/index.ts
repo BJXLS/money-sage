@@ -124,6 +124,22 @@ export interface RolePreset {
   display_name: string
   summary: string
   value: any
+  is_builtin: boolean
+  sort_order: number
+}
+
+export interface NewRolePresetInput {
+  display_name: string
+  summary?: string
+  value: any
+  sort_order?: number
+}
+
+export interface UpdateRolePresetInput {
+  display_name?: string
+  summary?: string
+  value?: any
+  sort_order?: number
 }
 
 export interface RoleTone {
@@ -262,6 +278,7 @@ export const useAppStore = defineStore('app', () => {
   const monthlyStats = ref<MonthlyStats[]>([])
   const categoryStats = ref<CategoryStats[]>([])
   const memoryFacts = ref<MemoryFact[]>([])
+  const pendingFacts = ref<MemoryFact[]>([])
   const memoryChanges = ref<MemoryHistoryEntry[]>([])
   const rolePresets = ref<RolePreset[]>([])
   const pendingDrafts = ref<QuickNoteDraft[]>([])
@@ -663,6 +680,20 @@ export const useAppStore = defineStore('app', () => {
     await invoke('retire_memory_fact', { id })
   }
 
+  const fetchPendingFacts = async () => {
+    const result = await safeInvoke<MemoryFact[]>('list_memory_facts', {
+      filter: {
+        status: 'provisional',
+      }
+    })
+    pendingFacts.value = result || []
+    return pendingFacts.value
+  }
+
+  const confirmMemoryFact = async (id: number) => {
+    await invoke('edit_memory_fact', { id, patch: { status: 'active' } })
+  }
+
   const fetchMemoryChanges = async (limit = 100) => {
     const result = await safeInvoke<MemoryHistoryEntry[]>('list_memory_recent_changes', { limit })
     memoryChanges.value = result || []
@@ -677,6 +708,27 @@ export const useAppStore = defineStore('app', () => {
     const result = await safeInvoke<RolePreset[]>('list_role_presets')
     rolePresets.value = result || []
     return rolePresets.value
+  }
+
+  const createRolePreset = async (input: NewRolePresetInput) => {
+    const result = await invoke<RolePreset>('create_role_preset', { input })
+    await fetchRolePresets()
+    return result
+  }
+
+  const updateRolePreset = async (presetId: string, patch: UpdateRolePresetInput) => {
+    await invoke('update_role_preset', { presetId, patch })
+    await fetchRolePresets()
+  }
+
+  const deleteRolePreset = async (presetId: string) => {
+    await invoke('delete_role_preset', { presetId })
+    await fetchRolePresets()
+  }
+
+  const resetRolePreset = async (presetId: string) => {
+    await invoke('reset_role_preset', { presetId })
+    await fetchRolePresets()
   }
 
   const applyRolePreset = async (presetId: string, scope: RoleScope) => {
@@ -745,6 +797,7 @@ export const useAppStore = defineStore('app', () => {
     monthlyStats,
     categoryStats,
     memoryFacts,
+    pendingFacts,
     memoryChanges,
     rolePresets,
     pendingDrafts,
@@ -791,12 +844,18 @@ export const useAppStore = defineStore('app', () => {
     exportDataFile,
     initializeData,
     fetchMemoryFacts,
+    fetchPendingFacts,
     upsertMemoryFact,
     editMemoryFact,
     retireMemoryFact,
+    confirmMemoryFact,
     fetchMemoryChanges,
     undoMemoryChange,
     fetchRolePresets,
+    createRolePreset,
+    updateRolePreset,
+    deleteRolePreset,
+    resetRolePreset,
     applyRolePreset,
     getAgentRole,
     setAgentRole,

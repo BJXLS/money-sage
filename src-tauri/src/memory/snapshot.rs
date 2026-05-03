@@ -31,18 +31,27 @@ impl SnapshotBuilder {
             SnapshotAgent::QuickNote => {
                 sections.push(self.render_facts(FactType::ClassificationRule, 10).await?);
                 sections.push(self.render_facts(FactType::RecurringEvent, 8).await?);
-                let joined = sections.join("\n\n");
-                Ok(limit_chars(&joined, self.config.quick_note_snapshot_char_limit))
             }
             SnapshotAgent::Analysis => {
                 sections.push(self.render_facts(FactType::UserProfile, 6).await?);
                 sections.push(self.render_facts(FactType::FinancialGoal, 8).await?);
                 sections.push(self.render_facts(FactType::RecurringEvent, 8).await?);
                 sections.push(self.render_facts(FactType::ClassificationRule, 10).await?);
-                let joined = sections.join("\n\n");
-                Ok(limit_chars(&joined, self.config.analysis_snapshot_char_limit))
             }
         }
+
+        let joined = sections.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n");
+
+        // 更新被引用 facts 的 usage_count 和 last_used_at
+        self.touch_facts_usage(agent).await;
+
+        Ok(limit_chars(
+            &joined,
+            match agent {
+                SnapshotAgent::QuickNote => self.config.quick_note_snapshot_char_limit,
+                SnapshotAgent::Analysis => self.config.analysis_snapshot_char_limit,
+            },
+        ))
     }
 
     async fn render_role(&self, scope: RoleScope) -> Result<String> {
@@ -75,10 +84,12 @@ impl SnapshotBuilder {
 
     async fn render_facts(&self, fact_type: FactType, limit: i64) -> Result<String> {
         let rows = sqlx::query(
-            "SELECT key, value_json, usage_count
+            "SELECT key, value_json, usage_count, status
              FROM memory_facts
-             WHERE fact_type = ? AND status='active'
-             ORDER BY usage_count DESC, confidence DESC, updated_at DESC
+             WHERE fact_type = ? AND status IN ('active', 'provisional')
+             ORDER BY
+               CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+               usage_count DESC, confidence DESC, updated_at DESC
              LIMIT ?",
         )
         .bind(fact_type.as_str())
@@ -102,9 +113,41 @@ impl SnapshotBuilder {
         for r in rows {
             let key = r.try_get::<Option<String>, _>("key").ok().flatten().unwrap_or_default();
             let value: String = r.get("value_json");
-            lines.push(format!("- {} {}", key, value).trim().to_string());
+            let status: String = r.get("status");
+            let prefix = if status == "provisional" { "[待确认] " } else { "" };
+            let key_prefix = if key.is_empty() { String::new() } else { format!("{} ", key) };
+            lines.push(format!("- {}{}{}", prefix, key_prefix, value).trim().to_string());
         }
         Ok(lines.join("\n"))
+    }
+
+    async fn touch_facts_usage(&self, agent: SnapshotAgent) {
+        let fact_types: &[&str] = match agent {
+            SnapshotAgent::QuickNote => &[
+                "agent_role",
+                "classification_rule",
+                "recurring_event",
+            ],
+            SnapshotAgent::Analysis => &[
+                "agent_role",
+                "user_profile",
+                "financial_goal",
+                "recurring_event",
+                "classification_rule",
+            ],
+        };
+
+        for ft in fact_types {
+            let _ = sqlx::query(
+                "UPDATE memory_facts
+                 SET usage_count = usage_count + 1,
+                     last_used_at = CURRENT_TIMESTAMP
+                 WHERE fact_type = ? AND status IN ('active', 'provisional')"
+            )
+            .bind(ft)
+            .execute(&self.pool)
+            .await;
+        }
     }
 }
 

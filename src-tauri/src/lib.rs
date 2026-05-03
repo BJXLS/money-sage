@@ -922,6 +922,13 @@ async fn list_memory_recent_changes(
 }
 
 #[tauri::command]
+async fn trigger_auto_decay(
+    state: State<'_, DatabaseState>,
+) -> Result<usize, String> {
+    state.memory.auto_decay().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn get_agent_role(
     state: State<'_, DatabaseState>,
     scope: RoleScope,
@@ -940,7 +947,56 @@ async fn set_agent_role(
 
 #[tauri::command]
 async fn list_role_presets(state: State<'_, DatabaseState>) -> Result<Vec<RolePreset>, String> {
-    Ok(state.memory.list_role_presets())
+    state.memory.list_role_presets().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn create_role_preset(
+    state: State<'_, DatabaseState>,
+    input: NewRolePreset,
+) -> Result<RolePreset, String> {
+    state
+        .memory
+        .create_role_preset(input)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn update_role_preset(
+    state: State<'_, DatabaseState>,
+    preset_id: String,
+    patch: UpdateRolePreset,
+) -> Result<(), String> {
+    state
+        .memory
+        .update_role_preset(preset_id, patch)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_role_preset(
+    state: State<'_, DatabaseState>,
+    preset_id: String,
+) -> Result<(), String> {
+    state
+        .memory
+        .delete_role_preset(preset_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn reset_role_preset(
+    state: State<'_, DatabaseState>,
+    preset_id: String,
+) -> Result<(), String> {
+    state
+        .memory
+        .reset_role_preset(preset_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1553,7 +1609,7 @@ pub fn run() {
                     Ok(db) => {
                         println!("数据库初始化成功");
                         let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
-                        let _ = memory.seed_default_roles().await;
+                        let _ = memory.ensure_default_role_seed().await;
                         let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
                         app_handle.manage(DatabaseState { db, memory, token_recorder });
                     }
@@ -1566,7 +1622,7 @@ pub fn run() {
                             Ok(db) => {
                                 println!("使用简单URL格式成功");
                                 let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
-                                let _ = memory.seed_default_roles().await;
+                                let _ = memory.ensure_default_role_seed().await;
                                 let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
                                 app_handle.manage(DatabaseState { db, memory, token_recorder });
                             }
@@ -1577,7 +1633,7 @@ pub fn run() {
                                     Ok(db) => {
                                         println!("内存数据库初始化成功");
                                         let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
-                                        let _ = memory.seed_default_roles().await;
+                                        let _ = memory.ensure_default_role_seed().await;
                                         let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
                                         app_handle.manage(DatabaseState { db, memory, token_recorder });
                                     }
@@ -1641,10 +1697,15 @@ pub fn run() {
             retire_memory_fact,
             undo_memory_change,
             list_memory_recent_changes,
+            trigger_auto_decay,
             get_agent_role,
             set_agent_role,
             list_role_presets,
             apply_role_preset,
+            create_role_preset,
+            update_role_preset,
+            delete_role_preset,
+            reset_role_preset,
             // Token 用量命令
             list_token_usage,
             get_token_usage_summary,

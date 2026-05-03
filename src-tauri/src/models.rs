@@ -621,6 +621,24 @@ pub struct RolePreset {
     pub display_name: String,
     pub summary: String,
     pub value: serde_json::Value,
+    pub is_builtin: bool,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NewRolePreset {
+    pub display_name: String,
+    pub summary: Option<String>,
+    pub value: serde_json::Value,
+    pub sort_order: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct UpdateRolePreset {
+    pub display_name: Option<String>,
+    pub summary: Option<String>,
+    pub value: Option<serde_json::Value>,
+    pub sort_order: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

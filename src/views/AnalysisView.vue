@@ -3,7 +3,6 @@ import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { marked } from 'marked'
-import PersonaQuickSwitcher from '../components/PersonaQuickSwitcher.vue'
 import QuickNoteInlineConfirmCard from '../components/analysis/QuickNoteInlineConfirmCard.vue'
 import { useAppStore, type QuickNoteDraft } from '../stores'
 
@@ -538,7 +537,6 @@ onUnmounted(() => {
           <span class="header-subtitle">ChatBI · 对话式财务分析</span>
         </div>
         <div class="header-right">
-          <PersonaQuickSwitcher scope="analysis" />
           <!-- 模型选择 -->
           <el-select
             v-if="llmConfigs.length > 0"

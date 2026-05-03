@@ -16,7 +16,7 @@ impl TokenUsageRecorder {
         Self { pool }
     }
 
-    /// 写入一条用量记录
+    /// 写入一条用量记录·
     pub async fn record(&self, rec: TokenUsageRecord) -> Result<i64> {
         let result = sqlx::query(
             r#"
@@ -111,20 +111,32 @@ impl TokenUsageRecorder {
             .map(|row| TokenUsageEntry {
                 id: row.get("id"),
                 agent_name: row.get("agent_name"),
-                session_id: row.try_get::<Option<String>, _>("session_id").ok().flatten(),
+                session_id: row
+                    .try_get::<Option<String>, _>("session_id")
+                    .ok()
+                    .flatten(),
                 request_id: row.get("request_id"),
                 round_index: row.try_get::<i32, _>("round_index").unwrap_or(0),
                 config_id: row.try_get::<Option<i64>, _>("config_id").ok().flatten(),
-                config_name: row.try_get::<Option<String>, _>("config_name").ok().flatten(),
+                config_name: row
+                    .try_get::<Option<String>, _>("config_name")
+                    .ok()
+                    .flatten(),
                 provider: row.get("provider"),
                 model: row.get("model"),
                 prompt_tokens: row.try_get::<i64, _>("prompt_tokens").unwrap_or(0),
                 completion_tokens: row.try_get::<i64, _>("completion_tokens").unwrap_or(0),
                 total_tokens: row.try_get::<i64, _>("total_tokens").unwrap_or(0),
-                finish_reason: row.try_get::<Option<String>, _>("finish_reason").ok().flatten(),
+                finish_reason: row
+                    .try_get::<Option<String>, _>("finish_reason")
+                    .ok()
+                    .flatten(),
                 duration_ms: row.try_get::<Option<i64>, _>("duration_ms").ok().flatten(),
                 success: row.try_get::<i64, _>("success").unwrap_or(0) != 0,
-                error_message: row.try_get::<Option<String>, _>("error_message").ok().flatten(),
+                error_message: row
+                    .try_get::<Option<String>, _>("error_message")
+                    .ok()
+                    .flatten(),
                 created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
             })
             .collect();
@@ -223,7 +235,10 @@ impl TokenUsageRecorder {
                 group_key: row.try_get::<String, _>("group_key").unwrap_or_default(),
                 group_label: row.try_get::<String, _>("group_label").unwrap_or_default(),
                 config_id: row.try_get::<Option<i64>, _>("config_id").ok().flatten(),
-                config_name: row.try_get::<Option<String>, _>("config_name").ok().flatten(),
+                config_name: row
+                    .try_get::<Option<String>, _>("config_name")
+                    .ok()
+                    .flatten(),
                 provider: row.try_get::<Option<String>, _>("provider").ok().flatten(),
                 model: row.try_get::<Option<String>, _>("model").ok().flatten(),
                 call_count: row.try_get::<i64, _>("call_count").unwrap_or(0),
@@ -231,7 +246,10 @@ impl TokenUsageRecorder {
                 prompt_tokens: row.try_get::<i64, _>("prompt_tokens").unwrap_or(0),
                 completion_tokens: row.try_get::<i64, _>("completion_tokens").unwrap_or(0),
                 total_tokens: row.try_get::<i64, _>("total_tokens").unwrap_or(0),
-                last_used_at: row.try_get::<Option<String>, _>("last_used_at").ok().flatten(),
+                last_used_at: row
+                    .try_get::<Option<String>, _>("last_used_at")
+                    .ok()
+                    .flatten(),
             })
             .collect())
     }

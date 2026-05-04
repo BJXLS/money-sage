@@ -1178,6 +1178,77 @@ async fn feishu_get_status(
     Ok(state.status.read().await.clone())
 }
 
+/// 启动飞书 WebSocket 连接（M3）。
+///
+/// 从 DB 读出 `feishu_configs.default` 行；缺凭据 / disabled 时也允许启动（用户可从 UI
+/// 直接手动 start，不强制要求 `enabled=1`）；具体生命周期见 [`feishu::connection::start`]。
+#[tauri::command]
+async fn feishu_start(
+    db_state: State<'_, DatabaseState>,
+    mcp_state: State<'_, McpState>,
+    feishu_state: State<'_, feishu::FeishuState>,
+) -> Result<(), String> {
+    let config = db_state
+        .db
+        .get_feishu_config()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "尚未保存飞书配置，请先在配置面板填写并保存".to_string())?;
+
+    feishu::connection::start(
+        &feishu_state,
+        &config,
+        db_state.db.clone(),
+        db_state.memory.clone(),
+        db_state.token_recorder.clone(),
+        mcp_state.manager.clone(),
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// 停止飞书 WebSocket 连接（M3）。无活跃连接时是 no-op。
+#[tauri::command]
+async fn feishu_stop(feishu_state: State<'_, feishu::FeishuState>) -> Result<(), String> {
+    feishu::connection::stop(&feishu_state).await;
+    Ok(())
+}
+
+/// 启动时若 `feishu_configs.enabled=1`，自动拉起 WebSocket 连接（best effort）。
+///
+/// 在 setup 的 spawn 任务中、`DatabaseState` 已经 `manage` 之后调用。失败仅打日志，不影响
+/// 其它命令注册（用户仍可手动 `feishu_start` 重试）。
+async fn try_auto_start_feishu(
+    app_handle: &tauri::AppHandle,
+    db: Database,
+    memory: Arc<memory::MemoryFacade>,
+    token_recorder: Arc<telemetry::TokenUsageRecorder>,
+) {
+    let config = match db.get_feishu_config().await {
+        Ok(Some(c)) if c.enabled => c,
+        Ok(_) => return,
+        Err(e) => {
+            eprintln!("[feishu setup] 读取飞书配置失败: {}", e);
+            return;
+        }
+    };
+    let mcp_manager = app_handle.state::<McpState>().manager.clone();
+    let feishu_state = app_handle.state::<feishu::FeishuState>();
+    match feishu::connection::start(
+        &feishu_state,
+        &config,
+        db,
+        memory,
+        token_recorder,
+        mcp_manager,
+    )
+    .await
+    {
+        Ok(()) => println!("[feishu setup] 飞书 WebSocket 已自动启动"),
+        Err(e) => eprintln!("[feishu setup] 飞书 WebSocket 自动启动失败: {}", e),
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -1215,20 +1286,28 @@ pub fn run() {
                         let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
                         let _ = memory.seed_default_roles().await;
                         let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
+                        let db_clone = db.clone();
+                        let memory_clone = memory.clone();
+                        let token_recorder_clone = token_recorder.clone();
                         app_handle.manage(DatabaseState { db, memory, token_recorder });
+                        try_auto_start_feishu(&app_handle, db_clone, memory_clone, token_recorder_clone).await;
                     }
                     Err(e) => {
                         eprintln!("数据库初始化失败: {}", e);
                         let simple_url = format!("sqlite:{}", db_path.to_string_lossy());
                         println!("尝试简单URL格式: {}", simple_url);
-                        
+
                         match Database::new(&simple_url).await {
                             Ok(db) => {
                                 println!("使用简单URL格式成功");
                                 let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
                                 let _ = memory.seed_default_roles().await;
                                 let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
+                                let db_clone = db.clone();
+                                let memory_clone = memory.clone();
+                                let token_recorder_clone = token_recorder.clone();
                                 app_handle.manage(DatabaseState { db, memory, token_recorder });
+                                try_auto_start_feishu(&app_handle, db_clone, memory_clone, token_recorder_clone).await;
                             }
                             Err(e) => {
                                 eprintln!("简单URL格式也失败: {}", e);
@@ -1239,7 +1318,11 @@ pub fn run() {
                                         let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
                                         let _ = memory.seed_default_roles().await;
                                         let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
+                                        let db_clone = db.clone();
+                                        let memory_clone = memory.clone();
+                                        let token_recorder_clone = token_recorder.clone();
                                         app_handle.manage(DatabaseState { db, memory, token_recorder });
+                                        try_auto_start_feishu(&app_handle, db_clone, memory_clone, token_recorder_clone).await;
                                     }
                                     Err(e) => {
                                         eprintln!("内存数据库也失败: {}", e);
@@ -1324,7 +1407,10 @@ pub fn run() {
             feishu_get_config,
             feishu_save_config,
             feishu_test_credential,
-            feishu_get_status
+            feishu_get_status,
+            // 飞书命令（M3）
+            feishu_start,
+            feishu_stop
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,18 +1,32 @@
-//! 飞书集成模块（M2：凭据 + 身份探测；不含 WebSocket 连接 / 消息处理）
+//! 飞书集成模块
 //!
 //! M2 范围：
 //! - DTOs：`FeishuConfig` / `FeishuConfigInput` / `FeishuStatus` / `BotIdentity`
 //! - 子模块：[`error`] [`client`] [`identity`]
 //! - 状态：[`FeishuState`]，目前只持 `RwLock<FeishuStatus>`，M3 接入连接句柄时再扩
 //!
-//! 不在 M2：连接、事件、入站消息、`/new` 命令、串行锁 / 去重 —— 留给 M3。
+//! M3 增量：
+//! - DTOs：[`FeishuUserSession`]（一个 open_id 一行的"当前会话"映射）
+//! - 子模块：[`commands`] [`dedup`] [`locks`] [`inbound`] [`routing`] [`outbound`]
+//!   [`pipeline_bridge`] [`dispatcher`] [`connection`]
+//! - [`FeishuState`] 扩为持有连接句柄 / 串行锁 / 去重缓存
 
 pub mod client;
+pub mod commands;
+pub mod connection;
+pub mod dedup;
+pub mod dispatcher;
 pub mod error;
 pub mod identity;
+pub mod inbound;
+pub mod locks;
+pub mod outbound;
+pub mod pipeline_bridge;
+pub mod routing;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use std::sync::Arc;
+use tokio::sync::{oneshot, RwLock};
 
 pub use error::FeishuError;
 
@@ -67,7 +81,21 @@ pub struct BotIdentity {
     pub name: String,
 }
 
-/// 飞书运行时状态（M2：连接相关字段恒为默认值；M3 接入连接后由 `FeishuState` 维护）。
+/// 飞书用户的"当前会话"映射（M3）。
+///
+/// 一个 `user_open_id` 对应一行；`current_session_id` 指向 `analysis_sessions.id`。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeishuUserSession {
+    pub id: i64,
+    pub user_open_id: String,
+    pub user_name: Option<String>,
+    pub current_session_id: String,
+    pub last_message_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 飞书运行时状态（M3：由 `FeishuState` 在连接生命周期中维护）。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FeishuStatus {
     pub running: bool,
@@ -80,16 +108,31 @@ pub struct FeishuStatus {
 
 /// Tauri State：`app.manage(FeishuState::new())`。
 ///
-/// 目前只持有一个状态读写锁。M3 会扩为 `connection: RwLock<Option<ConnectionHandle>>`、
-/// `pending_locks: ...` 等字段，但 M2 不预先暴露 API，避免误用。
+/// M3 持有：
+/// - `status`：连接 / 错误 / 时间戳，前端可读
+/// - `connection`：当前活跃的连接 join handle，`feishu_stop` 时 abort
+/// - `locks`：per-open_id 串行锁，避免同一用户并发触发流水线
+/// - `dedup`：消息 message_id 去重缓存，规避 SDK 重投递
 pub struct FeishuState {
-    pub status: RwLock<FeishuStatus>,
+    /// 用 `Arc<RwLock<...>>` 而不是裸 `RwLock<...>`：长连接任务（独立 OS 线程上跑）需要拿到一份句柄，
+    /// 在 WebSocket 自然退出时把 `running` 翻回 false / 记录错误。
+    pub status: Arc<RwLock<FeishuStatus>>,
+    /// 飞书 WebSocket 不能被 tokio 多线程 runtime spawn（SDK 的 `EventDispatcherHandler` 含
+    /// `Box<dyn EventHandler>`，没有 `Send + Sync` bound）；解决：每次 `start` spawn 一条独立
+    /// OS 线程，里面跑一个 `current_thread` runtime。本字段持有给该线程的 oneshot shutdown sender；
+    /// `stop` 时 send 信号，线程内 `tokio::select!` 命中后丢弃 dispatcher 让连接结束。
+    pub connection: RwLock<Option<oneshot::Sender<()>>>,
+    pub locks: Arc<locks::LockMap>,
+    pub dedup: Arc<dedup::Dedup>,
 }
 
 impl FeishuState {
     pub fn new() -> Self {
         Self {
-            status: RwLock::new(FeishuStatus::default()),
+            status: Arc::new(RwLock::new(FeishuStatus::default())),
+            connection: RwLock::new(None),
+            locks: Arc::new(locks::LockMap::new()),
+            dedup: Arc::new(dedup::Dedup::new(2048, std::time::Duration::from_secs(86_400))),
         }
     }
 }

@@ -17,6 +17,14 @@ pub struct McpManager {
     servers: Arc<RwLock<HashMap<i64, ActiveServer>>>,
 }
 
+impl Clone for McpManager {
+    fn clone(&self) -> Self {
+        Self {
+            servers: self.servers.clone(),
+        }
+    }
+}
+
 impl McpManager {
     pub fn new() -> Self {
         Self {

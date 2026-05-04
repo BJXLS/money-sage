@@ -38,6 +38,12 @@ impl From<sqlx::Error> for FeishuError {
     }
 }
 
+impl From<anyhow::Error> for FeishuError {
+    fn from(e: anyhow::Error) -> Self {
+        FeishuError::Db(e.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -7,6 +7,14 @@ pub struct Database {
     pub pool: SqlitePool,
 }
 
+impl Clone for Database {
+    fn clone(&self) -> Self {
+        Self {
+            pool: self.pool.clone(),
+        }
+    }
+}
+
 impl Database {
     pub async fn new(database_url: &str) -> Result<Self> {
         let pool = SqlitePool::connect(database_url).await?;
@@ -388,6 +396,25 @@ impl Database {
                 updated_at         TEXT    NOT NULL
             )
         "#).execute(pool).await?;
+
+        // 飞书用户的"当前会话"映射（M3）：one row per open_id，记录该用户当前对话的 session_id
+        // - `/new` 命令通过更新 current_session_id 切换到新会话
+        // - 每条入站消息后会 touch last_message_at
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS feishu_user_sessions (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_open_id        TEXT    NOT NULL,
+                user_name           TEXT,
+                current_session_id  TEXT    NOT NULL,
+                last_message_at     TEXT,
+                created_at          TEXT    NOT NULL,
+                updated_at          TEXT    NOT NULL,
+                UNIQUE(user_open_id)
+            )
+        "#).execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_feishu_user_sessions_session ON feishu_user_sessions(current_session_id)")
+            .execute(pool)
+            .await?;
 
         // Memory facts（阶段一）
         sqlx::query(r#"
@@ -1847,5 +1874,79 @@ impl Database {
             .fetch_one(&self.pool)
             .await?;
         Ok(row.get::<i64, _>("id"))
+    }
+
+    // ── 飞书用户会话路由（M3：每个 open_id 一行，记录"当前对话")─────────
+
+    /// 读取某 open_id 的"当前会话"映射，无则返回 `None`。
+    pub async fn get_feishu_user_session(
+        &self,
+        open_id: &str,
+    ) -> Result<Option<crate::feishu::FeishuUserSession>> {
+        let row = sqlx::query(
+            "SELECT id, user_open_id, user_name, current_session_id, last_message_at, created_at, updated_at \
+             FROM feishu_user_sessions WHERE user_open_id = ? LIMIT 1"
+        )
+        .bind(open_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.as_ref().map(|row| crate::feishu::FeishuUserSession {
+            id: row.get("id"),
+            user_open_id: row.try_get("user_open_id").unwrap_or_default(),
+            user_name: row.try_get("user_name").ok(),
+            current_session_id: row.try_get("current_session_id").unwrap_or_default(),
+            last_message_at: row.try_get("last_message_at").ok(),
+            created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
+            updated_at: row.try_get::<String, _>("updated_at").unwrap_or_default(),
+        }))
+    }
+
+    /// UPSERT：把 (open_id) 的"当前会话"指向 `current_session_id`，可选更新 `user_name`。
+    /// 用于 `/new` 命令以及首次消息进站时建立映射。
+    pub async fn set_feishu_user_session(
+        &self,
+        open_id: &str,
+        current_session_id: &str,
+        user_name: Option<&str>,
+    ) -> Result<i64> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        sqlx::query(
+            "INSERT INTO feishu_user_sessions \
+                (user_open_id, user_name, current_session_id, last_message_at, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?) \
+             ON CONFLICT(user_open_id) DO UPDATE SET \
+                current_session_id = excluded.current_session_id, \
+                user_name          = COALESCE(excluded.user_name, feishu_user_sessions.user_name), \
+                updated_at         = excluded.updated_at"
+        )
+        .bind(open_id)
+        .bind(user_name)
+        .bind(current_session_id)
+        .bind(&now)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+
+        let row = sqlx::query("SELECT id FROM feishu_user_sessions WHERE user_open_id = ? LIMIT 1")
+            .bind(open_id)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(row.get::<i64, _>("id"))
+    }
+
+    /// 更新 `last_message_at` 为当前时间（每条入站消息处理完后调用）。
+    /// 行不存在时无副作用，调用方应先 set_feishu_user_session。
+    pub async fn touch_feishu_user_session(&self, open_id: &str) -> Result<()> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        sqlx::query(
+            "UPDATE feishu_user_sessions SET last_message_at = ?, updated_at = ? WHERE user_open_id = ?"
+        )
+        .bind(&now)
+        .bind(&now)
+        .bind(open_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 }

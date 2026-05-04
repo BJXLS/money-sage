@@ -25,6 +25,7 @@ interface AnalysisSession {
   config_id: number | null
   created_at: string
   updated_at: string
+  source: string
 }
 
 interface AnalysisMessageRecord {
@@ -37,6 +38,7 @@ interface AnalysisMessageRecord {
   tool_calls_json: string | null
   tool_call_id: string | null
   tool_name: string | null
+  source: string
 }
 
 interface ToolStatusPayload {
@@ -68,6 +70,7 @@ interface Message {
   toolOutput?: string
   collapsed?: boolean
   draft?: QuickNoteDraft
+  source?: string
 }
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
@@ -383,6 +386,7 @@ const restoreSession = async (session: AnalysisSession) => {
         toolInput: r.tool_calls_json ? parseToolInput(r.tool_calls_json) : undefined,
         toolOutput: msgType === 'tool_result' ? r.content : undefined,
         collapsed: msgType === 'tool_result',
+        source: r.source,
       })
     }
 
@@ -500,7 +504,10 @@ onUnmounted(() => {
             @click="restoreSession(session)"
           >
             <div class="session-item-body">
-              <div class="session-title">{{ session.title }}</div>
+              <div class="session-title-row">
+                <span class="session-title">{{ session.title }}</span>
+                <span v-if="session.source === 'feishu'" class="source-badge feishu-badge" title="飞书来源">飞书</span>
+              </div>
               <div class="session-meta">{{ formatTime(session.updated_at) }}</div>
             </div>
             <div class="session-actions" @click.stop>
@@ -576,9 +583,12 @@ onUnmounted(() => {
           </div>
 
           <!-- 用户消息 -->
-          <div v-else-if="msg.role === 'user'" class="msg-bubble msg-user-bubble">
-            <span>{{ msg.content }}</span>
-          </div>
+          <template v-else-if="msg.role === 'user'">
+            <span v-if="msg.source === 'feishu'" class="msg-source-tag feishu-tag" title="来自飞书">飞书</span>
+            <div class="msg-bubble msg-user-bubble">
+              <span>{{ msg.content }}</span>
+            </div>
+          </template>
 
           <!-- Tool Call 消息（LLM 决定调用工具） -->
           <div v-else-if="msg.messageType === 'tool_call'" class="msg-ai-wrapper">
@@ -587,6 +597,7 @@ onUnmounted(() => {
               <div class="tool-card-header">
                 <span class="tool-card-icon">🔧</span>
                 <span class="tool-card-name">{{ msg.toolName }}</span>
+                <span v-if="msg.source === 'feishu'" class="msg-source-tag feishu-tag" title="来自飞书">飞书</span>
                 <span v-if="msg.loading" class="tool-card-status calling">调用中...</span>
                 <span v-else class="tool-card-status done">已调用</span>
               </div>
@@ -603,6 +614,7 @@ onUnmounted(() => {
               <div class="tool-result-header" @click="msg.collapsed = !msg.collapsed">
                 <span class="tool-card-icon">📊</span>
                 <span class="tool-card-name">{{ msg.toolName }} 结果</span>
+                <span v-if="msg.source === 'feishu'" class="msg-source-tag feishu-tag" title="来自飞书">飞书</span>
                 <span class="tool-result-toggle">{{ msg.collapsed ? '展开 ▸' : '收起 ▾' }}</span>
               </div>
               <div v-if="!msg.collapsed" class="tool-result-body">
@@ -625,6 +637,7 @@ onUnmounted(() => {
           <div v-else-if="msg.role === 'assistant'" class="msg-ai-wrapper">
             <div class="ai-avatar">AI</div>
             <div class="msg-bubble msg-ai-bubble" :class="{ 'msg-error': msg.error }">
+              <span v-if="msg.source === 'feishu'" class="msg-source-tag feishu-tag floating-tag" title="来自飞书">飞书</span>
               <div v-if="msg.loading && !msg.content && !msg.toolStatus" class="loading-dots">
                 <span /><span /><span />
               </div>
@@ -756,6 +769,12 @@ onUnmounted(() => {
 .session-active { background: #16162a !important; border-color: #4040a0 !important; }
 
 .session-item-body { flex: 1; min-width: 0; }
+.session-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 .session-title {
   font-size: 13px;
   color: #b0b0d0;
@@ -763,11 +782,28 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
+  flex: 1;
+  min-width: 0;
 }
 .session-active .session-title { color: #a5b4fc; }
 .session-meta { font-size: 11px; color: #404060; margin-top: 2px; }
 .session-active .session-meta { color: #5050a0; }
 .session-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+.source-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.feishu-badge {
+  background: rgba(20, 184, 166, 0.15);
+  color: #5eead4;
+  border: 1px solid rgba(20, 184, 166, 0.4);
+}
 
 .del-btn {
   color: #3a3a60 !important;
@@ -903,7 +939,7 @@ onUnmounted(() => {
 .welcome-icon { font-size: 24px; flex-shrink: 0; }
 .welcome-text { font-size: 14px; color: #b0b0d0; line-height: 1.8; }
 
-.msg-user { display: flex; justify-content: flex-end; }
+.msg-user { display: flex; justify-content: flex-end; align-items: flex-start; gap: 8px; }
 .msg-user-bubble {
   max-width: 65%; padding: 10px 16px;
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
@@ -925,6 +961,35 @@ onUnmounted(() => {
   color: #d0d0e8; font-size: 14px; line-height: 1.7; word-break: break-word;
 }
 .msg-error { border-color: #ef4444 !important; color: #fca5a5 !important; }
+
+/* 来源标签（飞书 / 本地） */
+.msg-source-tag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.feishu-tag {
+  background: rgba(20, 184, 166, 0.15);
+  color: #5eead4;
+  border: 1px solid rgba(20, 184, 166, 0.4);
+}
+.msg-source-tag.floating-tag {
+  display: block;
+  margin-bottom: 6px;
+  align-self: flex-start;
+  width: fit-content;
+  background: rgba(20, 184, 166, 0.2);
+}
+.msg-user .msg-source-tag {
+  align-self: center;
+}
 
 /* ── Tool Call 卡片 ── */
 .tool-avatar { background: linear-gradient(135deg, #f59e0b, #d97706) !important; font-size: 14px !important; }

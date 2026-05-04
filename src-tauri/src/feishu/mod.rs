@@ -20,6 +20,7 @@ pub mod error;
 pub mod identity;
 pub mod inbound;
 pub mod locks;
+pub mod markdown;
 pub mod outbound;
 pub mod pipeline_bridge;
 pub mod routing;

@@ -22,7 +22,7 @@ use super::client::FeishuClient;
 use super::commands::{try_parse_command, Command};
 use super::inbound::InboundMessage;
 use super::locks::LockMap;
-use super::outbound::{send_text, FeishuSink};
+use super::outbound::{add_reaction, send_text, FeishuSink, EMOJI_START};
 use super::routing;
 
 /// 入站消息的处理入口。dispatcher 在 `tokio::spawn` 里调用本函数。
@@ -108,7 +108,10 @@ pub async fn handle_inbound(
     };
 
     // 3. 跑流水线（飞书 sink）
-    let sink = FeishuSink::new(bot_client.clone(), open_id.clone());
+    // 在跑流水线之前先打"开始处理"的 emoji 反馈，给用户即时回执；
+    // 不在 sink 内部维护"是否已发出 start reaction"的状态。
+    add_reaction(&bot_client, &msg.message_id, EMOJI_START).await;
+    let sink = FeishuSink::new(bot_client.clone(), open_id.clone(), msg.message_id.clone());
     let input = AnalysisInput {
         session_id,
         user_message,

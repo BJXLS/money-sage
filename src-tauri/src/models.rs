@@ -362,12 +362,40 @@ pub struct ImportDataResult {
 // 智能分析 (ChatBI) 相关结构
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// 会话/消息来源标记。
+///
+/// MVP 仅区分桌面 UI 与飞书入站；后续接入更多通道时再扩枚举。
+/// 数据库以小写字符串存（'local' / 'feishu'），与 §6.3 设计文档一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionSource {
+    Local,
+    Feishu,
+}
+
+impl SessionSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SessionSource::Local => "local",
+            SessionSource::Feishu => "feishu",
+        }
+    }
+}
+
+impl Default for SessionSource {
+    fn default() -> Self {
+        SessionSource::Local
+    }
+}
+
 /// 持久化的分析会话
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AnalysisSession {
     pub id: String,
     pub title: String,
     pub config_id: Option<i64>,
+    #[serde(default = "default_source_str")]
+    pub source: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -384,6 +412,12 @@ pub struct AnalysisMessageRecord {
     pub tool_calls_json: Option<String>,
     pub tool_call_id: Option<String>,
     pub tool_name: Option<String>,
+    #[serde(default = "default_source_str")]
+    pub source: String,
+}
+
+fn default_source_str() -> String {
+    "local".to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

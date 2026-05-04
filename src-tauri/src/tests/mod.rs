@@ -2,6 +2,7 @@ pub mod quick_booking_tests;
 #[path = "analysis_agent.tests.rs"]
 pub mod analysis_agent_tests;
 pub mod memory_tests;
+pub mod feishu_tests;
 
 // 共用的测试工具函数
 use crate::database::Database;

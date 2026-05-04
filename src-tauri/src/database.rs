@@ -315,6 +315,7 @@ impl Database {
                 id          TEXT PRIMARY KEY,
                 title       TEXT NOT NULL DEFAULT '',
                 config_id   INTEGER,
+                source      TEXT NOT NULL DEFAULT 'local',
                 created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
             )
@@ -332,6 +333,7 @@ impl Database {
                 tool_calls_json  TEXT,
                 tool_call_id     TEXT,
                 tool_name        TEXT,
+                source           TEXT NOT NULL DEFAULT 'local',
                 FOREIGN KEY (session_id) REFERENCES analysis_sessions(id) ON DELETE CASCADE
             )
         "#).execute(pool).await?;
@@ -341,6 +343,9 @@ impl Database {
         let _ = sqlx::query("ALTER TABLE analysis_messages ADD COLUMN tool_calls_json TEXT").execute(pool).await;
         let _ = sqlx::query("ALTER TABLE analysis_messages ADD COLUMN tool_call_id TEXT").execute(pool).await;
         let _ = sqlx::query("ALTER TABLE analysis_messages ADD COLUMN tool_name TEXT").execute(pool).await;
+        // 迁移：M1（多通道接入）—— 标记会话/消息来源
+        let _ = sqlx::query("ALTER TABLE analysis_sessions ADD COLUMN source TEXT NOT NULL DEFAULT 'local'").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE analysis_messages ADD COLUMN source TEXT NOT NULL DEFAULT 'local'").execute(pool).await;
 
         // 创建索引
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)").execute(pool).await?;
@@ -352,6 +357,7 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_budgets_period ON budgets(start_date, end_date)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_llm_configs_active ON llm_configs(is_active)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_analysis_messages_session ON analysis_messages(session_id)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_analysis_sessions_source ON analysis_sessions(source, updated_at DESC)").execute(pool).await?;
 
         // MCP 服务器配置表
         sqlx::query(r#"
@@ -364,6 +370,22 @@ impl Database {
                 enabled     INTEGER NOT NULL DEFAULT 1,
                 created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
+
+        // 飞书机器人凭据 / 绑定配置（M2：单行 UPSERT-by-name='default'）
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS feishu_configs (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                name               TEXT    NOT NULL DEFAULT 'default' UNIQUE,
+                app_id             TEXT    NOT NULL,
+                app_secret         TEXT    NOT NULL,
+                domain             TEXT    NOT NULL DEFAULT 'feishu',
+                bind_llm_config_id INTEGER,
+                bind_role_scope    TEXT    NOT NULL DEFAULT 'analysis',
+                enabled            INTEGER NOT NULL DEFAULT 0,
+                created_at         TEXT    NOT NULL,
+                updated_at         TEXT    NOT NULL
             )
         "#).execute(pool).await?;
 
@@ -1301,7 +1323,7 @@ impl Database {
 
     pub async fn get_analysis_sessions(&self) -> Result<Vec<AnalysisSession>> {
         let rows = sqlx::query(
-            "SELECT id, title, config_id, created_at, updated_at FROM analysis_sessions ORDER BY updated_at DESC"
+            "SELECT id, title, config_id, source, created_at, updated_at FROM analysis_sessions ORDER BY updated_at DESC"
         )
         .fetch_all(&self.pool)
         .await?;
@@ -1312,6 +1334,7 @@ impl Database {
                 id: row.get("id"),
                 title: row.get("title"),
                 config_id: row.get("config_id"),
+                source: row.try_get::<String, _>("source").unwrap_or_else(|_| "local".to_string()),
                 created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
                 updated_at: row.try_get::<String, _>("updated_at").unwrap_or_default(),
             }
@@ -1320,7 +1343,7 @@ impl Database {
 
     pub async fn get_analysis_messages(&self, session_id: &str) -> Result<Vec<AnalysisMessageRecord>> {
         let rows = sqlx::query(
-            "SELECT id, session_id, role, content, created_at, message_type, tool_calls_json, tool_call_id, tool_name FROM analysis_messages WHERE session_id = ? ORDER BY id ASC"
+            "SELECT id, session_id, role, content, created_at, message_type, tool_calls_json, tool_call_id, tool_name, source FROM analysis_messages WHERE session_id = ? ORDER BY id ASC"
         )
         .bind(session_id)
         .fetch_all(&self.pool)
@@ -1338,6 +1361,7 @@ impl Database {
                 tool_calls_json: row.try_get::<Option<String>, _>("tool_calls_json").unwrap_or(None),
                 tool_call_id: row.try_get::<Option<String>, _>("tool_call_id").unwrap_or(None),
                 tool_name: row.try_get::<Option<String>, _>("tool_name").unwrap_or(None),
+                source: row.try_get::<String, _>("source").unwrap_or_else(|_| "local".to_string()),
             }
         }).collect())
     }
@@ -1346,7 +1370,7 @@ impl Database {
     /// 仅返回 message_type='text' 的消息，工具调用步骤不传递给后续 LLM 请求
     pub async fn get_recent_analysis_messages(&self, session_id: &str, limit: i64) -> Result<Vec<AnalysisMessageRecord>> {
         let rows = sqlx::query(
-            "SELECT * FROM (SELECT id, session_id, role, content, created_at, message_type, tool_calls_json, tool_call_id, tool_name FROM analysis_messages WHERE session_id = ? AND message_type = 'text' ORDER BY id DESC LIMIT ?) sub ORDER BY id ASC"
+            "SELECT * FROM (SELECT id, session_id, role, content, created_at, message_type, tool_calls_json, tool_call_id, tool_name, source FROM analysis_messages WHERE session_id = ? AND message_type = 'text' ORDER BY id DESC LIMIT ?) sub ORDER BY id ASC"
         )
         .bind(session_id)
         .bind(limit)
@@ -1365,19 +1389,22 @@ impl Database {
                 tool_calls_json: row.try_get::<Option<String>, _>("tool_calls_json").unwrap_or(None),
                 tool_call_id: row.try_get::<Option<String>, _>("tool_call_id").unwrap_or(None),
                 tool_name: row.try_get::<Option<String>, _>("tool_name").unwrap_or(None),
+                source: row.try_get::<String, _>("source").unwrap_or_else(|_| "local".to_string()),
             }
         }).collect())
     }
 
     /// 确保会话存在（首次调用时创建，已存在则忽略）
-    pub async fn ensure_analysis_session(&self, id: &str, title: &str, config_id: Option<i64>) -> Result<()> {
+    /// `source` 标记会话来源：'local'（桌面 UI）/ 'feishu'（飞书入站）/ 后续可扩展
+    pub async fn ensure_analysis_session(&self, id: &str, title: &str, config_id: Option<i64>, source: &str) -> Result<()> {
         let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         sqlx::query(
-            "INSERT OR IGNORE INTO analysis_sessions (id, title, config_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+            "INSERT OR IGNORE INTO analysis_sessions (id, title, config_id, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
         )
         .bind(id)
         .bind(title)
         .bind(config_id)
+        .bind(source)
         .bind(&now)
         .bind(&now)
         .execute(&self.pool)
@@ -1395,8 +1422,9 @@ impl Database {
         Ok(())
     }
 
+    /// 保存一条 text 消息（默认 source='local'）—— 兼容旧调用方
     pub async fn save_analysis_message(&self, session_id: &str, role: &str, content: &str) -> Result<i64> {
-        self.save_analysis_message_ext(session_id, role, content, "text", None, None, None).await
+        self.save_analysis_message_ext(session_id, role, content, "text", None, None, None, "local").await
     }
 
     pub async fn save_analysis_message_ext(
@@ -1408,9 +1436,10 @@ impl Database {
         tool_calls_json: Option<&str>,
         tool_call_id: Option<&str>,
         tool_name: Option<&str>,
+        source: &str,
     ) -> Result<i64> {
         let result = sqlx::query(
-            "INSERT INTO analysis_messages (session_id, role, content, message_type, tool_calls_json, tool_call_id, tool_name) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO analysis_messages (session_id, role, content, message_type, tool_calls_json, tool_call_id, tool_name, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(session_id)
         .bind(role)
@@ -1419,6 +1448,7 @@ impl Database {
         .bind(tool_calls_json)
         .bind(tool_call_id)
         .bind(tool_name)
+        .bind(source)
         .execute(&self.pool)
         .await?;
         Ok(result.last_insert_rowid())
@@ -1754,5 +1784,68 @@ impl Database {
                 updated_at: row.try_get::<String, _>("updated_at").unwrap_or_default(),
             }
         }))
+    }
+
+    // ── 飞书机器人配置（M2：单行 UPSERT-by-name='default'）─────────────
+
+    /// 读取唯一一条 `name='default'` 的飞书配置；无则返回 `None`。
+    pub async fn get_feishu_config(&self) -> Result<Option<crate::feishu::FeishuConfig>> {
+        let row = sqlx::query(
+            "SELECT id, name, app_id, app_secret, domain, bind_llm_config_id, bind_role_scope, enabled, created_at, updated_at \
+             FROM feishu_configs WHERE name = 'default' LIMIT 1"
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.as_ref().map(|row| crate::feishu::FeishuConfig {
+            id: row.get("id"),
+            name: row.try_get("name").unwrap_or_else(|_| "default".to_string()),
+            app_id: row.try_get("app_id").unwrap_or_default(),
+            app_secret: row.try_get("app_secret").unwrap_or_default(),
+            domain: row.try_get("domain").unwrap_or_else(|_| "feishu".to_string()),
+            bind_llm_config_id: row.try_get("bind_llm_config_id").ok(),
+            bind_role_scope: row.try_get("bind_role_scope").unwrap_or_else(|_| "analysis".to_string()),
+            enabled: row.try_get::<i64, _>("enabled").unwrap_or(0) != 0,
+            created_at: row.try_get::<String, _>("created_at").unwrap_or_default(),
+            updated_at: row.try_get::<String, _>("updated_at").unwrap_or_default(),
+        }))
+    }
+
+    /// UPSERT 单行飞书配置（`name='default'` 唯一）。返回行 id。
+    ///
+    /// SQLite UPSERT：`INSERT … ON CONFLICT(name) DO UPDATE SET …`。
+    pub async fn upsert_feishu_config(
+        &self,
+        input: &crate::feishu::FeishuConfigInput,
+    ) -> Result<i64> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        sqlx::query(
+            "INSERT INTO feishu_configs \
+                (name, app_id, app_secret, domain, bind_llm_config_id, bind_role_scope, enabled, created_at, updated_at) \
+             VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?) \
+             ON CONFLICT(name) DO UPDATE SET \
+                app_id             = excluded.app_id, \
+                app_secret         = excluded.app_secret, \
+                domain             = excluded.domain, \
+                bind_llm_config_id = excluded.bind_llm_config_id, \
+                bind_role_scope    = excluded.bind_role_scope, \
+                enabled            = excluded.enabled, \
+                updated_at         = excluded.updated_at"
+        )
+        .bind(&input.app_id)
+        .bind(&input.app_secret)
+        .bind(&input.domain)
+        .bind(input.bind_llm_config_id)
+        .bind(&input.bind_role_scope)
+        .bind(input.enabled as i64)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+
+        // UPSERT 后查回 id（SQLite `last_insert_rowid` 在 UPDATE 路径下可能为 0，需另查）
+        let row = sqlx::query("SELECT id FROM feishu_configs WHERE name = 'default' LIMIT 1")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(row.get::<i64, _>("id"))
     }
 }

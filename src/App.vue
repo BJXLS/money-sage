@@ -10,12 +10,14 @@ import UsageStatsView from './views/UsageStatsView.vue'
 import QuickBookingDialog from './components/QuickBookingDialog.vue'
 import LLMConfigDialog from './components/LLMConfigDialog.vue'
 import McpConfigDialog from './components/McpConfigDialog.vue'
+import FeishuConfigDialog from './components/FeishuConfigDialog.vue'
 
 const store = useAppStore()
 const activeMenu = ref('dashboard')
 const showQuickBooking = ref(false)
 const showLLMConfig = ref(false)
 const showMcpConfig = ref(false)
+const showFeishuConfig = ref(false)
 const isCollapsed = ref(false)
 
 const handleMenuSelect = (key: string) => {
@@ -49,6 +51,10 @@ const handleQuickBookingSuccess = (data: any) => {
 
 const handleLLMConfigSaved = () => {
   showLLMConfig.value = false
+}
+
+const handleFeishuConfigSaved = () => {
+  showFeishuConfig.value = false
 }
 
 onMounted(() => {
@@ -139,6 +145,9 @@ onMounted(() => {
             <el-button @click="showMcpConfig = true" class="mcp-config-btn" title="MCP 工具服务器">
               <el-icon><Connection /></el-icon>
             </el-button>
+            <el-button @click="showFeishuConfig = true" class="feishu-config-btn" title="飞书机器人">
+              <el-icon><ChatLineRound /></el-icon>
+            </el-button>
             <el-button @click="showLLMConfig = true" class="llm-config-btn" title="大模型配置">
               <el-icon><Setting /></el-icon>
             </el-button>
@@ -183,6 +192,12 @@ onMounted(() => {
     <!-- MCP 服务器配置对话框 -->
     <McpConfigDialog
       v-model="showMcpConfig"
+    />
+
+    <!-- 飞书机器人配置对话框 -->
+    <FeishuConfigDialog
+      v-model="showFeishuConfig"
+      @success="handleFeishuConfigSaved"
     />
   </div>
 </template>
@@ -413,6 +428,29 @@ onMounted(() => {
 }
 
 .mcp-config-btn:focus {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
+}
+
+.feishu-config-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  min-width: auto;
+}
+
+.feishu-config-btn:hover {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #3b82f6;
+}
+
+.feishu-config-btn:focus {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.15);
   color: #e2e8f0;

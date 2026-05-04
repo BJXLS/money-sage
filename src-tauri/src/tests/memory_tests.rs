@@ -207,7 +207,7 @@ async fn test_memory_search_facts_and_messages() {
         .await
         .expect("upsert goal");
 
-    db.ensure_analysis_session("sess-old", "上个月餐饮分析", None)
+    db.ensure_analysis_session("sess-old", "上个月餐饮分析", None, "local")
         .await
         .expect("ensure old session");
     db.save_analysis_message("sess-old", "user", "帮我看看上个月的餐饮支出占比")

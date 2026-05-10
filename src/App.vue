@@ -32,7 +32,7 @@ const getPageTitle = () => {
     transactions: '收支记录',
     'categories-budget': '分类与预算',
     'smart-analysis': '智能分析',
-    memory: '记忆管理',
+    memory: 'Agent 配置',
     'usage-stats': '用量统计'
   }
   return titles[activeMenu.value] || '记账本'

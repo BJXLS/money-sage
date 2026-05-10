@@ -1290,6 +1290,31 @@ async fn apply_role_preset(
         .map_err(|e| e.to_string())
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Workspace 文件命令
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn list_workspace_files(state: State<'_, DatabaseState>) -> Result<Vec<workspace::WorkspaceFileInfo>, String> {
+    Ok(state.workspace.list_files())
+}
+
+#[tauri::command]
+async fn read_workspace_file(state: State<'_, DatabaseState>, name: String) -> Result<String, String> {
+    state
+        .workspace
+        .read_file(&name)
+        .ok_or_else(|| format!("文件不存在或无法读取: {}", name))
+}
+
+#[tauri::command]
+async fn write_workspace_file(state: State<'_, DatabaseState>, name: String, content: String) -> Result<(), String> {
+    state
+        .workspace
+        .write_file(&name, &content)
+        .map_err(|e| e.to_string())
+}
+
 /// 流式分析：接收用户消息 → 构建上下文 → 调用 LLM（SSE）→ 工具调用循环 → 持久化
 #[tauri::command]
 async fn send_analysis_message_stream(
@@ -2129,7 +2154,11 @@ pub fn run() {
             get_mcp_server_status,
             get_mcp_tools,
             get_all_mcp_tools,
-            call_mcp_tool
+            call_mcp_tool,
+            // Workspace 命令
+            list_workspace_files,
+            read_workspace_file,
+            write_workspace_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

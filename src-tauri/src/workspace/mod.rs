@@ -68,6 +68,23 @@ const DEFAULT_BOOTSTRAP_MD: &str = r"# 首次引导
 你可以随时告诉我你的偏好，我会记住它们。
 ";
 
+const WORKSPACE_FILES: &[&str] = &[
+    "AGENTS.md",
+    "IDENTITY.md",
+    "SOUL.md",
+    "USER.md",
+    "MEMORY.md",
+];
+
+#[derive(Clone, serde::Serialize)]
+pub struct WorkspaceFileInfo {
+    pub name: String,
+    pub exists: bool,
+    pub char_count: usize,
+    pub byte_size: usize,
+    pub modified_at: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct WorkspaceManager {
     workspace_dir: PathBuf,
@@ -105,13 +122,85 @@ impl WorkspaceManager {
         Ok(())
     }
 
+    fn is_valid_filename(&self, name: &str) -> bool {
+        matches!(
+            name,
+            "AGENTS.md"
+                | "IDENTITY.md"
+                | "SOUL.md"
+                | "USER.md"
+                | "MEMORY.md"
+                | "BOOTSTRAP.md"
+                | "BOOTSTRAP-used.md"
+        )
+    }
+
     /// 读取指定文件内容（若不存在或无法读取返回 None）
     pub fn read_file(&self, name: &str) -> Option<String> {
+        if !self.is_valid_filename(name) {
+            return None;
+        }
         let path = self.workspace_dir.join(name);
         if !path.exists() {
             return None;
         }
         fs::read_to_string(&path).ok()
+    }
+
+    /// 写入指定文件（白名单校验）
+    pub fn write_file(&self, name: &str, content: &str) -> Result<()> {
+        if !self.is_valid_filename(name) {
+            return Err(anyhow::anyhow!("非法文件名: {}", name));
+        }
+        if !self.workspace_dir.exists() {
+            fs::create_dir_all(&self.workspace_dir)?;
+        }
+        let path = self.workspace_dir.join(name);
+        fs::write(&path, content)?;
+        Ok(())
+    }
+
+    /// 列出工作区文件元信息（固定返回5个核心文件）
+    pub fn list_files(&self) -> Vec<WorkspaceFileInfo> {
+        WORKSPACE_FILES
+            .iter()
+            .map(|name| self.file_info(name))
+            .collect()
+    }
+
+    fn file_info(&self, name: &str) -> WorkspaceFileInfo {
+        let path = self.workspace_dir.join(name);
+        if !path.exists() {
+            return WorkspaceFileInfo {
+                name: name.to_string(),
+                exists: false,
+                char_count: 0,
+                byte_size: 0,
+                modified_at: None,
+            };
+        }
+        let metadata = fs::metadata(&path).ok();
+        let byte_size = metadata.as_ref().map(|m| m.len() as usize).unwrap_or(0);
+        let modified_at = metadata
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| {
+                t.duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs() as i64)
+            })
+            .map(|ts| {
+                chrono::DateTime::from_timestamp(ts, 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_default()
+            });
+        let content = fs::read_to_string(&path).unwrap_or_default();
+        WorkspaceFileInfo {
+            name: name.to_string(),
+            exists: true,
+            char_count: content.chars().count(),
+            byte_size,
+            modified_at,
+        }
     }
 
     /// 消费 BOOTSTRAP.md：读取内容并重命名为 BOOTSTRAP-used.md

@@ -149,6 +149,14 @@ export interface RoleTone {
   language_flavor?: string
 }
 
+export interface WorkspaceFile {
+  name: string
+  exists: boolean
+  char_count: number
+  byte_size: number
+  modified_at: string | null
+}
+
 export interface RoleValue {
   scope: RoleScope
   display_name?: string
@@ -282,6 +290,10 @@ export const useAppStore = defineStore('app', () => {
   const memoryChanges = ref<MemoryHistoryEntry[]>([])
   const rolePresets = ref<RolePreset[]>([])
   const pendingDrafts = ref<QuickNoteDraft[]>([])
+  const workspaceFiles = ref<WorkspaceFile[]>([])
+  const currentFileContent = ref('')
+  const currentFileName = ref('')
+  const workspaceLoading = ref(false)
   const loading = ref(false)
   const currentPage = ref(1)
   const pageSize = ref(20)
@@ -788,7 +800,41 @@ export const useAppStore = defineStore('app', () => {
   const purgeTokenUsageLogs = async (before: string) => {
     return await invoke<number>('purge_token_usage_logs', { before })
   }
-  
+
+  // ── Workspace 文件管理 ────────────────────────────────────────────────
+  const fetchWorkspaceFiles = async () => {
+    workspaceLoading.value = true
+    try {
+      const result = await safeInvoke<WorkspaceFile[]>('list_workspace_files')
+      workspaceFiles.value = result || []
+      return workspaceFiles.value
+    } finally {
+      workspaceLoading.value = false
+    }
+  }
+
+  const readWorkspaceFile = async (name: string) => {
+    workspaceLoading.value = true
+    try {
+      const result = await safeInvoke<string>('read_workspace_file', { name })
+      currentFileContent.value = result || ''
+      currentFileName.value = name
+      return result
+    } finally {
+      workspaceLoading.value = false
+    }
+  }
+
+  const writeWorkspaceFile = async (name: string, content: string) => {
+    workspaceLoading.value = true
+    try {
+      await invoke('write_workspace_file', { name, content })
+      await fetchWorkspaceFiles()
+    } finally {
+      workspaceLoading.value = false
+    }
+  }
+
   return {
     // 状态
     categories,
@@ -803,6 +849,10 @@ export const useAppStore = defineStore('app', () => {
     pendingDrafts,
     tokenUsageEntries,
     tokenUsageSummary,
+    workspaceFiles,
+    currentFileContent,
+    currentFileName,
+    workspaceLoading,
     loading,
     currentPage,
     pageSize,
@@ -865,5 +915,8 @@ export const useAppStore = defineStore('app', () => {
     listTokenUsage,
     getTokenUsageSummary,
     purgeTokenUsageLogs,
+    fetchWorkspaceFiles,
+    readWorkspaceFile,
+    writeWorkspaceFile,
   }
 }) 

@@ -1,18 +1,19 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-use tauri::{Emitter, Manager, State};
-use chrono::NaiveDate;
 use anyhow::Result;
+use chrono::NaiveDate;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tauri::{Emitter, Manager, State};
 
-mod models;
-mod database;
-mod utils;
 mod ai;
+mod data_io;
+mod database;
 mod mcp;
 mod memory;
+mod models;
 mod telemetry;
-mod data_io;
+mod utils;
+mod workspace;
 
 #[cfg(test)]
 mod tests;
@@ -24,6 +25,7 @@ pub struct DatabaseState {
     pub db: Database,
     pub memory: Arc<memory::MemoryFacade>,
     pub token_recorder: Arc<telemetry::TokenUsageRecorder>,
+    pub workspace: workspace::WorkspaceManager,
 }
 
 pub struct McpState {
@@ -36,72 +38,165 @@ async fn get_categories(state: State<'_, DatabaseState>) -> Result<Vec<Category>
 }
 
 #[tauri::command]
-async fn get_categories_by_type(state: State<'_, DatabaseState>, category_type: String) -> Result<Vec<Category>, String> {
-    state.db.get_categories_by_type(&category_type).await.map_err(|e| e.to_string())
+async fn get_categories_by_type(
+    state: State<'_, DatabaseState>,
+    category_type: String,
+) -> Result<Vec<Category>, String> {
+    state
+        .db
+        .get_categories_by_type(&category_type)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn create_category(state: State<'_, DatabaseState>, category: NewCategory) -> Result<i64, String> {
-    state.db.create_category(&category).await.map_err(|e| e.to_string())
+async fn create_category(
+    state: State<'_, DatabaseState>,
+    category: NewCategory,
+) -> Result<i64, String> {
+    state
+        .db
+        .create_category(&category)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn update_category(state: State<'_, DatabaseState>, id: i64, category: UpdateCategory) -> Result<(), String> {
-    state.db.update_category(id, &category).await.map_err(|e| e.to_string())
+async fn update_category(
+    state: State<'_, DatabaseState>,
+    id: i64,
+    category: UpdateCategory,
+) -> Result<(), String> {
+    state
+        .db
+        .update_category(id, &category)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn delete_category(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
-    state.db.delete_category(id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .delete_category(id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_parent_categories(state: State<'_, DatabaseState>, category_type: String) -> Result<Vec<Category>, String> {
-    state.db.get_parent_categories(&category_type).await.map_err(|e| e.to_string())
+async fn get_parent_categories(
+    state: State<'_, DatabaseState>,
+    category_type: String,
+) -> Result<Vec<Category>, String> {
+    state
+        .db
+        .get_parent_categories(&category_type)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_sub_categories(state: State<'_, DatabaseState>, parent_id: i64) -> Result<Vec<Category>, String> {
-    state.db.get_sub_categories(parent_id).await.map_err(|e| e.to_string())
+async fn get_sub_categories(
+    state: State<'_, DatabaseState>,
+    parent_id: i64,
+) -> Result<Vec<Category>, String> {
+    state
+        .db
+        .get_sub_categories(parent_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_transactions(state: State<'_, DatabaseState>, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<TransactionWithCategory>, String> {
-    state.db.get_transactions(limit, offset).await.map_err(|e| e.to_string())
+async fn get_transactions(
+    state: State<'_, DatabaseState>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<TransactionWithCategory>, String> {
+    state
+        .db
+        .get_transactions(limit, offset)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_transactions_by_date_range(state: State<'_, DatabaseState>, start_date: String, end_date: String) -> Result<Vec<TransactionWithCategory>, String> {
-    let start_date = NaiveDate::parse_from_str(&start_date, "%Y-%m-%d").map_err(|e| e.to_string())?;
+async fn get_transactions_by_date_range(
+    state: State<'_, DatabaseState>,
+    start_date: String,
+    end_date: String,
+) -> Result<Vec<TransactionWithCategory>, String> {
+    let start_date =
+        NaiveDate::parse_from_str(&start_date, "%Y-%m-%d").map_err(|e| e.to_string())?;
     let end_date = NaiveDate::parse_from_str(&end_date, "%Y-%m-%d").map_err(|e| e.to_string())?;
-    state.db.get_transactions_by_date_range(&start_date, &end_date).await.map_err(|e| e.to_string())
+    state
+        .db
+        .get_transactions_by_date_range(&start_date, &end_date)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn create_transaction(state: State<'_, DatabaseState>, transaction: NewTransaction) -> Result<i64, String> {
-    state.db.create_transaction(&transaction).await.map_err(|e| e.to_string())
+async fn create_transaction(
+    state: State<'_, DatabaseState>,
+    transaction: NewTransaction,
+) -> Result<i64, String> {
+    state
+        .db
+        .create_transaction(&transaction)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn update_transaction(state: State<'_, DatabaseState>, id: i64, transaction: UpdateTransaction) -> Result<(), String> {
-    state.db.update_transaction(id, &transaction).await.map_err(|e| e.to_string())
+async fn update_transaction(
+    state: State<'_, DatabaseState>,
+    id: i64,
+    transaction: UpdateTransaction,
+) -> Result<(), String> {
+    state
+        .db
+        .update_transaction(id, &transaction)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn delete_transaction(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
-    state.db.delete_transaction(id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .delete_transaction(id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_monthly_stats(state: State<'_, DatabaseState>, months: i32) -> Result<Vec<MonthlyStats>, String> {
-    state.db.get_monthly_stats(months).await.map_err(|e| e.to_string())
+async fn get_monthly_stats(
+    state: State<'_, DatabaseState>,
+    months: i32,
+) -> Result<Vec<MonthlyStats>, String> {
+    state
+        .db
+        .get_monthly_stats(months)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_category_stats(state: State<'_, DatabaseState>, start_date: String, end_date: String, transaction_type: String) -> Result<Vec<CategoryStats>, String> {
-    let start_date = NaiveDate::parse_from_str(&start_date, "%Y-%m-%d").map_err(|e| e.to_string())?;
+async fn get_category_stats(
+    state: State<'_, DatabaseState>,
+    start_date: String,
+    end_date: String,
+    transaction_type: String,
+) -> Result<Vec<CategoryStats>, String> {
+    let start_date =
+        NaiveDate::parse_from_str(&start_date, "%Y-%m-%d").map_err(|e| e.to_string())?;
     let end_date = NaiveDate::parse_from_str(&end_date, "%Y-%m-%d").map_err(|e| e.to_string())?;
-    state.db.get_category_stats(&start_date, &end_date, &transaction_type).await.map_err(|e| e.to_string())
+    state
+        .db
+        .get_category_stats(&start_date, &end_date, &transaction_type)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -111,12 +206,24 @@ async fn get_budgets(state: State<'_, DatabaseState>) -> Result<Vec<BudgetProgre
 
 #[tauri::command]
 async fn create_budget(state: State<'_, DatabaseState>, budget: NewBudget) -> Result<i64, String> {
-    state.db.create_budget(&budget).await.map_err(|e| e.to_string())
+    state
+        .db
+        .create_budget(&budget)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn update_budget(state: State<'_, DatabaseState>, id: i64, budget: UpdateBudget) -> Result<(), String> {
-    state.db.update_budget(id, &budget).await.map_err(|e| e.to_string())
+async fn update_budget(
+    state: State<'_, DatabaseState>,
+    id: i64,
+    budget: UpdateBudget,
+) -> Result<(), String> {
+    state
+        .db
+        .update_budget(id, &budget)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -130,51 +237,58 @@ async fn import_transactions(
     file_path: String,
 ) -> Result<usize, String> {
     let db = &state.db;
-    
-    let mut reader = csv::Reader::from_path(&file_path)
-        .map_err(|e| format!("无法读取CSV文件: {}", e))?;
-    
+
+    let mut reader =
+        csv::Reader::from_path(&file_path).map_err(|e| format!("无法读取CSV文件: {}", e))?;
+
     let mut count = 0;
-    
+
     for result in reader.deserialize::<HashMap<String, String>>() {
-        let record: HashMap<String, String> = result
-            .map_err(|e| format!("CSV格式错误: {}", e))?;
-        
+        let record: HashMap<String, String> = result.map_err(|e| format!("CSV格式错误: {}", e))?;
+
         // 解析日期
-        let date_str = record.get("date")
+        let date_str = record
+            .get("date")
             .or_else(|| record.get("日期"))
             .map_or("", |v| v);
         let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
             .or_else(|_| NaiveDate::parse_from_str(date_str, "%Y/%m/%d"))
             .map_err(|_| format!("无效的日期格式: {}", date_str))?;
-        
+
         // 解析交易类型
-        let transaction_type = record.get("type")
+        let transaction_type = record
+            .get("type")
             .or_else(|| record.get("类型"))
             .map_or("expense", |v| v);
-        
+
         // 解析金额
-        let amount_str = record.get("amount")
+        let amount_str = record
+            .get("amount")
             .or_else(|| record.get("金额"))
             .map_or("0", |v| v);
-        let amount: f64 = amount_str.parse()
+        let amount: f64 = amount_str
+            .parse()
             .map_err(|_| format!("无效的金额格式: {}", amount_str))?;
-        
+
         // 解析分类ID
-        let category_id_str = record.get("category_id")
+        let category_id_str = record
+            .get("category_id")
             .or_else(|| record.get("分类ID"))
             .map_or("1", |v| v);
-        let category_id: i64 = category_id_str.parse()
+        let category_id: i64 = category_id_str
+            .parse()
             .map_err(|_| format!("无效的分类ID格式: {}", category_id_str))?;
-        
+
         // 获取描述和备注
-        let description = record.get("description")
+        let description = record
+            .get("description")
             .or_else(|| record.get("描述"))
             .map(|s| s.clone());
-        let note = record.get("note")
+        let note = record
+            .get("note")
             .or_else(|| record.get("备注"))
             .map(|s| s.clone());
-        
+
         // 创建交易记录
         let new_transaction = NewTransaction {
             date,
@@ -185,43 +299,58 @@ async fn import_transactions(
             description,
             note,
         };
-        
-        db.create_transaction(&new_transaction).await
+
+        db.create_transaction(&new_transaction)
+            .await
             .map_err(|e| format!("创建交易记录失败: {}", e))?;
-        
+
         count += 1;
     }
-    
+
     Ok(count)
 }
 
 #[tauri::command]
-async fn export_csv_transactions(state: State<'_, DatabaseState>, file_path: String, start_date: String, end_date: String) -> Result<(), String> {
-    use std::fs::File;
+async fn export_csv_transactions(
+    state: State<'_, DatabaseState>,
+    file_path: String,
+    start_date: String,
+    end_date: String,
+) -> Result<(), String> {
     use csv::Writer;
-    
-    let start_date = NaiveDate::parse_from_str(&start_date, "%Y-%m-%d").map_err(|e| e.to_string())?;
+    use std::fs::File;
+
+    let start_date =
+        NaiveDate::parse_from_str(&start_date, "%Y-%m-%d").map_err(|e| e.to_string())?;
     let end_date = NaiveDate::parse_from_str(&end_date, "%Y-%m-%d").map_err(|e| e.to_string())?;
-    
-    let transactions = state.db.get_transactions_by_date_range(&start_date, &end_date).await.map_err(|e| e.to_string())?;
-    
+
+    let transactions = state
+        .db
+        .get_transactions_by_date_range(&start_date, &end_date)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let file = File::create(&file_path).map_err(|e| format!("无法创建文件: {}", e))?;
     let mut writer = Writer::from_writer(file);
-    
+
     // 写入表头
-    writer.write_record(&["日期", "类型", "金额", "分类", "描述", "备注"]).map_err(|e| e.to_string())?;
-    
+    writer
+        .write_record(&["日期", "类型", "金额", "分类", "描述", "备注"])
+        .map_err(|e| e.to_string())?;
+
     for transaction in transactions {
-        writer.write_record(&[
-            transaction.date.to_string(),
-            transaction.r#type,
-            transaction.amount.to_string(),
-            transaction.category_name,
-            transaction.description.unwrap_or_default(),
-            transaction.note.unwrap_or_default(),
-        ]).map_err(|e| e.to_string())?;
+        writer
+            .write_record(&[
+                transaction.date.to_string(),
+                transaction.r#type,
+                transaction.amount.to_string(),
+                transaction.category_name,
+                transaction.description.unwrap_or_default(),
+                transaction.note.unwrap_or_default(),
+            ])
+            .map_err(|e| e.to_string())?;
     }
-    
+
     writer.flush().map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -266,35 +395,64 @@ async fn get_llm_configs(state: State<'_, DatabaseState>) -> Result<Vec<LLMConfi
 
 /// 获取当前活跃的 LLM 配置（快速记账等功能使用）
 #[tauri::command]
-async fn get_active_llm_config(state: State<'_, DatabaseState>) -> Result<Option<LLMConfig>, String> {
-    state.db.get_active_llm_config().await.map_err(|e| e.to_string())
+async fn get_active_llm_config(
+    state: State<'_, DatabaseState>,
+) -> Result<Option<LLMConfig>, String> {
+    state
+        .db
+        .get_active_llm_config()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn save_llm_config(state: State<'_, DatabaseState>, config: NewLLMConfig) -> Result<i64, String> {
-    state.db.save_llm_config(&config).await.map_err(|e| e.to_string())
+async fn save_llm_config(
+    state: State<'_, DatabaseState>,
+    config: NewLLMConfig,
+) -> Result<i64, String> {
+    state
+        .db
+        .save_llm_config(&config)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn update_llm_config(state: State<'_, DatabaseState>, id: i64, config: UpdateLLMConfig) -> Result<(), String> {
-    state.db.update_llm_config(id, &config).await.map_err(|e| e.to_string())
+async fn update_llm_config(
+    state: State<'_, DatabaseState>,
+    id: i64,
+    config: UpdateLLMConfig,
+) -> Result<(), String> {
+    state
+        .db
+        .update_llm_config(id, &config)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 将指定配置设为活跃，同时停用其他所有配置
 #[tauri::command]
 async fn set_active_llm_config(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
-    state.db.set_active_llm_config(id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .set_active_llm_config(id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn delete_llm_config(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
-    state.db.delete_llm_config(id).await.map_err(|e| e.to_string())
+    state
+        .db
+        .delete_llm_config(id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 测试连接（不需要预先保存，直接发一条最小请求验证可达性）
 #[tauri::command]
 async fn test_llm_connection(config: TestConnectionRequest) -> Result<String, String> {
-    use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider, AIRequest, AIMessage};
+    use crate::utils::http_client::{AIHttpClient, AIMessage, AIProvider, AIRequest, ClientConfig};
 
     let client_config = ClientConfig {
         provider: AIProvider::Custom("test".to_string()),
@@ -305,8 +463,8 @@ async fn test_llm_connection(config: TestConnectionRequest) -> Result<String, St
         headers: std::collections::HashMap::new(),
     };
 
-    let http_client = AIHttpClient::new(client_config)
-        .map_err(|e| format!("创建客户端失败: {}", e))?;
+    let http_client =
+        AIHttpClient::new(client_config).map_err(|e| format!("创建客户端失败: {}", e))?;
 
     let request = AIRequest {
         model: config.model.clone(),
@@ -333,9 +491,12 @@ async fn test_llm_connection(config: TestConnectionRequest) -> Result<String, St
 
 // 快速记账文本处理命令
 #[tauri::command]
-async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: String) -> Result<QuickBookingResult, String> {
+async fn process_quick_booking_text(
+    state: State<'_, DatabaseState>,
+    text: String,
+) -> Result<QuickBookingResult, String> {
     use crate::ai::agent::QuickNoteAgent;
-    
+
     // 验证输入
     if text.trim().is_empty() {
         return Ok(QuickBookingResult {
@@ -345,7 +506,7 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
             failed_lines: vec![],
         });
     }
-    
+
     // 1. 获取当前活跃的 LLM 配置
     let llm_config = match state.db.get_active_llm_config().await {
         Ok(Some(config)) => config,
@@ -377,7 +538,7 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
     }
 
     // 2. 创建HTTP客户端和快速记账代理（使用配置中的 base_url 和 model）
-    use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider};
+    use crate::utils::http_client::{AIHttpClient, AIProvider, ClientConfig};
 
     let config = ClientConfig {
         provider: AIProvider::Custom(llm_config.provider.clone()),
@@ -387,16 +548,16 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
         max_retries: 3,
         headers: std::collections::HashMap::new(),
     };
-    
-    let http_client = AIHttpClient::new(config)
-        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+
+    let http_client =
+        AIHttpClient::new(config).map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
     let quick_note_agent = QuickNoteAgent::new_with_config(
         llm_config.model.clone(),
         llm_config.temperature as f32,
         llm_config.max_tokens as u32,
         llm_config.enable_thinking,
     );
-    
+
     // 3. 获取所有分类数据用于构建动态提示词
     let all_categories = match state.db.get_categories().await {
         Ok(categories) => categories,
@@ -415,21 +576,32 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
         .render_quick_note_snapshot()
         .await
         .unwrap_or_default();
-    
+
     // 4. 使用AI模型解析文本（使用动态提示词）
     println!("🔥 [QuickBooking] 开始快速记账处理");
     println!("👤 [QuickBooking] 用户输入文本: {}", text);
-    println!("🗂️ [QuickBooking] 当前可用分类数量: {}", all_categories.len());
-    
+    println!(
+        "🗂️ [QuickBooking] 当前可用分类数量: {}",
+        all_categories.len()
+    );
+
     let request_id = uuid::Uuid::new_v4().to_string();
     let parse_started = std::time::Instant::now();
     let parse_outcome = quick_note_agent
-        .parse_quick_note_with_categories_reported(&text, &all_categories, &memory_snapshot, &http_client)
+        .parse_quick_note_with_categories_reported(
+            &text,
+            &all_categories,
+            &memory_snapshot,
+            &http_client,
+        )
         .await;
 
     let parse_result = match parse_outcome {
         Ok((result, report)) => {
-            println!("✅ [QuickBooking] AI解析成功，共解析出{}条记录", result.transactions.len());
+            println!(
+                "✅ [QuickBooking] AI解析成功，共解析出{}条记录",
+                result.transactions.len()
+            );
             let usage_record = models::TokenUsageRecord {
                 agent_name: "QuickNoteAgent".into(),
                 session_id: None,
@@ -438,10 +610,26 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
                 config_id: Some(llm_config.id),
                 config_name_snapshot: Some(llm_config.config_name.clone()),
                 provider: llm_config.provider.clone(),
-                model: if report.model.is_empty() { llm_config.model.clone() } else { report.model.clone() },
-                prompt_tokens: report.usage.as_ref().map(|u| u.prompt_tokens as i32).unwrap_or(0),
-                completion_tokens: report.usage.as_ref().map(|u| u.completion_tokens as i32).unwrap_or(0),
-                total_tokens: report.usage.as_ref().map(|u| u.total_tokens as i32).unwrap_or(0),
+                model: if report.model.is_empty() {
+                    llm_config.model.clone()
+                } else {
+                    report.model.clone()
+                },
+                prompt_tokens: report
+                    .usage
+                    .as_ref()
+                    .map(|u| u.prompt_tokens as i32)
+                    .unwrap_or(0),
+                completion_tokens: report
+                    .usage
+                    .as_ref()
+                    .map(|u| u.completion_tokens as i32)
+                    .unwrap_or(0),
+                total_tokens: report
+                    .usage
+                    .as_ref()
+                    .map(|u| u.total_tokens as i32)
+                    .unwrap_or(0),
                 finish_reason: report.finish_reason.clone(),
                 duration_ms: Some(report.duration_ms),
                 success: true,
@@ -451,7 +639,7 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
                 eprintln!("[QuickBooking] 记录 token 用量失败: {}", e);
             }
             result
-        },
+        }
         Err(e) => {
             println!("❌ [QuickBooking] AI解析失败: {}", e);
             let duration_ms = parse_started.elapsed().as_millis() as i64;
@@ -487,35 +675,43 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
             });
         }
     };
-    
+
     // 4. 解析AI结果并准备展示给用户
     let mut parsed_transactions = Vec::new();
     let mut failed_lines = Vec::new();
-    
+
     for (index, quick_transaction) in parse_result.transactions.iter().enumerate() {
         println!("🔄 [QuickBooking] 解析第{}条交易记录:", index + 1);
         println!("   原始分类: {}", quick_transaction.category);
-        
+
         // 查找分类ID（但不强制要求找到）
-        let category_type = if quick_transaction.transaction_type == "income" { "income" } else { "expense" };
+        let category_type = if quick_transaction.transaction_type == "income" {
+            "income"
+        } else {
+            "expense"
+        };
         let categories = match state.db.get_categories_by_type(category_type).await {
             Ok(cats) => cats,
             Err(e) => {
                 println!("❌ [QuickBooking] 获取{}类型分类失败: {}", category_type, e);
                 failed_lines.push(FailedLine {
                     line_number: index + 1,
-                    original_text: format!("{}: {} {}", 
-                        quick_transaction.date, 
-                        quick_transaction.amount, 
-                        quick_transaction.remark),
+                    original_text: format!(
+                        "{}: {} {}",
+                        quick_transaction.date, quick_transaction.amount, quick_transaction.remark
+                    ),
                     error_reason: format!("获取分类失败: {}", e),
                 });
                 continue;
             }
         };
-        
-        println!("   可用的{}分类: {:?}", category_type, categories.iter().map(|c| &c.name).collect::<Vec<_>>());
-        
+
+        println!(
+            "   可用的{}分类: {:?}",
+            category_type,
+            categories.iter().map(|c| &c.name).collect::<Vec<_>>()
+        );
+
         // 解析分类：处理"父分类-子分类"格式，但允许没有匹配到
         let (parent_name, child_name) = if quick_transaction.category.contains('-') {
             let parts: Vec<&str> = quick_transaction.category.split('-').collect();
@@ -527,22 +723,27 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
         } else {
             (quick_transaction.category.as_str(), None)
         };
-        
-        println!("   解析后 - 父分类: {}, 子分类: {:?}", parent_name, child_name);
-        
+
+        println!(
+            "   解析后 - 父分类: {}, 子分类: {:?}",
+            parent_name, child_name
+        );
+
         // 查找匹配的分类（允许没有找到）
         let category = if let Some(child) = child_name {
             // 优先查找子分类
-            categories.iter()
-                .find(|cat| cat.name == child)
-                .or_else(|| {
-                    println!("   未找到子分类'{}'，尝试查找父分类'{}'", child, parent_name);
-                    categories.iter().find(|cat| cat.name == parent_name)
-                })
+            categories.iter().find(|cat| cat.name == child).or_else(|| {
+                println!(
+                    "   未找到子分类'{}'，尝试查找父分类'{}'",
+                    child, parent_name
+                );
+                categories.iter().find(|cat| cat.name == parent_name)
+            })
         } else {
             // 直接查找分类名称
             categories.iter().find(|cat| cat.name == parent_name)
-        }.or_else(|| {
+        }
+        .or_else(|| {
             // 如果都找不到，尝试找到默认分类
             println!("   未找到匹配分类，查找默认分类");
             if category_type == "income" {
@@ -551,36 +752,42 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
                 categories.iter().find(|cat| cat.name == "其他支出")
             }
         });
-        
+
         let category_id = if let Some(cat) = category {
-            println!("✅ [QuickBooking] 找到匹配分类: {} (ID: {})", cat.name, cat.id);
+            println!(
+                "✅ [QuickBooking] 找到匹配分类: {} (ID: {})",
+                cat.name, cat.id
+            );
             Some(cat.id)
         } else {
-            println!("⚠️ [QuickBooking] 未找到匹配的分类: {}，将在前端让用户选择", quick_transaction.category);
+            println!(
+                "⚠️ [QuickBooking] 未找到匹配的分类: {}，将在前端让用户选择",
+                quick_transaction.category
+            );
             None
         };
-        
+
         // 验证日期格式
         println!("📅 [QuickBooking] 验证日期: {}", quick_transaction.date);
         if let Err(e) = chrono::NaiveDate::parse_from_str(&quick_transaction.date, "%Y-%m-%d") {
             println!("❌ [QuickBooking] 日期格式无效: {}", e);
             failed_lines.push(FailedLine {
                 line_number: index + 1,
-                original_text: format!("{}: {} {}", 
-                    quick_transaction.date, 
-                    quick_transaction.amount, 
-                    quick_transaction.remark),
+                original_text: format!(
+                    "{}: {} {}",
+                    quick_transaction.date, quick_transaction.amount, quick_transaction.remark
+                ),
                 error_reason: format!("日期格式无效: {}", e),
             });
             continue;
         }
-        
+
         // 创建解析后的交易记录（供前端展示和编辑）
         let parsed_transaction = models::ParsedTransaction {
-            original_text: format!("{}: {} {}", 
-                quick_transaction.date, 
-                quick_transaction.amount, 
-                quick_transaction.remark),
+            original_text: format!(
+                "{}: {} {}",
+                quick_transaction.date, quick_transaction.amount, quick_transaction.remark
+            ),
             date: quick_transaction.date.clone(),
             amount: quick_transaction.amount,
             transaction_type: quick_transaction.transaction_type.clone(),
@@ -589,49 +796,60 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
             description: quick_transaction.remark.clone(),
             confidence: 0.9, // AI识别的置信度
         };
-        
+
         parsed_transactions.push(parsed_transaction);
         println!("✅ [QuickBooking] 交易记录解析完成");
     }
-    
+
     // 5. 返回解析结果（不保存到数据库）
     let success = !parsed_transactions.is_empty();
     let message = if success {
         if failed_lines.is_empty() {
-            format!("成功解析出{}条记录，请确认后保存", parsed_transactions.len())
+            format!(
+                "成功解析出{}条记录，请确认后保存",
+                parsed_transactions.len()
+            )
         } else {
-            format!("成功解析{}条记录，{}条失败，请确认后保存", parsed_transactions.len(), failed_lines.len())
+            format!(
+                "成功解析{}条记录，{}条失败，请确认后保存",
+                parsed_transactions.len(),
+                failed_lines.len()
+            )
         }
     } else {
         "AI解析失败，没有识别到有效的记账记录".to_string()
     };
-    
+
     println!("🎊 [QuickBooking] AI解析完成!");
     println!("   解析成功: {}", parsed_transactions.len());
     println!("   解析失败: {}", failed_lines.len());
     println!("   处理结果: {}", if success { "成功" } else { "失败" });
     println!("   返回消息: {}", message);
-    
+
     if !failed_lines.is_empty() {
         println!("❌ [QuickBooking] 失败详情:");
         for failed in &failed_lines {
-            println!("   第{}行: {} - {}", failed.line_number, failed.original_text, failed.error_reason);
+            println!(
+                "   第{}行: {} - {}",
+                failed.line_number, failed.original_text, failed.error_reason
+            );
         }
     }
-    
+
     if !parsed_transactions.is_empty() {
         println!("✅ [QuickBooking] 解析成功详情:");
         for (index, parsed) in parsed_transactions.iter().enumerate() {
-            println!("   交易{}: {} {} {} {}", 
-                index + 1, 
-                parsed.date, 
-                parsed.amount, 
-                parsed.transaction_type, 
+            println!(
+                "   交易{}: {} {} {} {}",
+                index + 1,
+                parsed.date,
+                parsed.amount,
+                parsed.transaction_type,
                 parsed.category_name
             );
         }
     }
-    
+
     Ok(QuickBookingResult {
         success,
         message,
@@ -643,16 +861,16 @@ async fn process_quick_booking_text(state: State<'_, DatabaseState>, text: Strin
 // 保存用户确认后的交易记录
 #[tauri::command]
 async fn save_confirmed_transactions(
-    state: State<'_, DatabaseState>, 
-    request: SaveTransactionsRequest
+    state: State<'_, DatabaseState>,
+    request: SaveTransactionsRequest,
 ) -> Result<SaveTransactionsResult, String> {
     println!("💾 [SaveTransactions] 开始保存用户确认的交易记录");
     println!("   待保存交易数量: {}", request.transactions.len());
-    
+
     let mut saved_count = 0;
     let mut failed_count = 0;
     let mut error_messages = Vec::new();
-    
+
     for (index, confirmed_transaction) in request.transactions.iter().enumerate() {
         println!("💾 [SaveTransactions] 保存第{}条交易:", index + 1);
         println!("   日期: {}", confirmed_transaction.date);
@@ -660,9 +878,10 @@ async fn save_confirmed_transactions(
         println!("   类型: {}", confirmed_transaction.transaction_type);
         println!("   分类ID: {}", confirmed_transaction.category_id);
         println!("   描述: {}", confirmed_transaction.description);
-        
+
         // 解析日期
-        let date = match chrono::NaiveDate::parse_from_str(&confirmed_transaction.date, "%Y-%m-%d") {
+        let date = match chrono::NaiveDate::parse_from_str(&confirmed_transaction.date, "%Y-%m-%d")
+        {
             Ok(d) => d,
             Err(e) => {
                 let error_msg = format!("第{}条记录日期格式错误: {}", index + 1, e);
@@ -672,7 +891,7 @@ async fn save_confirmed_transactions(
                 continue;
             }
         };
-        
+
         // 验证金额
         if confirmed_transaction.amount <= 0.0 {
             let error_msg = format!("第{}条记录金额必须大于0", index + 1);
@@ -681,19 +900,31 @@ async fn save_confirmed_transactions(
             failed_count += 1;
             continue;
         }
-        
+
         // 验证交易类型
-        if confirmed_transaction.transaction_type != "income" && confirmed_transaction.transaction_type != "expense" {
-            let error_msg = format!("第{}条记录交易类型无效: {}", index + 1, confirmed_transaction.transaction_type);
+        if confirmed_transaction.transaction_type != "income"
+            && confirmed_transaction.transaction_type != "expense"
+        {
+            let error_msg = format!(
+                "第{}条记录交易类型无效: {}",
+                index + 1,
+                confirmed_transaction.transaction_type
+            );
             println!("❌ [SaveTransactions] {}", error_msg);
             error_messages.push(error_msg);
             failed_count += 1;
             continue;
         }
-        
+
         // 验证分类是否存在
-        let category_exists = match state.db.get_categories_by_type(&confirmed_transaction.transaction_type).await {
-            Ok(categories) => categories.iter().any(|cat| cat.id == confirmed_transaction.category_id),
+        let category_exists = match state
+            .db
+            .get_categories_by_type(&confirmed_transaction.transaction_type)
+            .await
+        {
+            Ok(categories) => categories
+                .iter()
+                .any(|cat| cat.id == confirmed_transaction.category_id),
             Err(e) => {
                 let error_msg = format!("第{}条记录验证分类失败: {}", index + 1, e);
                 println!("❌ [SaveTransactions] {}", error_msg);
@@ -702,15 +933,19 @@ async fn save_confirmed_transactions(
                 continue;
             }
         };
-        
+
         if !category_exists {
-            let error_msg = format!("第{}条记录分类ID不存在: {}", index + 1, confirmed_transaction.category_id);
+            let error_msg = format!(
+                "第{}条记录分类ID不存在: {}",
+                index + 1,
+                confirmed_transaction.category_id
+            );
             println!("❌ [SaveTransactions] {}", error_msg);
             error_messages.push(error_msg);
             failed_count += 1;
             continue;
         }
-        
+
         // 创建交易记录
         let transaction_data = models::NewTransaction {
             date,
@@ -721,11 +956,15 @@ async fn save_confirmed_transactions(
             description: Some(confirmed_transaction.description.clone()),
             note: Some(confirmed_transaction.description.clone()),
         };
-        
+
         // 保存到数据库
         match state.db.create_transaction(&transaction_data).await {
             Ok(transaction_id) => {
-                println!("✅ [SaveTransactions] 第{}条交易保存成功，ID: {}", index + 1, transaction_id);
+                println!(
+                    "✅ [SaveTransactions] 第{}条交易保存成功，ID: {}",
+                    index + 1,
+                    transaction_id
+                );
                 saved_count += 1;
             }
             Err(e) => {
@@ -736,7 +975,7 @@ async fn save_confirmed_transactions(
             }
         }
     }
-    
+
     // 返回保存结果
     let success = saved_count > 0;
     let message = if failed_count == 0 {
@@ -746,19 +985,19 @@ async fn save_confirmed_transactions(
     } else {
         format!("成功保存{}条记录，{}条失败", saved_count, failed_count)
     };
-    
+
     println!("🎊 [SaveTransactions] 保存完成!");
     println!("   成功保存: {}", saved_count);
     println!("   保存失败: {}", failed_count);
     println!("   结果消息: {}", message);
-    
+
     if !error_messages.is_empty() {
         println!("❌ [SaveTransactions] 错误详情:");
         for error in &error_messages {
             println!("   {}", error);
         }
     }
-    
+
     Ok(SaveTransactionsResult {
         success,
         message,
@@ -818,9 +1057,9 @@ async fn cancel_quick_note_draft(
 
 // 辅助函数：解析单行文本为交易记录（供您实现时参考）
 async fn parse_text_line_to_transaction(
-    line: &str, 
+    line: &str,
     line_number: usize,
-    _db: &Database
+    _db: &Database,
 ) -> Result<ProcessedTransaction, FailedLine> {
     // TODO: 实现文本解析逻辑
     // 建议使用AI模型来解析以下信息：
@@ -829,7 +1068,7 @@ async fn parse_text_line_to_transaction(
     // - 日期（相对或绝对）
     // - 分类
     // - 描述
-    
+
     Err(FailedLine {
         line_number,
         original_text: line.to_string(),
@@ -845,7 +1084,11 @@ async fn parse_text_line_to_transaction(
 async fn get_analysis_sessions(
     db_state: State<'_, DatabaseState>,
 ) -> Result<Vec<AnalysisSession>, String> {
-    db_state.db.get_analysis_sessions().await.map_err(|e| e.to_string())
+    db_state
+        .db
+        .get_analysis_sessions()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -853,7 +1096,11 @@ async fn get_analysis_messages(
     db_state: State<'_, DatabaseState>,
     session_id: String,
 ) -> Result<Vec<AnalysisMessageRecord>, String> {
-    db_state.db.get_analysis_messages(&session_id).await.map_err(|e| e.to_string())
+    db_state
+        .db
+        .get_analysis_messages(&session_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -861,7 +1108,11 @@ async fn delete_analysis_session(
     db_state: State<'_, DatabaseState>,
     session_id: String,
 ) -> Result<(), String> {
-    db_state.db.delete_analysis_session(&session_id).await.map_err(|e| e.to_string())
+    db_state
+        .db
+        .delete_analysis_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -873,7 +1124,11 @@ async fn list_memory_facts(
     state: State<'_, DatabaseState>,
     filter: FactFilter,
 ) -> Result<Vec<Fact>, String> {
-    state.memory.list_facts(filter).await.map_err(|e| e.to_string())
+    state
+        .memory
+        .list_facts(filter)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -881,7 +1136,11 @@ async fn upsert_memory_fact(
     state: State<'_, DatabaseState>,
     input: UpsertInput,
 ) -> Result<UpsertOutcome, String> {
-    state.memory.upsert_fact(input).await.map_err(|e| e.to_string())
+    state
+        .memory
+        .upsert_fact(input)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -890,15 +1149,20 @@ async fn edit_memory_fact(
     id: i64,
     patch: UpdateFact,
 ) -> Result<(), String> {
-    state.memory.edit_fact(id, patch).await.map_err(|e| e.to_string())
+    state
+        .memory
+        .edit_fact(id, patch)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn retire_memory_fact(
-    state: State<'_, DatabaseState>,
-    id: i64,
-) -> Result<(), String> {
-    state.memory.retire_fact(id).await.map_err(|e| e.to_string())
+async fn retire_memory_fact(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
+    state
+        .memory
+        .retire_fact(id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -906,7 +1170,11 @@ async fn undo_memory_change(
     state: State<'_, DatabaseState>,
     history_id: i64,
 ) -> Result<(), String> {
-    state.memory.undo(history_id).await.map_err(|e| e.to_string())
+    state
+        .memory
+        .undo(history_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -922,9 +1190,7 @@ async fn list_memory_recent_changes(
 }
 
 #[tauri::command]
-async fn trigger_auto_decay(
-    state: State<'_, DatabaseState>,
-) -> Result<usize, String> {
+async fn trigger_auto_decay(state: State<'_, DatabaseState>) -> Result<usize, String> {
     state.memory.auto_decay().await.map_err(|e| e.to_string())
 }
 
@@ -933,7 +1199,11 @@ async fn get_agent_role(
     state: State<'_, DatabaseState>,
     scope: RoleScope,
 ) -> Result<Option<Fact>, String> {
-    state.memory.get_role(scope).await.map_err(|e| e.to_string())
+    state
+        .memory
+        .get_role(scope)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -942,12 +1212,20 @@ async fn set_agent_role(
     scope: RoleScope,
     value: RoleValue,
 ) -> Result<UpsertOutcome, String> {
-    state.memory.set_role(scope, value).await.map_err(|e| e.to_string())
+    state
+        .memory
+        .set_role(scope, value)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn list_role_presets(state: State<'_, DatabaseState>) -> Result<Vec<RolePreset>, String> {
-    state.memory.list_role_presets().await.map_err(|e| e.to_string())
+    state
+        .memory
+        .list_role_presets()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1020,22 +1298,27 @@ async fn send_analysis_message_stream(
     mcp_state: State<'_, McpState>,
     request: AnalysisStreamRequest,
 ) -> Result<(), String> {
-    use crate::ai::agent::analysis::{AnalysisAgent, FinancialContext, McpToolsContext};
+    use crate::ai::agent::analysis::{AnalysisAgent, McpToolsContext};
     use crate::ai::tools::LocalToolRegistry;
-    use crate::utils::http_client::{AIHttpClient, ClientConfig, AIProvider, AIMessage, ToolCall, FunctionCall};
-    use chrono::{Local, Datelike};
+    use crate::utils::http_client::{
+        AIHttpClient, AIMessage, AIProvider, ClientConfig, FunctionCall, ToolCall,
+    };
+    use chrono::{Datelike, Local};
 
     let sid = request.session_id.clone();
 
     // ── 辅助：发出 done / error 事件 ───────────────────────────────────
     let emit_err = |app: &tauri::AppHandle, sid: &str, msg: String| {
-        let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
-            session_id: sid.to_string(),
-            chunk: String::new(),
-            done: true,
-            error: Some(msg),
-            tool_status: None,
-        });
+        let _ = app.emit(
+            "analysis-stream-chunk",
+            StreamChunkPayload {
+                session_id: sid.to_string(),
+                chunk: String::new(),
+                done: true,
+                error: Some(msg),
+                tool_status: None,
+            },
+        );
     };
 
     if request.message.trim().is_empty() {
@@ -1045,23 +1328,28 @@ async fn send_analysis_message_stream(
 
     // 1. 获取 LLM 配置（按 config_id 优先，否则 fallback 到 active）
     let llm_config = match request.config_id {
-        Some(cid) => {
-            match db_state.db.get_llm_config_by_id(cid).await {
+        Some(cid) => match db_state.db.get_llm_config_by_id(cid).await {
+            Ok(Some(c)) => c,
+            _ => match db_state.db.get_active_llm_config().await {
                 Ok(Some(c)) => c,
-                _ => match db_state.db.get_active_llm_config().await {
-                    Ok(Some(c)) => c,
-                    _ => { emit_err(&app, &sid, "请先在设置中配置大模型接口".into()); return Ok(()); }
-                },
-            }
-        }
+                _ => {
+                    emit_err(&app, &sid, "请先在设置中配置大模型接口".into());
+                    return Ok(());
+                }
+            },
+        },
         None => match db_state.db.get_active_llm_config().await {
             Ok(Some(c)) => c,
-            _ => { emit_err(&app, &sid, "请先在设置中配置大模型接口".into()); return Ok(()); }
+            _ => {
+                emit_err(&app, &sid, "请先在设置中配置大模型接口".into());
+                return Ok(());
+            }
         },
     };
 
     // 2. 读取历史（在保存本轮 user 消息之前，20 条 = 10 轮）
-    let history_records = db_state.db
+    let history_records = db_state
+        .db
         .get_recent_analysis_messages(&sid, 20)
         .await
         .unwrap_or_default();
@@ -1072,11 +1360,18 @@ async fn send_analysis_message_stream(
 
     // 3. 确保会话存在 + 持久化 user 消息
     let title: String = request.message.chars().take(30).collect();
-    if let Err(e) = db_state.db.ensure_analysis_session(&sid, &title, request.config_id).await {
+    if let Err(e) = db_state
+        .db
+        .ensure_analysis_session(&sid, &title, request.config_id)
+        .await
+    {
         emit_err(&app, &sid, format!("创建会话失败: {}", e));
         return Ok(());
     }
-    let _ = db_state.db.save_analysis_message(&sid, "user", &request.message).await;
+    let _ = db_state
+        .db
+        .save_analysis_message(&sid, "user", &request.message)
+        .await;
 
     // 4. 构建 HTTP 客户端
     let client_config = ClientConfig {
@@ -1089,28 +1384,14 @@ async fn send_analysis_message_stream(
     };
     let http_client = match AIHttpClient::new(client_config) {
         Ok(c) => c,
-        Err(e) => { emit_err(&app, &sid, format!("创建 HTTP 客户端失败: {}", e)); return Ok(()); }
+        Err(e) => {
+            emit_err(&app, &sid, format!("创建 HTTP 客户端失败: {}", e));
+            return Ok(());
+        }
     };
 
     // 5. 构建财务上下文
     let today = Local::now();
-    let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
-        .unwrap_or_else(|| NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
-    let month_end = {
-        let next = if today.month() == 12 {
-            NaiveDate::from_ymd_opt(today.year() + 1, 1, 1)
-        } else {
-            NaiveDate::from_ymd_opt(today.year(), today.month() + 1, 1)
-        };
-        next.and_then(|d| d.pred_opt()).unwrap_or(month_start)
-    };
-
-    let financial_context = FinancialContext {
-        monthly_stats: db_state.db.get_monthly_stats(3).await.unwrap_or_default(),
-        expense_category_stats: db_state.db.get_category_stats(&month_start, &month_end, "expense").await.unwrap_or_default(),
-        income_category_stats: db_state.db.get_category_stats(&month_start, &month_end, "income").await.unwrap_or_default(),
-    };
-
     // 6. 收集 MCP 工具上下文
     let mcp_tools = mcp_state.manager.get_all_tools().await;
     let mcp_ctx = if mcp_tools.is_empty() {
@@ -1127,7 +1408,11 @@ async fn send_analysis_message_stream(
         db_state.memory.clone(),
     );
     let tools_json = tool_registry.all_as_openai_tools();
-    let tools = if tools_json.is_empty() { None } else { Some(tools_json) };
+    let tools = if tools_json.is_empty() {
+        None
+    } else {
+        Some(tools_json)
+    };
 
     // 8. 组装初始消息
     let agent = AnalysisAgent::new(
@@ -1137,19 +1422,17 @@ async fn send_analysis_message_stream(
         llm_config.enable_thinking,
     );
 
-    let analysis_snapshot = db_state
-        .memory
-        .render_analysis_snapshot()
-        .await
-        .unwrap_or_default();
-    let system_prompt = format!(
-        "{}\n\n## Memory Snapshot\n{}",
-        agent.build_system_prompt_with_tools(&financial_context, mcp_ctx.as_ref()),
-        analysis_snapshot
-    );
+    let tool_guide = agent.build_tool_guide(mcp_ctx.as_ref());
+    let time_context = agent.build_time_context();
+    let builder = workspace::builder::SystemPromptBuilder::new(&db_state.workspace);
+    let system_prompt = builder.build_analysis_prompt(&tool_guide, &time_context);
     let mut messages: Vec<AIMessage> = vec![AIMessage::text("system", system_prompt)];
     let max_history = 20;
-    let start = if history.len() > max_history { history.len() - max_history } else { 0 };
+    let start = if history.len() > max_history {
+        history.len() - max_history
+    } else {
+        0
+    };
     messages.extend_from_slice(&history[start..]);
     messages.push(AIMessage::text("user", &request.message));
 
@@ -1206,7 +1489,8 @@ async fn send_analysis_message_stream(
 
         // 解析 SSE，同时收集 content / tool_calls / usage
         let mut round_content = String::new();
-        let mut tool_calls_acc: std::collections::HashMap<usize, (String, String, String)> = std::collections::HashMap::new();
+        let mut tool_calls_acc: std::collections::HashMap<usize, (String, String, String)> =
+            std::collections::HashMap::new();
         let mut finish_reason = String::new();
         let mut buffer = String::new();
         let mut usage_prompt: i32 = 0;
@@ -1224,9 +1508,13 @@ async fn send_analysis_message_stream(
                         let line = buffer[..pos].trim_end_matches('\r').to_string();
                         buffer = buffer[pos + 1..].to_string();
 
-                        if !line.starts_with("data: ") { continue; }
+                        if !line.starts_with("data: ") {
+                            continue;
+                        }
                         let data = line[6..].trim();
-                        if data == "[DONE]" { continue; }
+                        if data == "[DONE]" {
+                            continue;
+                        }
 
                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
                             // 服务端在末尾块返回的模型名 / usage
@@ -1236,11 +1524,21 @@ async fn send_analysis_message_stream(
                                 }
                             }
                             if let Some(usage) = json["usage"].as_object() {
-                                usage_prompt = usage.get("prompt_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                                usage_completion = usage.get("completion_tokens").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                                usage_total = usage.get("total_tokens").and_then(|v| v.as_i64()).unwrap_or(
-                                    (usage_prompt + usage_completion) as i64,
-                                ) as i32;
+                                usage_prompt = usage
+                                    .get("prompt_tokens")
+                                    .and_then(|v| v.as_i64())
+                                    .unwrap_or(0)
+                                    as i32;
+                                usage_completion = usage
+                                    .get("completion_tokens")
+                                    .and_then(|v| v.as_i64())
+                                    .unwrap_or(0)
+                                    as i32;
+                                usage_total = usage
+                                    .get("total_tokens")
+                                    .and_then(|v| v.as_i64())
+                                    .unwrap_or((usage_prompt + usage_completion) as i64)
+                                    as i32;
                             }
 
                             // 文本内容 delta
@@ -1248,22 +1546,27 @@ async fn send_analysis_message_stream(
                                 if !content.is_empty() {
                                     round_content.push_str(content);
                                     full_content.push_str(content);
-                                    let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
-                                        session_id: sid.clone(),
-                                        chunk: content.to_string(),
-                                        done: false,
-                                        error: None,
-                                        tool_status: None,
-                                    });
+                                    let _ = app.emit(
+                                        "analysis-stream-chunk",
+                                        StreamChunkPayload {
+                                            session_id: sid.clone(),
+                                            chunk: content.to_string(),
+                                            done: false,
+                                            error: None,
+                                            tool_status: None,
+                                        },
+                                    );
                                 }
                             }
 
                             // tool_calls delta（增量累积）
-                            if let Some(tcs) = json["choices"][0]["delta"]["tool_calls"].as_array() {
+                            if let Some(tcs) = json["choices"][0]["delta"]["tool_calls"].as_array()
+                            {
                                 for tc in tcs {
                                     let idx = tc["index"].as_u64().unwrap_or(0) as usize;
-                                    let entry = tool_calls_acc.entry(idx)
-                                        .or_insert_with(|| (String::new(), String::new(), String::new()));
+                                    let entry = tool_calls_acc.entry(idx).or_insert_with(|| {
+                                        (String::new(), String::new(), String::new())
+                                    });
                                     if let Some(id) = tc["id"].as_str() {
                                         entry.0 = id.to_string();
                                     }
@@ -1301,11 +1604,19 @@ async fn send_analysis_message_stream(
             config_id: Some(llm_config.id),
             config_name_snapshot: Some(llm_config.config_name.clone()),
             provider: llm_config.provider.clone(),
-            model: if response_model.is_empty() { llm_config.model.clone() } else { response_model.clone() },
+            model: if response_model.is_empty() {
+                llm_config.model.clone()
+            } else {
+                response_model.clone()
+            },
             prompt_tokens: usage_prompt,
             completion_tokens: usage_completion,
             total_tokens: usage_total,
-            finish_reason: if finish_reason.is_empty() { None } else { Some(finish_reason.clone()) },
+            finish_reason: if finish_reason.is_empty() {
+                None
+            } else {
+                Some(finish_reason.clone())
+            },
             duration_ms: Some(duration_ms),
             success: stream_error.is_none(),
             error_message: stream_error.clone(),
@@ -1325,19 +1636,29 @@ async fn send_analysis_message_stream(
             let mut sorted_indices: Vec<usize> = tool_calls_acc.keys().cloned().collect();
             sorted_indices.sort();
 
-            let tool_calls: Vec<ToolCall> = sorted_indices.iter().map(|idx| {
-                let (id, name, args) = tool_calls_acc.get(idx).unwrap();
-                ToolCall {
-                    id: id.clone(),
-                    call_type: "function".to_string(),
-                    function: FunctionCall { name: name.clone(), arguments: args.clone() },
-                }
-            }).collect();
+            let tool_calls: Vec<ToolCall> = sorted_indices
+                .iter()
+                .map(|idx| {
+                    let (id, name, args) = tool_calls_acc.get(idx).unwrap();
+                    ToolCall {
+                        id: id.clone(),
+                        call_type: "function".to_string(),
+                        function: FunctionCall {
+                            name: name.clone(),
+                            arguments: args.clone(),
+                        },
+                    }
+                })
+                .collect();
 
             // 追加 assistant 消息（含 tool_calls）
             messages.push(AIMessage::assistant_tool_calls(
                 tool_calls.clone(),
-                if round_content.is_empty() { None } else { Some(round_content) },
+                if round_content.is_empty() {
+                    None
+                } else {
+                    Some(round_content)
+                },
             ));
 
             // 执行每个工具并追加结果
@@ -1347,32 +1668,41 @@ async fn send_analysis_message_stream(
                     "id": tc.id,
                     "name": tc.function.name,
                     "arguments": tc.function.arguments,
-                })]).unwrap_or_default();
-                let _ = db_state.db.save_analysis_message_ext(
-                    &sid, "assistant", "",
-                    "tool_call",
-                    Some(&tool_calls_json_str),
-                    None,
-                    Some(&tc.function.name),
-                ).await;
+                })])
+                .unwrap_or_default();
+                let _ = db_state
+                    .db
+                    .save_analysis_message_ext(
+                        &sid,
+                        "assistant",
+                        "",
+                        "tool_call",
+                        Some(&tool_calls_json_str),
+                        None,
+                        Some(&tc.function.name),
+                    )
+                    .await;
 
                 // emit tool_status calling (附带 tool_input)
-                let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
-                    session_id: sid.clone(),
-                    chunk: String::new(),
-                    done: false,
-                    error: None,
-                    tool_status: Some(ToolStatusPayload {
-                        tool_name: tc.function.name.clone(),
-                        status: "calling".to_string(),
-                        description: Some(format!("正在调用: {}", tc.function.name)),
-                        tool_input: Some(tc.function.arguments.clone()),
-                        tool_output: None,
-                    }),
-                });
+                let _ = app.emit(
+                    "analysis-stream-chunk",
+                    StreamChunkPayload {
+                        session_id: sid.clone(),
+                        chunk: String::new(),
+                        done: false,
+                        error: None,
+                        tool_status: Some(ToolStatusPayload {
+                            tool_name: tc.function.name.clone(),
+                            status: "calling".to_string(),
+                            description: Some(format!("正在调用: {}", tc.function.name)),
+                            tool_input: Some(tc.function.arguments.clone()),
+                            tool_output: None,
+                        }),
+                    },
+                );
 
-                let args: serde_json::Value = serde_json::from_str(&tc.function.arguments)
-                    .unwrap_or(serde_json::json!({}));
+                let args: serde_json::Value =
+                    serde_json::from_str(&tc.function.arguments).unwrap_or(serde_json::json!({}));
 
                 let result = match tool_registry.execute(&tc.function.name, args).await {
                     Ok(r) => r,
@@ -1380,28 +1710,36 @@ async fn send_analysis_message_stream(
                 };
 
                 // 落表：tool result
-                let _ = db_state.db.save_analysis_message_ext(
-                    &sid, "tool", &result,
-                    "tool_result",
-                    None,
-                    Some(&tc.id),
-                    Some(&tc.function.name),
-                ).await;
+                let _ = db_state
+                    .db
+                    .save_analysis_message_ext(
+                        &sid,
+                        "tool",
+                        &result,
+                        "tool_result",
+                        None,
+                        Some(&tc.id),
+                        Some(&tc.function.name),
+                    )
+                    .await;
 
                 // emit tool_status result (附带 tool_output)
-                let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
-                    session_id: sid.clone(),
-                    chunk: String::new(),
-                    done: false,
-                    error: None,
-                    tool_status: Some(ToolStatusPayload {
-                        tool_name: tc.function.name.clone(),
-                        status: "result".to_string(),
-                        description: None,
-                        tool_input: None,
-                        tool_output: Some(result.clone()),
-                    }),
-                });
+                let _ = app.emit(
+                    "analysis-stream-chunk",
+                    StreamChunkPayload {
+                        session_id: sid.clone(),
+                        chunk: String::new(),
+                        done: false,
+                        error: None,
+                        tool_status: Some(ToolStatusPayload {
+                            tool_name: tc.function.name.clone(),
+                            status: "result".to_string(),
+                            description: None,
+                            tool_input: None,
+                            tool_output: Some(result.clone()),
+                        }),
+                    },
+                );
 
                 messages.push(AIMessage::tool_result(&tc.id, result));
             }
@@ -1414,20 +1752,23 @@ async fn send_analysis_message_stream(
     }
 
     // 10. 流结束
-    let _ = app.emit("analysis-stream-chunk", StreamChunkPayload {
-        session_id: sid.clone(),
-        chunk: String::new(),
-        done: true,
-        error: None,
-        tool_status: None,
-    });
+    let _ = app.emit(
+        "analysis-stream-chunk",
+        StreamChunkPayload {
+            session_id: sid.clone(),
+            chunk: String::new(),
+            done: true,
+            error: None,
+            tool_status: None,
+        },
+    );
 
     // 11. 持久化 assistant 回复 + 更新会话时间戳
     if !full_content.is_empty() {
-        let _ = db_state.db.save_analysis_message_ext(
-            &sid, "assistant", &full_content,
-            "text", None, None, None,
-        ).await;
+        let _ = db_state
+            .db
+            .save_analysis_message_ext(&sid, "assistant", &full_content, "text", None, None, None)
+            .await;
     }
     let _ = db_state.db.touch_analysis_session(&sid).await;
 
@@ -1480,8 +1821,14 @@ async fn purge_token_usage_logs(
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-async fn get_mcp_servers(db_state: State<'_, DatabaseState>) -> Result<Vec<mcp::McpServerConfig>, String> {
-    db_state.db.get_mcp_servers().await.map_err(|e| e.to_string())
+async fn get_mcp_servers(
+    db_state: State<'_, DatabaseState>,
+) -> Result<Vec<mcp::McpServerConfig>, String> {
+    db_state
+        .db
+        .get_mcp_servers()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1489,7 +1836,11 @@ async fn create_mcp_server(
     db_state: State<'_, DatabaseState>,
     config: mcp::NewMcpServerConfig,
 ) -> Result<i64, String> {
-    db_state.db.create_mcp_server(&config).await.map_err(|e| e.to_string())
+    db_state
+        .db
+        .create_mcp_server(&config)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1498,7 +1849,11 @@ async fn update_mcp_server(
     id: i64,
     config: mcp::UpdateMcpServerConfig,
 ) -> Result<(), String> {
-    db_state.db.update_mcp_server(id, &config).await.map_err(|e| e.to_string())
+    db_state
+        .db
+        .update_mcp_server(id, &config)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1509,7 +1864,11 @@ async fn delete_mcp_server(
 ) -> Result<(), String> {
     // 先停止运行中的服务器
     mcp_state.manager.stop_server(id).await.ok();
-    db_state.db.delete_mcp_server(id).await.map_err(|e| e.to_string())
+    db_state
+        .db
+        .delete_mcp_server(id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1518,19 +1877,27 @@ async fn start_mcp_server(
     mcp_state: State<'_, McpState>,
     id: i64,
 ) -> Result<(), String> {
-    let config = db_state.db.get_mcp_server_by_id(id).await
+    let config = db_state
+        .db
+        .get_mcp_server_by_id(id)
+        .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "MCP 服务器配置不存在".to_string())?;
 
-    mcp_state.manager.start_server(&config).await.map_err(|e| e.to_string())
+    mcp_state
+        .manager
+        .start_server(&config)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn stop_mcp_server(
-    mcp_state: State<'_, McpState>,
-    id: i64,
-) -> Result<(), String> {
-    mcp_state.manager.stop_server(id).await.map_err(|e| e.to_string())
+async fn stop_mcp_server(mcp_state: State<'_, McpState>, id: i64) -> Result<(), String> {
+    mcp_state
+        .manager
+        .stop_server(id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1538,7 +1905,11 @@ async fn get_mcp_server_status(
     db_state: State<'_, DatabaseState>,
     mcp_state: State<'_, McpState>,
 ) -> Result<Vec<mcp::McpServerStatus>, String> {
-    let configs = db_state.db.get_mcp_servers().await.map_err(|e| e.to_string())?;
+    let configs = db_state
+        .db
+        .get_mcp_servers()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(mcp_state.manager.get_all_status(&configs).await)
 }
 
@@ -1547,7 +1918,11 @@ async fn get_mcp_tools(
     mcp_state: State<'_, McpState>,
     server_id: i64,
 ) -> Result<Vec<mcp::McpTool>, String> {
-    mcp_state.manager.get_tools(server_id).await.map_err(|e| e.to_string())
+    mcp_state
+        .manager
+        .get_tools(server_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1555,14 +1930,17 @@ async fn get_all_mcp_tools(
     mcp_state: State<'_, McpState>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let tools = mcp_state.manager.get_all_tools().await;
-    let result: Vec<serde_json::Value> = tools.iter().map(|(server, tool)| {
-        serde_json::json!({
-            "server": server,
-            "name": tool.name,
-            "description": tool.description,
-            "inputSchema": tool.input_schema,
+    let result: Vec<serde_json::Value> = tools
+        .iter()
+        .map(|(server, tool)| {
+            serde_json::json!({
+                "server": server,
+                "name": tool.name,
+                "description": tool.description,
+                "inputSchema": tool.input_schema,
+            })
         })
-    }).collect();
+        .collect();
     Ok(result)
 }
 
@@ -1573,7 +1951,11 @@ async fn call_mcp_tool(
     tool_name: String,
     arguments: Option<std::collections::HashMap<String, serde_json::Value>>,
 ) -> Result<mcp::ToolCallResult, String> {
-    mcp_state.manager.call_tool(server_id, &tool_name, arguments).await.map_err(|e| e.to_string())
+    mcp_state
+        .manager
+        .call_tool(server_id, &tool_name, arguments)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 pub fn run() {
@@ -1589,42 +1971,61 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                let app_data_dir = app_handle.path().app_data_dir()
+                let app_data_dir = app_handle
+                    .path()
+                    .app_data_dir()
                     .expect("无法获取应用数据目录");
-                    
+
                 println!("应用数据目录: {}", app_data_dir.display());
-                
+
                 if let Err(e) = std::fs::create_dir_all(&app_data_dir) {
                     eprintln!("创建应用数据目录失败: {}", e);
                     return;
                 }
-                
+
                 let db_path = app_data_dir.join("money_note.db");
                 println!("数据库路径: {}", db_path.display());
-                
+
                 let database_url = format!("sqlite://{}?mode=rwc", db_path.display());
                 println!("尝试数据库URL: {}", database_url);
-                
+
+                let workspace_manager = workspace::WorkspaceManager::new(&app_data_dir);
+                if let Err(e) = workspace_manager.ensure_initialized() {
+                    eprintln!("Workspace 初始化失败: {}", e);
+                }
+
                 match Database::new(&database_url).await {
                     Ok(db) => {
                         println!("数据库初始化成功");
                         let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
                         let _ = memory.ensure_default_role_seed().await;
-                        let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
-                        app_handle.manage(DatabaseState { db, memory, token_recorder });
+                        let token_recorder =
+                            Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
+                        app_handle.manage(DatabaseState {
+                            db,
+                            memory,
+                            token_recorder,
+                            workspace: workspace_manager.clone(),
+                        });
                     }
                     Err(e) => {
                         eprintln!("数据库初始化失败: {}", e);
                         let simple_url = format!("sqlite:{}", db_path.to_string_lossy());
                         println!("尝试简单URL格式: {}", simple_url);
-                        
+
                         match Database::new(&simple_url).await {
                             Ok(db) => {
                                 println!("使用简单URL格式成功");
                                 let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
                                 let _ = memory.ensure_default_role_seed().await;
-                                let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
-                                app_handle.manage(DatabaseState { db, memory, token_recorder });
+                                let token_recorder =
+                                    Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
+                                app_handle.manage(DatabaseState {
+                                    db,
+                                    memory,
+                                    token_recorder,
+                                    workspace: workspace_manager.clone(),
+                                });
                             }
                             Err(e) => {
                                 eprintln!("简单URL格式也失败: {}", e);
@@ -1632,10 +2033,18 @@ pub fn run() {
                                 match Database::new("sqlite::memory:").await {
                                     Ok(db) => {
                                         println!("内存数据库初始化成功");
-                                        let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
+                                        let memory =
+                                            Arc::new(memory::MemoryFacade::new(db.pool.clone()));
                                         let _ = memory.ensure_default_role_seed().await;
-                                        let token_recorder = Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
-                                        app_handle.manage(DatabaseState { db, memory, token_recorder });
+                                        let token_recorder = Arc::new(
+                                            telemetry::TokenUsageRecorder::new(db.pool.clone()),
+                                        );
+                                        app_handle.manage(DatabaseState {
+                                            db,
+                                            memory,
+                                            token_recorder,
+                                            workspace: workspace_manager.clone(),
+                                        });
                                     }
                                     Err(e) => {
                                         eprintln!("内存数据库也失败: {}", e);

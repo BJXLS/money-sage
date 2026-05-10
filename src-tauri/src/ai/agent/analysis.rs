@@ -33,19 +33,23 @@ impl AnalysisAgent {
         }
     }
 
-    pub fn build_system_prompt(&self, ctx: &FinancialContext) -> String {
-        self.build_system_prompt_with_tools(ctx, None)
+    #[deprecated(note = "使用 workspace::SystemPromptBuilder 构建 system prompt")]
+    pub fn build_system_prompt(&self, _ctx: &FinancialContext) -> String {
+        format!("{}\n\n{}", self.build_tool_guide(None), self.build_time_context())
     }
 
+    #[deprecated(note = "使用 workspace::SystemPromptBuilder 构建 system prompt")]
     pub fn build_system_prompt_with_tools(
         &self,
         _ctx: &FinancialContext,
         mcp_ctx: Option<&McpToolsContext>,
     ) -> String {
-        let mut p = String::from(
-            "你是一位专业的个人财务分析师。用户正在使用记账软件，你需要基于基于你能使用的工具，回答问题、提供分析和建议。\n\
-             请使用 Markdown 格式回复，保持简洁、有条理、有数据支撑。\n\n"
-        );
+        format!("{}\n\n{}", self.build_tool_guide(mcp_ctx), self.build_time_context())
+    }
+
+    /// 构建动态工具指南部分（由 workspace builder 拼接在静态文件之后）
+    pub fn build_tool_guide(&self, mcp_ctx: Option<&McpToolsContext>) -> String {
+        let mut p = String::new();
 
         // 如果有 MCP 工具可用，在 system prompt 中告知 Agent
         if let Some(mcp) = mcp_ctx {
@@ -76,8 +80,8 @@ impl AnalysisAgent {
 
         p.push_str(
             "\n## 记忆使用指南\n\n\
-             - 你会收到长期记忆快照，请优先遵循角色设定并结合用户画像回答。\n\
-             - 快照是跨会话信息，若与当前用户最新指令冲突，应以当前用户指令为准。\n\
+             - 你会收到来自 workspace 记忆文件的用户画像与偏好，请结合这些信息回答。\n\
+             - 文件内容是跨会话信息，若与当前用户最新指令冲突，应以当前用户指令为准。\n\
              \n\
              ### memory_search（按需召回历史）\n\
              - 用户引用「上次/之前/上个月聊过」「我之前说过」等表述时，先调 memory_search 拿到 facts + sessions 上下文。\n\
@@ -93,14 +97,17 @@ impl AnalysisAgent {
              - value_json 需符合该 fact_type 的 schema；字段名优先使用快照中已出现的命名。\n",
         );
 
+        p
+    }
+
+    /// 构建当前时间上下文
+    pub fn build_time_context(&self) -> String {
         let now_local = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        p.push_str(&format!(
+        format!(
             "## 当前时间\n\n\
              以下是用户设备上的当前本地时间（用于理解「今天」「本月」「上周」「最近 30 天」等表述，并在 SQL 中编写正确的日期条件）：\n\
-             - **本地时间**：{now_local}\n\n"
-        ));
-
-        p
+             - **本地时间**：{now_local}\n"
+        )
     }
 
     /// 组装完整的消息列表：system + history(最近 20 条) + 当前 user

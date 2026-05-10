@@ -1431,6 +1431,7 @@ async fn send_analysis_message_stream(
         Some(sid.clone()),
         Some(db_state.token_recorder.clone()),
         db_state.memory.clone(),
+        db_state.workspace.workspace_dir().to_path_buf(),
     );
     let tools_json = tool_registry.all_as_openai_tools();
     let tools = if tools_json.is_empty() {
@@ -1512,8 +1513,9 @@ async fn send_analysis_message_stream(
             }
         };
 
-        // 解析 SSE，同时收集 content / tool_calls / usage
+        // 解析 SSE，同时收集 content / reasoning_content / tool_calls / usage
         let mut round_content = String::new();
+        let mut round_reasoning = String::new();
         let mut tool_calls_acc: std::collections::HashMap<usize, (String, String, String)> =
             std::collections::HashMap::new();
         let mut finish_reason = String::new();
@@ -1581,6 +1583,13 @@ async fn send_analysis_message_stream(
                                             tool_status: None,
                                         },
                                     );
+                                }
+                            }
+
+                            // reasoning_content delta（推理模型的思考过程）
+                            if let Some(reasoning) = json["choices"][0]["delta"]["reasoning_content"].as_str() {
+                                if !reasoning.is_empty() {
+                                    round_reasoning.push_str(reasoning);
                                 }
                             }
 
@@ -1676,13 +1685,18 @@ async fn send_analysis_message_stream(
                 })
                 .collect();
 
-            // 追加 assistant 消息（含 tool_calls）
+            // 追加 assistant 消息（含 tool_calls + reasoning_content）
             messages.push(AIMessage::assistant_tool_calls(
                 tool_calls.clone(),
                 if round_content.is_empty() {
                     None
                 } else {
                     Some(round_content)
+                },
+                if round_reasoning.is_empty() {
+                    None
+                } else {
+                    Some(round_reasoning)
                 },
             ));
 

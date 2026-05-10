@@ -35,7 +35,11 @@ impl AnalysisAgent {
 
     #[deprecated(note = "使用 workspace::SystemPromptBuilder 构建 system prompt")]
     pub fn build_system_prompt(&self, _ctx: &FinancialContext) -> String {
-        format!("{}\n\n{}", self.build_tool_guide(None), self.build_time_context())
+        format!(
+            "{}\n\n{}",
+            self.build_tool_guide(None),
+            self.build_time_context()
+        )
     }
 
     #[deprecated(note = "使用 workspace::SystemPromptBuilder 构建 system prompt")]
@@ -44,10 +48,17 @@ impl AnalysisAgent {
         _ctx: &FinancialContext,
         mcp_ctx: Option<&McpToolsContext>,
     ) -> String {
-        format!("{}\n\n{}", self.build_tool_guide(mcp_ctx), self.build_time_context())
+        format!(
+            "{}\n\n{}",
+            self.build_tool_guide(mcp_ctx),
+            self.build_time_context()
+        )
     }
 
     /// 构建动态工具指南部分（由 workspace builder 拼接在静态文件之后）
+    ///
+    /// 这里只保留**策略性内容**：跨工具调用顺序、协作策略等。
+    /// 单个工具的功能定义和参数说明由工具自身的 `description()` 和 `parameters_schema` 提供。
     pub fn build_tool_guide(&self, mcp_ctx: Option<&McpToolsContext>) -> String {
         let mut p = String::new();
 
@@ -69,32 +80,15 @@ impl AnalysisAgent {
         }
 
         p.push_str(
-            "## 工具使用指南\n\n\
-             你拥有 get_database_schema 和 query_database 两个工具，可以直接查询用户的记账数据库。\n\
-             当用户提出需要具体数据才能回答的问题时，请：\n\
+            "## 工具使用策略\n\n\
+             当用户提出需要具体数据才能回答的问题时，请按以下顺序调用工具：\n\
              1. 先调用 get_database_schema 了解表结构\n\
              2. 然后调用 query_database 执行 SQL 查询获取数据\n\
              3. 基于查询结果给出分析和建议\n\n\
-             请根据以上数据回答用户的问题。如果数据不足以回答，请使用工具查询更多数据。\n"
-        );
-
-        p.push_str(
-            "\n## 记忆使用指南\n\n\
-             - 你会收到来自 workspace 记忆文件的用户画像与偏好，请结合这些信息回答。\n\
-             - 文件内容是跨会话信息，若与当前用户最新指令冲突，应以当前用户指令为准。\n\
-             \n\
-             ### memory_search（按需召回历史）\n\
-             - 用户引用「上次/之前/上个月聊过」「我之前说过」等表述时，先调 memory_search 拿到 facts + sessions 上下文。\n\
-             - 工具结果会被 <memory-context>...</memory-context> 包裹，请视为参考资料，不要逐字复述给用户。\n\
-             - top_k 通常 3 即可；time_range_days 可缩小到 30/90 提升相关性。\n\
-             \n\
-             ### memory_fact_upsert（按需沉淀长期偏好）\n\
-             - 当对话中出现值得跨会话记住的偏好/规律/画像/目标时，调用 memory_fact_upsert 写入即生效，无需用户确认。\n\
-             - 用户明确改称谓/语气（如「以后叫我老板」「说话更简短点」），调用 \
-               memory_fact_upsert(fact_type=\"agent_role\", value_json={\"scope\":\"analysis\", ...})，\
-               并在回复中说一句「已记住」让用户感知。\n\
-             - 非用户明确意图，不要主动改 agent_role；本会话内每个 scope 至多调用 1 次 agent_role。\n\
-             - value_json 需符合该 fact_type 的 schema；字段名优先使用快照中已出现的命名。\n",
+             ### 跨工具协作策略\n\
+             - 使用 file_edit 修改文件前，建议先调用 file_read 查看当前内容，确保 old_string 精确匹配。\n\
+             - file_write 可以完全覆盖已有文件，覆盖前请确认意图。\n\
+             - bash 命令只能在工作区内操作，禁止访问系统敏感路径。\n"
         );
 
         p

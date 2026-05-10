@@ -41,7 +41,10 @@ impl<'a> SystemPromptBuilder<'a> {
             parts.push(section);
         }
 
-        // 5. USER.md
+        // 5. 工作区文件用途与可修改性说明
+        parts.push(self.build_workspace_files_guide());
+
+        // 6. USER.md
         if let Some(section) = self.read_and_format("USER.md", false) {
             parts.push(section);
         }
@@ -77,7 +80,7 @@ impl<'a> SystemPromptBuilder<'a> {
                         Some(format!("<!-- {} 内容为空 -->", name))
                     }
                 } else {
-                    Some(self.truncate(trimmed))
+                    Some(format!("<src:{}>\n{}", name, self.truncate(trimmed)))
                 }
             }
             None => {
@@ -88,6 +91,17 @@ impl<'a> SystemPromptBuilder<'a> {
                 }
             }
         }
+    }
+
+    /// 构建工作区文件用途与可修改性说明（硬编码，插入在 SOUL.md 之后、USER.md 之前）
+    fn build_workspace_files_guide(&self) -> String {
+        "## 工作区文件说明\n\n\
+         以下工作区文件被注入到当前上下文中。它们的用途和可修改性如下：\n\n\
+         - **AGENTS.md / IDENTITY.md / SOUL.md**：系统配置，通常由用户手动维护，Agent 不建议修改。\n\
+         - **USER.md**：用户画像与偏好。当用户明确提供或更新个人信息、记账偏好时，Agent **应当**使用 `file_edit` 或 `file_write` 更新此文件。\n\
+         - **MEMORY.md**：长期记忆与规律总结。当对话中出现值得跨会话记住的财务规律、消费模式、目标时，Agent **应当**使用 `file_edit` 或 `file_write` 更新此文件。\n\
+         - **注意**：修改前建议先用 `file_read` 查看当前内容；只写入用户明确提供或高度可信的信息，禁止编造。"
+            .to_string()
     }
 
     /// 截断逻辑：严格保证总长度 <= max_chars_per_file

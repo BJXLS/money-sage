@@ -65,19 +65,22 @@ pub struct AIMessage {
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// 深度思考内容（DeepSeek 等推理模型返回的 reasoning_content）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
 }
 
 impl AIMessage {
     pub fn text(role: impl Into<String>, content: impl Into<String>) -> Self {
-        Self { role: role.into(), content: Some(content.into()), tool_calls: None, tool_call_id: None }
+        Self { role: role.into(), content: Some(content.into()), tool_calls: None, tool_call_id: None, reasoning_content: None }
     }
 
     pub fn tool_result(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
-        Self { role: "tool".into(), content: Some(content.into()), tool_calls: None, tool_call_id: Some(tool_call_id.into()) }
+        Self { role: "tool".into(), content: Some(content.into()), tool_calls: None, tool_call_id: Some(tool_call_id.into()), reasoning_content: None }
     }
 
-    pub fn assistant_tool_calls(tool_calls: Vec<ToolCall>, content: Option<String>) -> Self {
-        Self { role: "assistant".into(), content, tool_calls: Some(tool_calls), tool_call_id: None }
+    pub fn assistant_tool_calls(tool_calls: Vec<ToolCall>, content: Option<String>, reasoning_content: Option<String>) -> Self {
+        Self { role: "assistant".into(), content, tool_calls: Some(tool_calls), tool_call_id: None, reasoning_content }
     }
 
     pub fn content_text(&self) -> &str {
@@ -474,12 +477,14 @@ impl AIHttpClient {
             .send()
             .await
             .map_err(|e| anyhow!("Stream request failed: {}", e))?;
-        
+
         if !response.status().is_success() {
             let status = response.status();
-            return Err(anyhow!("Stream request failed with HTTP {}", status));
+            let error_text = response.text().await.unwrap_or_default();
+            println!("❌ [HTTP] {} Error: {}", status, error_text);
+            return Err(anyhow!("Stream request failed with HTTP {}: {}", status, error_text));
         }
-        
+
         Ok(response)
     }
     

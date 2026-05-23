@@ -2,7 +2,7 @@
 
 智能记账桌面应用 — AI 快速记账、对话式财务分析、本地优先
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Non--Commercial-red.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8DB.svg)](https://tauri.app)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D.svg)](https://vuejs.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://rust-lang.org)
@@ -298,4 +298,4 @@ npm run build:installer:debug
 
 ## 许可证
 
-[MIT License](LICENSE)
+[Non-Commercial License](LICENSE) — 仅供非商业用途使用，商业使用需另行授权。

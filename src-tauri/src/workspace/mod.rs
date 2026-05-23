@@ -21,41 +21,6 @@ const DEFAULT_AGENTS_MD: &str = r"# Agent 行为准则
 - 不要编造不存在的数据
 ";
 
-const DEFAULT_IDENTITY_MD: &str = r"# Agent 身份
-
-- **名字**：MoneySage
-- **自称**：我
-- **称呼用户**：你
-- **Emoji**：不使用
-- **语言**：中文（简体）
-";
-
-const DEFAULT_SOUL_MD: &str = r"# Agent 性格
-
-## 气质
-专业、克制、客观、友好
-
-## 沟通风格
-- 语气亲切但不失专业边界
-- 解释复杂概念时善用类比
-- 用户情绪波动时保持冷静引导
-
-## 价值观
-- 用户的财务自主权第一
-- 建议仅供参考，不替用户决策
-- 隐私与数据安全高于一切
-";
-
-const DEFAULT_USER_MD: &str = r"# 用户画像
-
-<!-- 请在此填写你的个人信息，帮助 Agent 更好地理解你 -->
-
-- **职业**：
-- **月收入范围**：
-- **理财风险偏好**：
-- **记账目标**：
-";
-
 const DEFAULT_MEMORY_MD: &str = r"# 记忆
 
 <!-- 此文件由 Agent 自动维护，也可手动编辑 -->
@@ -70,9 +35,6 @@ const DEFAULT_BOOTSTRAP_MD: &str = r"# 首次引导
 
 const WORKSPACE_FILES: &[&str] = &[
     "AGENTS.md",
-    "IDENTITY.md",
-    "SOUL.md",
-    "USER.md",
     "MEMORY.md",
 ];
 
@@ -105,9 +67,6 @@ impl WorkspaceManager {
 
         let files = vec![
             ("AGENTS.md", DEFAULT_AGENTS_MD),
-            ("IDENTITY.md", DEFAULT_IDENTITY_MD),
-            ("SOUL.md", DEFAULT_SOUL_MD),
-            ("USER.md", DEFAULT_USER_MD),
             ("MEMORY.md", DEFAULT_MEMORY_MD),
             ("BOOTSTRAP.md", DEFAULT_BOOTSTRAP_MD),
         ];
@@ -126,9 +85,6 @@ impl WorkspaceManager {
         matches!(
             name,
             "AGENTS.md"
-                | "IDENTITY.md"
-                | "SOUL.md"
-                | "USER.md"
                 | "MEMORY.md"
                 | "BOOTSTRAP.md"
                 | "BOOTSTRAP-used.md"

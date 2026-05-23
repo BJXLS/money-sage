@@ -7,11 +7,42 @@ use super::{LocalTool, workspace_path};
 
 pub struct FileReadTool {
     workspace_dir: PathBuf,
+    memory_dir: Option<PathBuf>,
 }
 
 impl FileReadTool {
-    pub fn new(workspace_dir: PathBuf) -> Self {
-        Self { workspace_dir }
+    pub fn new(workspace_dir: PathBuf, memory_dir: Option<PathBuf>) -> Self {
+        Self { workspace_dir, memory_dir }
+    }
+
+    fn resolve_path(&self, base: &str, file_path: &str) -> Result<PathBuf> {
+        match base {
+            "memory" => {
+                match &self.memory_dir {
+                    Some(dir) => {
+                        // 复用 workspace_path 的安全检查逻辑，但针对 memory 目录
+                        let trimmed = file_path.trim();
+                        if trimmed.is_empty() {
+                            return Err(anyhow!("file_path 不能为空"));
+                        }
+                        if trimmed.contains("..") {
+                            return Err(anyhow!("路径中不允许包含 '..'"));
+                        }
+                        let p = std::path::Path::new(trimmed);
+                        if p.is_absolute() {
+                            return Err(anyhow!("file_path 必须是相对路径"));
+                        }
+                        let resolved = dir.join(trimmed);
+                        Ok(resolved)
+                    }
+                    None => Err(anyhow!("memory 目录未配置")),
+                }
+            }
+            _ => {
+                workspace_path::resolve_workspace_path(&self.workspace_dir, file_path)
+                    .map_err(|e| anyhow!("路径解析失败: {}", e))
+            }
+        }
     }
 }
 
@@ -22,7 +53,7 @@ impl LocalTool for FileReadTool {
     }
 
     fn description(&self) -> &str {
-        "读取工作区内的文件内容。只能访问工作区目录下的文件，file_path 必须是相对于工作区根目录的路径（如 'AGENTS.md' 或 'docs/plan.md'）。"
+        "读取工作区或记忆目录内的文件内容。file_path 必须是相对路径。可以通过 base 参数指定读取 workspace（默认）或 memory 目录下的文件。"
     }
 
     fn parameters_schema(&self) -> Value {
@@ -31,7 +62,13 @@ impl LocalTool for FileReadTool {
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "文件在工作区内的相对路径，如 'AGENTS.md'、'docs/plan.md'。必须是相对于工作区根目录的路径，禁止绝对路径和路径遍历。"
+                    "description": "文件的相对路径。base=workspace 时如 'AGENTS.md'、'docs/plan.md'；base=memory 时如 'factual/user-profile.md'、'MEMORY.md'。"
+                },
+                "base": {
+                    "type": "string",
+                    "enum": ["workspace", "memory"],
+                    "default": "workspace",
+                    "description": "目录基址。workspace 表示工作区目录，memory 表示记忆目录。"
                 },
                 "offset": {
                     "type": "integer",
@@ -51,39 +88,38 @@ impl LocalTool for FileReadTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("缺少 file_path 参数"))?;
 
-        let resolved = workspace_path::resolve_workspace_path(&self.workspace_dir, file_path)?;
+        let base = arguments.get("base")
+            .and_then(|v| v.as_str())
+            .unwrap_or("workspace");
+
+        let resolved = self.resolve_path(base, file_path)?;
 
         if !resolved.exists() {
             return Err(anyhow!(
-                "文件不存在: {}。工作区路径: {}，请确认文件路径正确",
-                file_path,
-                self.workspace_dir.display()
+                "文件不存在: {}。base={}, 请确认文件路径正确",
+                file_path, base
             ));
         }
 
         if resolved.is_dir() {
             return Err(anyhow!(
-                "该路径是目录，无法读取: {}。工作区路径: {}",
-                file_path,
-                self.workspace_dir.display()
+                "该路径是目录，无法读取: {}。base={}",
+                file_path, base
             ));
         }
 
         // 二进制文件提示
         if !workspace_path::is_likely_text_file(&resolved) {
             return Err(anyhow!(
-                "该文件看起来是二进制文件，不支持直接读取文本内容: {}。工作区路径: {}",
-                file_path,
-                self.workspace_dir.display()
+                "该文件看起来是二进制文件，不支持直接读取文本内容: {}。base={}",
+                file_path, base
             ));
         }
 
         let content = tokio::fs::read_to_string(&resolved).await
             .map_err(|e| anyhow!(
-                "读取文件失败: {} (路径: {})。工作区路径: {}",
-                e,
-                file_path,
-                self.workspace_dir.display()
+                "读取文件失败: {} (路径: {}, base: {})",
+                e, file_path, base
             ))?;
 
         let offset = arguments.get("offset")

@@ -23,9 +23,10 @@ use models::*;
 
 pub struct DatabaseState {
     pub db: Database,
-    pub memory: Arc<memory::MemoryFacade>,
+    pub memory_store: Arc<memory::v3::MemoryStore>,
     pub token_recorder: Arc<telemetry::TokenUsageRecorder>,
     pub workspace: workspace::WorkspaceManager,
+    pub app_data_dir: std::path::PathBuf,
 }
 
 pub struct McpState {
@@ -572,9 +573,8 @@ async fn process_quick_booking_text(
     };
 
     let memory_snapshot = state
-        .memory
-        .render_quick_note_snapshot()
-        .await
+        .memory_store
+        .read_file("MEMORY.md")
         .unwrap_or_default();
 
     // 4. 使用AI模型解析文本（使用动态提示词）
@@ -1116,181 +1116,6 @@ async fn delete_analysis_session(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Memory 阶段一命令
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[tauri::command]
-async fn list_memory_facts(
-    state: State<'_, DatabaseState>,
-    filter: FactFilter,
-) -> Result<Vec<Fact>, String> {
-    state
-        .memory
-        .list_facts(filter)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn upsert_memory_fact(
-    state: State<'_, DatabaseState>,
-    input: UpsertInput,
-) -> Result<UpsertOutcome, String> {
-    state
-        .memory
-        .upsert_fact(input)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn edit_memory_fact(
-    state: State<'_, DatabaseState>,
-    id: i64,
-    patch: UpdateFact,
-) -> Result<(), String> {
-    state
-        .memory
-        .edit_fact(id, patch)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn retire_memory_fact(state: State<'_, DatabaseState>, id: i64) -> Result<(), String> {
-    state
-        .memory
-        .retire_fact(id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn undo_memory_change(
-    state: State<'_, DatabaseState>,
-    history_id: i64,
-) -> Result<(), String> {
-    state
-        .memory
-        .undo(history_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn list_memory_recent_changes(
-    state: State<'_, DatabaseState>,
-    limit: Option<i64>,
-) -> Result<Vec<HistoryEntry>, String> {
-    state
-        .memory
-        .list_recent_changes(limit.unwrap_or(100))
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn trigger_auto_decay(state: State<'_, DatabaseState>) -> Result<usize, String> {
-    state.memory.auto_decay().await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_agent_role(
-    state: State<'_, DatabaseState>,
-    scope: RoleScope,
-) -> Result<Option<Fact>, String> {
-    state
-        .memory
-        .get_role(scope)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn set_agent_role(
-    state: State<'_, DatabaseState>,
-    scope: RoleScope,
-    value: RoleValue,
-) -> Result<UpsertOutcome, String> {
-    state
-        .memory
-        .set_role(scope, value)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn list_role_presets(state: State<'_, DatabaseState>) -> Result<Vec<RolePreset>, String> {
-    state
-        .memory
-        .list_role_presets()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn create_role_preset(
-    state: State<'_, DatabaseState>,
-    input: NewRolePreset,
-) -> Result<RolePreset, String> {
-    state
-        .memory
-        .create_role_preset(input)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn update_role_preset(
-    state: State<'_, DatabaseState>,
-    preset_id: String,
-    patch: UpdateRolePreset,
-) -> Result<(), String> {
-    state
-        .memory
-        .update_role_preset(preset_id, patch)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn delete_role_preset(
-    state: State<'_, DatabaseState>,
-    preset_id: String,
-) -> Result<(), String> {
-    state
-        .memory
-        .delete_role_preset(preset_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn reset_role_preset(
-    state: State<'_, DatabaseState>,
-    preset_id: String,
-) -> Result<(), String> {
-    state
-        .memory
-        .reset_role_preset(preset_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn apply_role_preset(
-    state: State<'_, DatabaseState>,
-    preset_id: String,
-    scope: RoleScope,
-) -> Result<UpsertOutcome, String> {
-    state
-        .memory
-        .apply_role_preset(preset_id, scope)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Workspace 文件命令
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1313,6 +1138,65 @@ async fn write_workspace_file(state: State<'_, DatabaseState>, name: String, con
         .workspace
         .write_file(&name, &content)
         .map_err(|e| e.to_string())
+}
+
+/// 获取当前 memory 目录路径
+#[tauri::command]
+async fn get_memory_dir(state: State<'_, DatabaseState>) -> Result<String, String> {
+    // 优先从 app_settings 读取
+    match state.db.get_setting("memory_dir").await.map_err(|e| e.to_string())? {
+        Some(path) if !path.trim().is_empty() => Ok(path),
+        _ => {
+            // 返回默认路径
+            let default = state.app_data_dir.join("memory");
+            Ok(default.to_string_lossy().to_string())
+        }
+    }
+}
+
+/// 设置 memory 目录路径，支持 "reset" 和 "copy" 两种模式
+#[tauri::command]
+async fn set_memory_dir(
+    state: State<'_, DatabaseState>,
+    path: String,
+    mode: String,
+) -> Result<String, String> {
+    let target_dir = std::path::PathBuf::from(&path);
+
+    // 如果目标目录不存在，创建它
+    if !target_dir.exists() {
+        std::fs::create_dir_all(&target_dir)
+            .map_err(|e| format!("创建目标目录失败: {}", e))?;
+    }
+
+    if mode == "copy" {
+        // 复制模式：将当前记忆内容复制到新路径
+        let current_store = &state.memory_store;
+        let new_store = memory::v3::MemoryStore::new(&target_dir);
+
+        // 初始化目标目录骨架
+        new_store.ensure_initialized()
+            .map_err(|e| format!("初始化目标目录失败: {}", e))?;
+
+        // 复制所有文件
+        new_store.copy_from(current_store)
+            .map_err(|e| format!("复制记忆文件失败: {}", e))?;
+
+        println!("Memory 从 {} 复制到 {}", current_store.memory_dir().display(), target_dir.display());
+    } else {
+        // reset 模式：仅初始化骨架，不复制内容
+        let new_store = memory::v3::MemoryStore::new(&target_dir);
+        new_store.ensure_initialized()
+            .map_err(|e| format!("初始化目标目录失败: {}", e))?;
+        println!("Memory 重置到 {}", target_dir.display());
+    }
+
+    // 保存路径到 app_settings
+    state.db.set_setting("memory_dir", &path)
+        .await
+        .map_err(|e| format!("保存配置失败: {}", e))?;
+
+    Ok(format!("记忆目录已设置为: {}。请重启应用以使配置生效。", path))
 }
 
 /// 流式分析：接收用户消息 → 构建上下文 → 调用 LLM（SSE）→ 工具调用循环 → 持久化
@@ -1426,12 +1310,13 @@ async fn send_analysis_message_stream(
     };
 
     // 7. 创建本地工具注册表
+    let memory_dir = Some(db_state.memory_store.memory_dir().to_path_buf());
     let tool_registry = LocalToolRegistry::new(
         db_state.db.pool.clone(),
         Some(sid.clone()),
         Some(db_state.token_recorder.clone()),
-        db_state.memory.clone(),
         db_state.workspace.workspace_dir().to_path_buf(),
+        memory_dir,
     );
     let tools_json = tool_registry.all_as_openai_tools();
     let tools = if tools_json.is_empty() {
@@ -1450,7 +1335,8 @@ async fn send_analysis_message_stream(
 
     let tool_guide = agent.build_tool_guide(mcp_ctx.as_ref());
     let time_context = agent.build_time_context();
-    let builder = workspace::builder::SystemPromptBuilder::new(&db_state.workspace);
+    let builder = workspace::builder::SystemPromptBuilder::new(&db_state.workspace)
+        .with_memory_store(&db_state.memory_store);
     let system_prompt = builder.build_analysis_prompt(&tool_guide, &time_context);
     let mut messages: Vec<AIMessage> = vec![AIMessage::text("system", system_prompt)];
     let max_history = 20;
@@ -1811,6 +1697,45 @@ async fn send_analysis_message_stream(
     }
     let _ = db_state.db.touch_analysis_session(&sid).await;
 
+    // 12. Memory V3 全面记忆整合（Phase 5）
+    // 构建本轮对话文本
+    let mut conversation_log = String::new();
+    for msg in &messages {
+        let content = msg.content.as_deref().unwrap_or("");
+        match msg.role.as_str() {
+            "user" => conversation_log.push_str(&format!("user: {}\n", content)),
+            "assistant" => conversation_log.push_str(&format!("assistant: {}\n", content)),
+            _ => {}
+        }
+    }
+
+    // 在后台 task 中运行 Consolidator，不阻塞响应
+    let pool = db_state.db.pool.clone();
+    let store = (*db_state.memory_store).clone();
+    tokio::spawn(async move {
+        // 延迟 30 秒，确保前端已收到流结束事件
+        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+        let consolidator = memory::v3::MemoryConsolidator::new(pool, store);
+        match consolidator.consolidate(&sid, &conversation_log).await {
+            Ok(report) => {
+                if report.factual_written > 0
+                    || report.episodic_written
+                    || report.procedural_written > 0
+                    || report.snapshot_updated
+                {
+                    println!(
+                        "Memory Consolidator: factual={}, episodic={}, procedural={}, snapshot={}",
+                        report.factual_written,
+                        report.episodic_written,
+                        report.procedural_written,
+                        report.snapshot_updated
+                    );
+                }
+            }
+            Err(e) => eprintln!("Memory Consolidator 失败: {}", e),
+        }
+    });
+
     Ok(())
 }
 
@@ -2033,18 +1958,94 @@ pub fn run() {
                     eprintln!("Workspace 初始化失败: {}", e);
                 }
 
+                async fn init_memory_v3(
+                    app_data_dir: &std::path::Path,
+                    db: &Database,
+                ) -> Arc<memory::v3::MemoryStore> {
+                    // 从 app_settings 读取自定义 memory 目录
+                    let memory_dir = match db.get_setting("memory_dir").await {
+                        Ok(Some(path)) if !path.trim().is_empty() => std::path::PathBuf::from(path),
+                        _ => app_data_dir.join("memory"),
+                    };
+                    println!("Memory V3 目录: {}", memory_dir.display());
+
+                    let memory_store = Arc::new(memory::v3::MemoryStore::new(&memory_dir));
+                    if let Err(e) = memory_store.ensure_initialized() {
+                        eprintln!("Memory V3 目录初始化失败: {}", e);
+                    }
+                    // V2 → V3 迁移
+                    let migrator = memory::v3::Migrator::new(db.pool.clone(), (*memory_store).clone());
+                    match migrator.already_migrated() {
+                        Ok(false) => match migrator.migrate().await {
+                            Ok(report) => println!(
+                                "Memory V2→V3 迁移完成: classification_rules={}, recurring_events={}, financial_goals={}, user_profiles={}, agent_roles={}, total={}",
+                                report.classification_rules,
+                                report.recurring_events,
+                                report.financial_goals,
+                                report.user_profiles,
+                                report.agent_roles,
+                                report.total_entries
+                            ),
+                            Err(e) => eprintln!("Memory V2→V3 迁移失败: {}", e),
+                        },
+                        Ok(true) => println!("Memory V3 已迁移，跳过"),
+                        Err(e) => eprintln!("检查迁移状态失败: {}", e),
+                    }
+                    // 同步 FTS5 索引
+                    let indexer = memory::v3::MemoryIndexer::new(db.pool.clone(), (*memory_store).clone());
+                    match indexer.sync_all().await {
+                        Ok(report) => println!(
+                            "Memory V3 索引同步: files={}, entries={}, added={}, removed={}",
+                            report.scanned_files, report.scanned_entries, report.added, report.removed
+                        ),
+                        Err(e) => eprintln!("Memory V3 索引同步失败: {}", e),
+                    }
+
+                    // 启动 Memory Governor 后台任务
+                    let pool = db.pool.clone();
+                    let store = (*memory_store).clone();
+                    tokio::spawn(async move {
+                        // 首次巡检：启动后 60 秒
+                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                        let governor = memory::v3::MemoryGovernor::new(pool.clone(), store.clone());
+                        match governor.run().await {
+                            Ok(report) => println!(
+                                "Memory Governor 首次巡检: compressed={}, indices={}, snapshot={} chars",
+                                report.compressed_files, report.updated_indices, report.snapshot_char_count
+                            ),
+                            Err(e) => eprintln!("Memory Governor 首次巡检失败: {}", e),
+                        }
+
+                        // 定期巡检：每 6 小时
+                        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(6 * 3600));
+                        loop {
+                            interval.tick().await;
+                            let governor = memory::v3::MemoryGovernor::new(pool.clone(), store.clone());
+                            match governor.run().await {
+                                Ok(report) => println!(
+                                    "Memory Governor 定期巡检: compressed={}, indices={}, snapshot={} chars",
+                                    report.compressed_files, report.updated_indices, report.snapshot_char_count
+                                ),
+                                Err(e) => eprintln!("Memory Governor 定期巡检失败: {}", e),
+                            }
+                        }
+                    });
+
+                    memory_store
+                }
+
                 match Database::new(&database_url).await {
                     Ok(db) => {
                         println!("数据库初始化成功");
-                        let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
-                        let _ = memory.ensure_default_role_seed().await;
+                        let memory_store = init_memory_v3(&app_data_dir, &db).await;
                         let token_recorder =
                             Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
                         app_handle.manage(DatabaseState {
                             db,
-                            memory,
+                            memory_store,
                             token_recorder,
                             workspace: workspace_manager.clone(),
+                            app_data_dir: app_data_dir.clone(),
                         });
                     }
                     Err(e) => {
@@ -2055,15 +2056,15 @@ pub fn run() {
                         match Database::new(&simple_url).await {
                             Ok(db) => {
                                 println!("使用简单URL格式成功");
-                                let memory = Arc::new(memory::MemoryFacade::new(db.pool.clone()));
-                                let _ = memory.ensure_default_role_seed().await;
+                                let memory_store = init_memory_v3(&app_data_dir, &db).await;
                                 let token_recorder =
                                     Arc::new(telemetry::TokenUsageRecorder::new(db.pool.clone()));
                                 app_handle.manage(DatabaseState {
                                     db,
-                                    memory,
+                                    memory_store,
                                     token_recorder,
                                     workspace: workspace_manager.clone(),
+                                    app_data_dir: app_data_dir.clone(),
                                 });
                             }
                             Err(e) => {
@@ -2072,17 +2073,16 @@ pub fn run() {
                                 match Database::new("sqlite::memory:").await {
                                     Ok(db) => {
                                         println!("内存数据库初始化成功");
-                                        let memory =
-                                            Arc::new(memory::MemoryFacade::new(db.pool.clone()));
-                                        let _ = memory.ensure_default_role_seed().await;
+                                        let memory_store = init_memory_v3(&app_data_dir, &db).await;
                                         let token_recorder = Arc::new(
                                             telemetry::TokenUsageRecorder::new(db.pool.clone()),
                                         );
                                         app_handle.manage(DatabaseState {
                                             db,
-                                            memory,
+                                            memory_store,
                                             token_recorder,
                                             workspace: workspace_manager.clone(),
+                                            app_data_dir: app_data_dir.clone(),
                                         });
                                     }
                                     Err(e) => {
@@ -2138,22 +2138,6 @@ pub fn run() {
             get_analysis_messages,
             delete_analysis_session,
             send_analysis_message_stream,
-            // Memory 命令
-            list_memory_facts,
-            upsert_memory_fact,
-            edit_memory_fact,
-            retire_memory_fact,
-            undo_memory_change,
-            list_memory_recent_changes,
-            trigger_auto_decay,
-            get_agent_role,
-            set_agent_role,
-            list_role_presets,
-            apply_role_preset,
-            create_role_preset,
-            update_role_preset,
-            delete_role_preset,
-            reset_role_preset,
             // Token 用量命令
             list_token_usage,
             get_token_usage_summary,
@@ -2172,7 +2156,10 @@ pub fn run() {
             // Workspace 命令
             list_workspace_files,
             read_workspace_file,
-            write_workspace_file
+            write_workspace_file,
+            // Memory 目录配置命令
+            get_memory_dir,
+            set_memory_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

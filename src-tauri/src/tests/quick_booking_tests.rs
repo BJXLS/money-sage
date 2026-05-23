@@ -30,9 +30,10 @@ mod tests {
     async fn test_process_quick_booking_text_no_llm_config() {
         // 创建没有LLM配置的数据库
         let db = Database::new("sqlite::memory:").await.unwrap();
-        let memory = std::sync::Arc::new(crate::memory::MemoryFacade::new(db.pool.clone()));
+        let memory_store = std::sync::Arc::new(crate::memory::v3::MemoryStore::new(std::path::Path::new("/tmp")));
         let token_recorder = std::sync::Arc::new(crate::telemetry::TokenUsageRecorder::new(db.pool.clone()));
-        let db_state = DatabaseState { db, memory, token_recorder };
+        let workspace = crate::workspace::WorkspaceManager::new(std::path::Path::new("/tmp"));
+        let db_state = DatabaseState { db, memory_store, token_recorder, workspace };
         
         let result = test_process_quick_booking_with_mock_ai(
             &db_state,

@@ -3,7 +3,6 @@ pub mod file_edit;
 pub mod file_read;
 pub mod file_write;
 pub mod get_schema;
-pub mod memory_fact_upsert;
 pub mod memory_search;
 pub mod query_database;
 pub mod quick_note_parse;
@@ -17,7 +16,6 @@ use sqlx::SqlitePool;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::memory::MemoryFacade;
 use crate::telemetry::TokenUsageRecorder;
 
 pub const ALLOWED_TABLES: &[&str] = &["categories", "transactions", "budgets"];
@@ -50,8 +48,8 @@ impl LocalToolRegistry {
         pool: SqlitePool,
         session_id: Option<String>,
         token_recorder: Option<Arc<TokenUsageRecorder>>,
-        memory: Arc<MemoryFacade>,
         workspace_dir: PathBuf,
+        memory_dir: Option<PathBuf>,
     ) -> Self {
         let mut registry = Self { tools: Vec::new() };
         registry
@@ -70,29 +68,36 @@ impl LocalToolRegistry {
                 pool.clone(),
                 session_id.clone(),
                 token_recorder,
+                memory_dir.clone(),
             )));
         registry
             .tools
             .push(Box::new(quick_note_save::QuickNoteSaveTool::new(
-                pool,
+                pool.clone(),
                 session_id.clone(),
             )));
-        // registry.tools.push(Box::new(memory_search::MemorySearchTool::new(
-        //     memory.clone(),
-        //     session_id.clone(),
-        // )));
-        // registry.tools.push(Box::new(memory_fact_upsert::MemoryFactUpsertTool::new(
-        //     memory,
-        //     session_id,
-        // )));
+
+        // Memory V3 搜索工具
+        if let Some(ref mdir) = memory_dir {
+            let memory_store = crate::memory::v3::MemoryStore::new(mdir);
+            registry.tools.push(Box::new(memory_search::MemorySearchTool::new(
+                pool,
+                memory_store,
+                session_id.clone(),
+            )));
+        }
+
         registry.tools.push(Box::new(file_read::FileReadTool::new(
             workspace_dir.clone(),
+            memory_dir.clone(),
         )));
         registry.tools.push(Box::new(file_edit::FileEditTool::new(
             workspace_dir.clone(),
+            memory_dir.clone(),
         )));
         registry.tools.push(Box::new(file_write::FileWriteTool::new(
             workspace_dir.clone(),
+            memory_dir.clone(),
         )));
         registry
             .tools

@@ -93,81 +93,12 @@ export interface CategoryStats {
   percentage: number
 }
 
-export type FactType = 'classification_rule' | 'recurring_event' | 'financial_goal' | 'user_profile' | 'agent_role'
-export type FactStatus = 'active' | 'provisional' | 'superseded' | 'retired'
-export type RoleScope = 'global' | 'quick_note' | 'analysis'
-
-export interface MemoryFact {
-  id: number
-  fact_type: FactType
-  key?: string
-  value_json: any
-  source: string
-  confidence: number
-  status: FactStatus
-  updated_at: string
-  created_at: string
-}
-
-export interface MemoryHistoryEntry {
-  id: number
-  fact_id: number
-  op: string
-  actor: string
-  before_json?: any
-  after_json?: any
-  created_at: string
-}
-
-export interface RolePreset {
-  preset_id: string
-  display_name: string
-  summary: string
-  value: any
-  is_builtin: boolean
-  sort_order: number
-}
-
-export interface NewRolePresetInput {
-  display_name: string
-  summary?: string
-  value: any
-  sort_order?: number
-}
-
-export interface UpdateRolePresetInput {
-  display_name?: string
-  summary?: string
-  value?: any
-  sort_order?: number
-}
-
-export interface RoleTone {
-  style?: string
-  emoji?: boolean
-  verbosity?: string
-  language_flavor?: string
-}
-
 export interface WorkspaceFile {
   name: string
   exists: boolean
   char_count: number
   byte_size: number
   modified_at: string | null
-}
-
-export interface RoleValue {
-  scope: RoleScope
-  display_name?: string
-  self_reference?: string
-  user_address?: string
-  tone?: RoleTone
-  traits?: string[]
-  do?: string[]
-  dont?: string[]
-  preset_id?: string
-  notes?: string
 }
 
 export interface QuickNoteDraftItem {
@@ -285,15 +216,12 @@ export const useAppStore = defineStore('app', () => {
   const budgets = ref<BudgetProgress[]>([])
   const monthlyStats = ref<MonthlyStats[]>([])
   const categoryStats = ref<CategoryStats[]>([])
-  const memoryFacts = ref<MemoryFact[]>([])
-  const pendingFacts = ref<MemoryFact[]>([])
-  const memoryChanges = ref<MemoryHistoryEntry[]>([])
-  const rolePresets = ref<RolePreset[]>([])
   const pendingDrafts = ref<QuickNoteDraft[]>([])
   const workspaceFiles = ref<WorkspaceFile[]>([])
   const currentFileContent = ref('')
   const currentFileName = ref('')
   const workspaceLoading = ref(false)
+  const memoryDir = ref('')
   const loading = ref(false)
   const currentPage = ref(1)
   const pageSize = ref(20)
@@ -669,92 +597,6 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  const fetchMemoryFacts = async (factType?: FactType, status?: FactStatus) => {
-    const result = await safeInvoke<MemoryFact[]>('list_memory_facts', {
-      filter: {
-        fact_type: factType,
-        status,
-      }
-    })
-    memoryFacts.value = result || []
-    return memoryFacts.value
-  }
-
-  const upsertMemoryFact = async (input: any) => {
-    return await invoke('upsert_memory_fact', { input })
-  }
-
-  const editMemoryFact = async (id: number, patch: any) => {
-    await invoke('edit_memory_fact', { id, patch })
-  }
-
-  const retireMemoryFact = async (id: number) => {
-    await invoke('retire_memory_fact', { id })
-  }
-
-  const fetchPendingFacts = async () => {
-    const result = await safeInvoke<MemoryFact[]>('list_memory_facts', {
-      filter: {
-        status: 'provisional',
-      }
-    })
-    pendingFacts.value = result || []
-    return pendingFacts.value
-  }
-
-  const confirmMemoryFact = async (id: number) => {
-    await invoke('edit_memory_fact', { id, patch: { status: 'active' } })
-  }
-
-  const fetchMemoryChanges = async (limit = 100) => {
-    const result = await safeInvoke<MemoryHistoryEntry[]>('list_memory_recent_changes', { limit })
-    memoryChanges.value = result || []
-    return memoryChanges.value
-  }
-
-  const undoMemoryChange = async (historyId: number) => {
-    await invoke('undo_memory_change', { historyId })
-  }
-
-  const fetchRolePresets = async () => {
-    const result = await safeInvoke<RolePreset[]>('list_role_presets')
-    rolePresets.value = result || []
-    return rolePresets.value
-  }
-
-  const createRolePreset = async (input: NewRolePresetInput) => {
-    const result = await invoke<RolePreset>('create_role_preset', { input })
-    await fetchRolePresets()
-    return result
-  }
-
-  const updateRolePreset = async (presetId: string, patch: UpdateRolePresetInput) => {
-    await invoke('update_role_preset', { presetId, patch })
-    await fetchRolePresets()
-  }
-
-  const deleteRolePreset = async (presetId: string) => {
-    await invoke('delete_role_preset', { presetId })
-    await fetchRolePresets()
-  }
-
-  const resetRolePreset = async (presetId: string) => {
-    await invoke('reset_role_preset', { presetId })
-    await fetchRolePresets()
-  }
-
-  const applyRolePreset = async (presetId: string, scope: RoleScope) => {
-    return await invoke('apply_role_preset', { presetId, scope })
-  }
-
-  const getAgentRole = async (scope: RoleScope) => {
-    return await safeInvoke<MemoryFact>('get_agent_role', { scope })
-  }
-
-  const setAgentRole = async (scope: RoleScope, value: RoleValue) => {
-    return await invoke('set_agent_role', { scope, value })
-  }
-
   const fetchSessionPendingDrafts = async (sessionId: string) => {
     const result = await safeInvoke<QuickNoteDraft[]>('list_session_pending_drafts', { sessionId })
     pendingDrafts.value = result || []
@@ -835,6 +677,17 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  // ── Memory 目录配置 ──────────────────────────────────────────────────
+  const getMemoryDir = async () => {
+    const result = await safeInvoke<string>('get_memory_dir')
+    memoryDir.value = result || ''
+    return memoryDir.value
+  }
+
+  const setMemoryDir = async (path: string, mode: string) => {
+    return await invoke<string>('set_memory_dir', { path, mode })
+  }
+
   return {
     // 状态
     categories,
@@ -842,10 +695,6 @@ export const useAppStore = defineStore('app', () => {
     budgets,
     monthlyStats,
     categoryStats,
-    memoryFacts,
-    pendingFacts,
-    memoryChanges,
-    rolePresets,
     pendingDrafts,
     tokenUsageEntries,
     tokenUsageSummary,
@@ -893,22 +742,6 @@ export const useAppStore = defineStore('app', () => {
     importDataFile,
     exportDataFile,
     initializeData,
-    fetchMemoryFacts,
-    fetchPendingFacts,
-    upsertMemoryFact,
-    editMemoryFact,
-    retireMemoryFact,
-    confirmMemoryFact,
-    fetchMemoryChanges,
-    undoMemoryChange,
-    fetchRolePresets,
-    createRolePreset,
-    updateRolePreset,
-    deleteRolePreset,
-    resetRolePreset,
-    applyRolePreset,
-    getAgentRole,
-    setAgentRole,
     fetchSessionPendingDrafts,
     confirmQuickNoteDraft,
     cancelQuickNoteDraft,
@@ -918,5 +751,8 @@ export const useAppStore = defineStore('app', () => {
     fetchWorkspaceFiles,
     readWorkspaceFile,
     writeWorkspaceFile,
+    memoryDir,
+    getMemoryDir,
+    setMemoryDir,
   }
 }) 

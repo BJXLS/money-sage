@@ -4,17 +4,20 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 use super::LocalTool;
-use crate::memory::search::SearchQuery;
-use crate::memory::MemoryFacade;
+use crate::memory::v3::{MemoryIndexer, MemoryStore};
+use sqlx::SqlitePool;
 
 pub struct MemorySearchTool {
-    memory: Arc<MemoryFacade>,
+    indexer: MemoryIndexer,
     session_id: Option<String>,
 }
 
 impl MemorySearchTool {
-    pub fn new(memory: Arc<MemoryFacade>, session_id: Option<String>) -> Self {
-        Self { memory, session_id }
+    pub fn new(pool: SqlitePool, store: MemoryStore, session_id: Option<String>) -> Self {
+        Self {
+            indexer: MemoryIndexer::new(pool, store),
+            session_id,
+        }
     }
 }
 
@@ -25,9 +28,10 @@ impl LocalTool for MemorySearchTool {
     }
 
     fn description(&self) -> &str {
-        "在长期记忆库（memory_facts）和历史会话（analysis_messages）中检索相关内容。\
+        "在记忆文件系统中检索相关内容。\
         当用户提到「上次/之前/上个月聊过」「我之前说过」「以前的目标」等需要回忆的语境时调用。\
-        返回的内容会被 <memory-context> 包裹，请把它作为上下文参考，不要逐字复述。"
+        返回的内容会被 <memory-context> 包裹，请把它作为上下文参考，不要逐字复述。\
+        搜索结果按 factual（事实）、episodic（情景）、procedural（程序）分组返回，互不覆盖。"
     }
 
     fn parameters_schema(&self) -> Value {
@@ -42,21 +46,9 @@ impl LocalTool for MemorySearchTool {
                 "top_k": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 5,
-                    "default": 3,
-                    "description": "facts 与 sessions 各自返回的最大条数（≤5）"
-                },
-                "time_range_days": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "default": 365,
-                    "description": "会话检索的时间窗口（天），默认 365"
-                },
-                "include": {
-                    "type": "array",
-                    "items": { "type": "string", "enum": ["facts", "sessions"] },
-                    "default": ["facts", "sessions"],
-                    "description": "要检索的范围"
+                    "maximum": 10,
+                    "default": 5,
+                    "description": "每种类型返回的最大条数"
                 }
             }
         })
@@ -72,42 +64,61 @@ impl LocalTool for MemorySearchTool {
         let top_k = arguments
             .get("top_k")
             .and_then(|v| v.as_i64())
-            .unwrap_or(3)
-            .clamp(1, 5);
+            .unwrap_or(5)
+            .clamp(1, 10);
 
-        let time_range_days = arguments
-            .get("time_range_days")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(365)
-            .max(1);
+        // 搜索前先同步索引（确保最新）
+        let _ = self.indexer.sync_all().await;
 
-        let include = arguments
-            .get("include")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
-                    .collect::<Vec<_>>()
+        let result = self.indexer.search(&query, top_k).await?;
+
+        let factual: Vec<Value> = result
+            .factual
+            .into_iter()
+            .map(|item| {
+                json!({
+                    "file": item.file_path,
+                    "heading": item.heading,
+                    "text": item.full_text,
+                    "timestamp": item.timestamp,
+                    "source": item.source,
+                })
             })
-            .unwrap_or_else(|| vec!["facts".to_string(), "sessions".to_string()]);
+            .collect();
 
-        let q = SearchQuery {
-            query: query.clone(),
-            top_k_facts: top_k,
-            top_k_sessions: top_k,
-            time_range_days,
-            exclude_session: self.session_id.clone(),
-            include_facts: include.iter().any(|s| s == "facts"),
-            include_sessions: include.iter().any(|s| s == "sessions"),
-        };
+        let episodic: Vec<Value> = result
+            .episodic
+            .into_iter()
+            .map(|item| {
+                json!({
+                    "file": item.file_path,
+                    "heading": item.heading,
+                    "text": item.full_text,
+                    "timestamp": item.timestamp,
+                    "source": item.source,
+                })
+            })
+            .collect();
 
-        let result = self.memory.search(q).await?;
+        let procedural: Vec<Value> = result
+            .procedural
+            .into_iter()
+            .map(|item| {
+                json!({
+                    "file": item.file_path,
+                    "heading": item.heading,
+                    "text": item.full_text,
+                    "timestamp": item.timestamp,
+                    "source": item.source,
+                })
+            })
+            .collect();
 
-        // 按设计文档 §9.2 的「记忆围栏」格式返回，便于模型识别上下文边界
         let payload = json!({
             "query": query,
-            "facts": result.facts,
-            "sessions": result.sessions,
+            "factual": factual,
+            "episodic": episodic,
+            "procedural": procedural,
             "hint": "以上为可参考的历史上下文（已脱敏裁剪），请按实际需求选择性引用，不要逐字复述。"
         });
         let body = serde_json::to_string_pretty(&payload)?;

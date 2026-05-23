@@ -2,12 +2,12 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::ai::agent::quick_note::QuickNoteAgent;
 use crate::ai::tools::LocalTool;
 use crate::database::Database;
-use crate::memory::MemoryFacade;
 use crate::models::{
     Category, ConfirmedTransaction, CreateQuickNoteDraftRequest, TokenUsageRecord,
 };
@@ -18,6 +18,7 @@ pub struct QuickNoteParseTool {
     pool: SqlitePool,
     session_id: Option<String>,
     token_recorder: Option<Arc<TokenUsageRecorder>>,
+    memory_dir: Option<PathBuf>,
 }
 
 impl QuickNoteParseTool {
@@ -25,8 +26,9 @@ impl QuickNoteParseTool {
         pool: SqlitePool,
         session_id: Option<String>,
         token_recorder: Option<Arc<TokenUsageRecorder>>,
+        memory_dir: Option<PathBuf>,
     ) -> Self {
-        Self { pool, session_id, token_recorder }
+        Self { pool, session_id, token_recorder, memory_dir }
     }
 }
 
@@ -101,8 +103,14 @@ impl LocalTool for QuickNoteParseTool {
         )
         .fetch_all(&self.pool)
         .await?;
-        let memory = MemoryFacade::new(self.pool.clone());
-        let memory_snapshot = memory.render_quick_note_snapshot().await.unwrap_or_default();
+
+        // V3 记忆快照：读取 MEMORY.md
+        let memory_snapshot = if let Some(ref mdir) = self.memory_dir {
+            let store = crate::memory::v3::MemoryStore::new(mdir);
+            store.read_file("MEMORY.md").unwrap_or_default()
+        } else {
+            String::new()
+        };
 
         let request_id = uuid::Uuid::new_v4().to_string();
         let started = std::time::Instant::now();

@@ -2,6 +2,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { useAppStore } from '../stores'
 import { ElMessage } from 'element-plus'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
 const store = useAppStore()
 const editingContent = ref('')
@@ -13,6 +14,53 @@ const FILE_LABELS: Record<string, string> = {
   'SOUL.md': '性格灵魂',
   'USER.md': '用户画像',
   'MEMORY.md': '记忆',
+}
+
+// ── Memory 目录配置 ───────────────────────────────────────────────────
+const memoryPathInput = ref('')
+const changingPath = ref(false)
+
+const loadMemoryDir = async () => {
+  memoryPathInput.value = await store.getMemoryDir()
+}
+
+const handleBrowse = async () => {
+  try {
+    const selected = await openDialog({
+      directory: true,
+      title: '选择记忆文件目录',
+    })
+    if (selected && typeof selected === 'string') {
+      memoryPathInput.value = selected
+    }
+  } catch (e) {
+    ElMessage.error('打开目录选择器失败: ' + String(e))
+  }
+}
+
+const handleSetMemoryDir = async (mode: string) => {
+  const path = memoryPathInput.value.trim()
+  if (!path) {
+    ElMessage.warning('请输入目录路径')
+    return
+  }
+  const label = mode === 'copy' ? '复制' : '重置'
+  const ok = window.confirm(
+    `确定要${label}切换记忆目录到 "${path}" 吗？\n\n` +
+    (mode === 'copy' ? '当前记忆内容将被复制到新目录。' : '当前记忆内容将不会保留。') +
+    '\n\n配置将在重启后生效。'
+  )
+  if (!ok) return
+
+  changingPath.value = true
+  try {
+    const result = await store.setMemoryDir(path, mode)
+    ElMessage.success(result)
+  } catch (e) {
+    ElMessage.error('设置失败: ' + String(e))
+  } finally {
+    changingPath.value = false
+  }
 }
 
 const activeFile = ref('AGENTS.md')
@@ -67,13 +115,35 @@ watch(() => editingContent.value, (newVal) => {
 })
 
 onMounted(async () => {
-  await store.fetchWorkspaceFiles()
+  await Promise.all([
+    store.fetchWorkspaceFiles(),
+    loadMemoryDir(),
+  ])
   await loadFile(activeFile.value)
 })
 </script>
 
 <template>
   <div class="workspace-editor">
+    <!-- Memory 目录配置 -->
+    <div class="memory-path-bar">
+      <div class="path-label">记忆目录：</div>
+      <el-input
+        v-model="memoryPathInput"
+        placeholder="默认路径"
+        size="small"
+        class="path-input"
+      />
+      <el-button size="small" @click="handleBrowse">浏览</el-button>
+      <el-button size="small" type="warning" :loading="changingPath" @click="handleSetMemoryDir('reset')">
+        重置切换
+      </el-button>
+      <el-button size="small" type="primary" :loading="changingPath" @click="handleSetMemoryDir('copy')">
+        复制切换
+      </el-button>
+      <span class="path-hint">修改后需重启应用</span>
+    </div>
+
     <div class="file-sidebar">
       <div class="sidebar-header">配置文件</div>
       <div
@@ -134,8 +204,39 @@ onMounted(async () => {
 <style scoped>
 .workspace-editor {
   display: flex;
+  flex-wrap: wrap;
   height: calc(100vh - 112px);
   gap: 16px;
+}
+
+.memory-path-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #151520;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  padding: 14px 20px;
+  flex-shrink: 0;
+}
+
+.path-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+}
+
+.path-input {
+  flex: 1;
+  max-width: 500px;
+}
+
+.path-hint {
+  font-size: 12px;
+  color: #64748b;
+  margin-left: auto;
 }
 
 .file-sidebar {

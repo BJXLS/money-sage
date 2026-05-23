@@ -418,6 +418,52 @@ impl Database {
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_history_fact ON memory_facts_history(fact_id)").execute(pool).await?;
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_history_time ON memory_facts_history(created_at DESC)").execute(pool).await?;
 
+        // ── Memory V3 全文索引表 ──
+        // 存储 memory/ 目录下 md 文件的索引，可重建（从文件重新扫描即可）
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS memory_index (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT NOT NULL,
+                heading TEXT,
+                line_hash TEXT NOT NULL UNIQUE,
+                full_text TEXT NOT NULL,
+                timestamp TEXT,
+                source TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
+
+        sqlx::query(r#"
+            CREATE VIRTUAL TABLE IF NOT EXISTS memory_index_fts USING fts5(
+                file_path,
+                heading,
+                full_text,
+                content='memory_index',
+                content_rowid='id',
+                tokenize='trigram'
+            )
+        "#).execute(pool).await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_index_path ON memory_index(file_path)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_memory_index_hash ON memory_index(line_hash)").execute(pool).await?;
+
+        // ── Memory V3 变更日志表 ──
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS memory_changelog (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                old_content TEXT,
+                new_content TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'agent',
+                session_id TEXT,
+                undone INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_changelog_path ON memory_changelog(file_path)").execute(pool).await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_changelog_session ON memory_changelog(session_id)").execute(pool).await?;
+
         // 人格预设表（用户可增删改的人格模板，区别于 memory_facts.agent_role 这种已应用的角色）
         sqlx::query(r#"
             CREATE TABLE IF NOT EXISTS role_presets (
@@ -586,6 +632,15 @@ impl Database {
                 .await?;
             }
         }
+
+        // ── 应用设置表 ──
+        sqlx::query(r#"
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        "#).execute(pool).await?;
 
         Ok(())
     }
@@ -1774,5 +1829,29 @@ impl Database {
                 updated_at: row.try_get::<String, _>("updated_at").unwrap_or_default(),
             }
         }))
+    }
+
+    // ── app_settings ──
+
+    pub async fn get_setting(&self, key: &str) -> Result<Option<String>> {
+        let row = sqlx::query("SELECT value FROM app_settings WHERE key = ?")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|r| r.get::<String, _>("value")))
+    }
+
+    pub async fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        sqlx::query(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+        )
+        .bind(key)
+        .bind(value)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 }

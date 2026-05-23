@@ -1,33 +1,29 @@
-<div align="center">
+# MoneySage
 
-# 💰 MoneySage
-
-一款现代化的智能记账桌面应用，结合 AI 快速记账、对话式财务分析与本地数据存储
+智能记账桌面应用 — AI 快速记账、对话式财务分析、本地优先
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8DB.svg)](https://tauri.app)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D.svg)](https://vuejs.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://rust-lang.org)
 
-[功能概览](#功能概览) • [界面导航](#界面导航) • [快速开始](#快速开始) • [开发指南](#开发指南) • [技术栈](#技术栈) • [构建发布](#构建发布)
-
 </div>
 
 ---
 
-## 📖 简介
+## 简介
 
-**MoneySage** 是一款基于 **Tauri 2 + Vue 3** 的 Windows 桌面记账应用。支持自然语言快速记账、多会话「智能分析」对话（可调用数据库工具）、本地 **SQLite** 持久化，以及 **LLM / MCP** 的可选扩展。数据默认保存在本机应用数据目录，便于离线使用与隐私控制。
+**MoneySage** 是基于 **Tauri 2 + Vue 3** 的桌面记账应用。支持自然语言快速记账、流式对话财务分析、本地 **SQLite** 持久化，以及 **LLM / MCP** 扩展。数据保存在本机应用数据目录，无需网络即可使用核心功能。
 
-### ✨ 核心亮点
+### 核心亮点
 
-- 🤖 **AI 快速记账** — 自然语言解析金额、分类、日期；支持批量解析与确认后入库  
-- 💬 **智能分析（ChatBI）** — 多分析会话、流式回复、工具调用状态；可联动快速记账草稿确认  
-- 🧠 **记忆管理** — 维护结构化记忆事实与 Agent 人设（角色预设等），供 AI 场景使用  
-- 📊 **仪表盘与统计** — 月度汇总、趋势与分类分布；仪表盘内嵌统计分析图表  
-- 📈 **用量统计** — 记录每次 LLM 调用的 token 用量（写入本地数据库，可按配置/模型汇总）  
-- 🔌 **大模型与 MCP** — 支持多套 OpenAI 兼容 API 配置；可连接 MCP 工具服务器扩展能力  
-- 🔐 **本地优先** — 默认 SQLite 文件库（`money_note.db`）；异常情况下可能回退内存库（重启不保留）  
+- **AI 快速记账** — 自然语言解析金额、分类、日期；批量解析，确认后入库
+- **智能分析 (ChatBI)** — 多会话对话、流式输出、工具调用循环；可查询数据库、搜索记忆、读写文件
+- **记忆系统 V3** — Markdown 原生存储，人类可读、Agent 可操作；双层快照机制保护 LLM 前缀缓存
+- **仪表盘与统计** — 月度收支、趋势图表、分类分布、预算进度
+- **用量统计** — LLM token 用量记录与多维度汇总
+- **大模型与 MCP** — 多套 OpenAI 兼容 API 配置；MCP 工具服务器扩展
+- **本地优先** — SQLite 存储，可自定义数据与记忆目录
 
 ---
 
@@ -35,145 +31,165 @@
 
 ### 仪表盘
 
-- 本月收入、支出、结余与交易概况  
-- 近 **3 / 6 / 12** 个月收支趋势  
-- 支出分布与预算执行概览  
-- 内嵌 **统计分析**（`StatisticsView`），无需单独入口  
+本月收入、支出、结余概览，近 3/6/12 个月趋势图，支出分类分布与预算执行状态。
 
 ### AI 快速记账
 
 ```
-输入: "今天中午在餐厅花了38元吃午饭"
-识别: 金额、分类、收支类型、日期（可编辑确认）
+输入: "今天午餐38元，晚餐买了杯奶茶15元"
+解析: 2 条记录，含金额、分类、收支类型、日期，可逐条编辑后保存
 ```
 
-- 支持多条文本批量解析  
-- 解析结果可修改后再保存  
+支持下述解析策略：AI 语义理解（需配置大模型），解析后可在确认界面修改分类、金额等信息再保存。
 
 ### 收支记录
 
-- 添加、编辑、删除交易；按条件浏览  
-- **数据导入 / 导出**：支持应用自定义格式（Excel、`money_sage` 包等，具体以界面与后端命令为准），用于备份与迁移  
+添加、编辑、删除交易记录；按月筛选浏览；CSV 导入导出；支持应用自定义格式（Excel / money_sage）的备份与迁移。
 
 ### 分类与预算
 
-- **分类管理**：系统预设与自定义分类；支持父子层级（大类 / 小类）  
-- **预算设置**：按分类与周期监控进度（含事件类预算等）  
+- **分类管理**：系统预设 + 自定义分类，支持父子层级
+- **预算设置**：按分类与周期设置预算，实时进度展示
 
 ### 智能分析
 
-- 持久化 **分析会话** 与历史消息  
-- **流式输出**、工具调用过程展示  
-- 与 **快速记账草稿** 联动，可在对话流中确认入账  
+- 持久化多会话，支持历史回溯
+- SSE 流式输出，工具调用过程实时展示
+- 内置 9 个本地工具：数据库查询、文件读写、记忆搜索、快速记账解析/保存、表结构查询、Shell 执行
+- 可联动 MCP 外部工具服务器
+- 对话结束后自动运行记忆整合（Consolidator），提取用户画像、财务规则、目标等信息
 
-### 记忆管理
+### 记忆管理 (V3)
 
-- 查看与管理记忆条目、变更历史（含撤销类操作，以实际界面为准）  
-- **人设 / 角色**：全局、快速记账、智能分析等范围可分别配置  
+- **三层记忆分类**：
+  - `factual/` — 用户画像、财务规则、目标、Agent 角色设定
+  - `episodic/` — 按日期组织的对话摘要
+  - `procedural/` — 工作流程与操作技巧
+- **Markdown 原生**：所有记忆以 `.md` 文件存储，可直接用编辑器查看和修改
+- **双层快照**：`memory/MEMORY.md` 作为跨会话快照，每次对话注入 System Prompt
+- **后台治理**：Governor 定期巡检，自动压缩超长文件（保留最近 5 条/标题）、更新索引、重生成快照
+- **FTS5 全文搜索**：增量同步索引，支持按分类分组搜索
+- **用户可配置**：支持自定义记忆目录路径，支持重置/复制两种切换模式
+- **安全保护**：`meta/` 目录禁止 Agent 修改；记忆写入前进行注入扫描
 
 ### 用量统计
 
-- 按 **LLM 配置**、**模型** 等维度汇总调用次数与 **prompt / completion / total** tokens  
-- 每次请求一行日志，**持久化**在本地表 `token_usage_logs`（除非当前运行使用了内存数据库）  
-- 支持按日期筛选与清理历史日志（如「清理 90 天前」）  
+每次 LLM 调用记录 prompt/completion/total tokens，按配置、模型、日期等维度汇总，支持清理历史日志。
 
-### 顶部快捷入口
+### 大模型配置
 
-- **快速记账** — 打开 AI 记账对话框  
-- **MCP** — 配置 MCP 工具服务器（可选）  
-- **大模型配置** — 管理多套 API、模型与连接参数  
+支持多套 OpenAI 兼容 API 配置，可分别设置 Base URL、API Key、模型、温度等参数，随时切换活跃配置。
 
 ---
 
 ## 界面导航
 
-与 `src/App.vue` 侧边栏一致：
-
-| 菜单       | 说明 |
-|------------|------|
-| 仪表盘     | 总览 + 内嵌统计图表 |
-| 收支记录   | 交易 CRUD + 导入导出 |
+| 菜单 | 说明 |
+|------|------|
+| 仪表盘 | 总览 + 内嵌统计图表 |
+| 收支记录 | 交易 CRUD + 导入导出 |
 | 分类与预算 | 分类管理 / 预算设置（标签页） |
-| 智能分析   | 对话式财务分析 |
-| 记忆管理   | 记忆与人设 |
-| 用量统计   | LLM token 用量 |
+| 智能分析 | 对话式财务分析 |
+| Agent 配置 | 工作区文件编辑 + 记忆目录设置 |
+| 用量统计 | LLM token 用量 |
 
 ---
 
-## 🚀 快速开始
-
-### 安装使用（Windows）
-
-1. 在 [Releases](../../releases) 下载最新安装包（若已发布）  
-2. 常见产物名称示例：`money-sage_*_x64-setup.exe`（NSIS）、`money-sage_*_x64_zh-CN.msi`（MSI）  
-3. 安装后启动应用  
+## 快速开始
 
 ### 系统要求
 
-- **操作系统**：Windows 10 / 11（x64）  
-- **内存**：建议 4GB 及以上（启用 AI 时）  
-- **磁盘**：约 100MB 量级（随数据增长）  
-- **WebView2**：Windows 11 通常已自带；Windows 10 若缺失需安装 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)  
+- **操作系统**：macOS / Windows 10+ / Linux
+- **内存**：建议 4GB 及以上（启用 AI 时）
+- **Windows**：需 WebView2 Runtime（Win11 已自带）
+
+### 安装
+
+在 [Releases](../../releases) 下载最新安装包。常见产物：
+
+- Windows：`.exe` (NSIS) / `.msi` (WiX)
+- macOS：`.dmg`
+- Linux：`.deb` / `.AppImage`
+
+### 首次运行
+
+1. 在「大模型配置」中填写 API 信息（Base URL、Key、模型名称）
+2. 使用「快速记账」或「智能分析」前确认网络与密钥有效
 
 ---
 
-## 💻 开发指南
+## 开发指南
 
 ### 环境准备
 
-- [Node.js](https://nodejs.org/) 18+  
-- [Rust](https://rustup.rs/)（stable）及 Windows 对应构建依赖（用于 `tauri build`）  
+- [Node.js](https://nodejs.org/) 18+
+- [Rust](https://rustup.rs/) stable
 
-### 克隆与安装
+### 克隆与启动
 
 ```bash
-git clone <你的仓库地址>
-cd money-note
+git clone <仓库地址>
+cd money-sage
 npm install
-```
-
-### 开发运行
-
-```bash
-# 推荐：前端 + Tauri 热重载
 npm run tauri:dev
 ```
 
-或拆分：
-
-```bash
-npm run dev    # 仅 Vite
-npm run tauri  # 需另开终端配合 dev server
-```
-
-### 代码结构（摘要）
+### 项目结构
 
 ```
-money-note/
-├── src/                         # Vue 前端
+money-sage/
+├── src/                              # Vue 前端
 │   ├── views/
-│   │   ├── DashboardView.vue       # 仪表盘（内嵌 StatisticsView）
-│   │   ├── TransactionsView.vue    # 收支 + 导入导出
-│   │   ├── CategoriesBudgetView.vue# 分类 / 预算标签容器
-│   │   ├── CategoriesView.vue
-│   │   ├── BudgetView.vue
-│   │   ├── StatisticsView.vue
-│   │   ├── AnalysisView.vue        # 智能分析
-│   │   ├── MemoryView.vue          # 记忆管理
-│   │   └── UsageStatsView.vue      # Token 用量统计
+│   │   ├── DashboardView.vue           # 仪表盘（内嵌统计）
+│   │   ├── TransactionsView.vue        # 收支记录 + 导入导出
+│   │   ├── CategoriesBudgetView.vue    # 分类 / 预算标签容器
+│   │   ├── CategoriesView.vue          # 分类管理
+│   │   ├── BudgetView.vue              # 预算管理
+│   │   ├── StatisticsView.vue          # 统计分析
+│   │   ├── AnalysisView.vue            # 智能分析对话
+│   │   ├── MemoryView.vue              # Agent 配置（工作区 + 记忆目录）
+│   │   └── UsageStatsView.vue          # Token 用量统计
 │   ├── components/
-│   │   ├── QuickBookingDialog.vue
-│   │   ├── LLMConfigDialog.vue
-│   │   └── McpConfigDialog.vue
-│   ├── stores/index.ts             # Pinia + Tauri invoke
+│   │   ├── QuickBookingDialog.vue      # 快速记账对话框
+│   │   ├── LLMConfigDialog.vue         # 大模型配置
+│   │   └── McpConfigDialog.vue         # MCP 服务器配置
+│   ├── stores/index.ts                 # Pinia Store + Tauri invoke
 │   └── App.vue
 ├── src-tauri/
 │   ├── src/
-│   │   ├── ai/                     # Agent、工具与流式分析
-│   │   ├── telemetry/              # token_usage 记录与汇总
-│   │   ├── database.rs             # SQLite 与迁移
-│   │   ├── models.rs
-│   │   └── lib.rs                  # Tauri 命令注册
+│   │   ├── ai/
+│   │   │   ├── agent/                  # AnalysisAgent / QuickNoteAgent
+│   │   │   └── tools/                  # 9 个本地工具
+│   │   │       ├── file_edit.rs        # 精确字符串替换（workspace/memory）
+│   │   │       ├── file_read.rs        # 文件读取
+│   │   │       ├── file_write.rs       # 文件创建/覆盖
+│   │   │       ├── memory_search.rs    # FTS5 记忆搜索
+│   │   │       ├── query_database.rs   # 数据库只读查询
+│   │   │       ├── get_schema.rs       # 数据库表结构
+│   │   │       ├── quick_note_parse.rs # 快速记账文本解析
+│   │   │       ├── quick_note_save.rs  # 快速记账保存
+│   │   │       ├── bash_exec.rs        # Shell 命令执行
+│   │   │       └── workspace_path.rs   # 工作区路径解析
+│   │   ├── memory/
+│   │   │   └── v3/
+│   │   │       ├── store.rs            # MemoryStore — 文件系统存储层
+│   │   │       ├── snapshot.rs         # SnapshotLoader — 快照加载
+│   │   │       ├── snapshot_generator.rs # SnapshotGenerator — MEMORY.md 生成
+│   │   │       ├── indexer.rs          # FTS5 增量索引同步 + 搜索
+│   │   │       ├── migrator.rs         # V2 → V3 数据迁移
+│   │   │       ├── safety.rs           # 注入扫描 + 安全检查
+│   │   │       ├── changelog.rs        # 变更日志 + 撤销支持
+│   │   │       ├── governor.rs         # 后台巡检：压缩文件、更新索引
+│   │   │       └── consolidator.rs     # 对话结束后的记忆整合
+│   │   ├── workspace/
+│   │   │   ├── mod.rs                  # WorkspaceManager — 工作区文件管理
+│   │   │   └── builder.rs              # SystemPromptBuilder — 动态拼装提示词
+│   │   ├── telemetry/                  # Token 用量记录与汇总
+│   │   ├── mcp/                        # MCP 工具服务器管理
+│   │   ├── data_io/                    # 数据导入导出
+│   │   ├── database.rs                 # SQLite 数据库 + 表结构
+│   │   ├── models.rs                   # 数据模型
+│   │   └── lib.rs                      # Tauri 命令注册 + 启动初始化
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── package.json
@@ -189,107 +205,97 @@ cargo test
 
 ---
 
-## 🛠️ 技术栈
+## 技术栈
 
 ### 前端
 
 | 用途 | 技术 |
 |------|------|
-| 框架 | [Vue 3](https://vuejs.org/) |
-| 构建 | [Vite](https://vitejs.dev/) |
-| UI | [Element Plus](https://element-plus.org/) |
-| 图表 | [ECharts](https://echarts.apache.org/) + [vue-echarts](https://github.com/ecomfe/vue-echarts) |
-| 状态 | [Pinia](https://pinia.vuejs.org/) |
-| 工具 | [VueUse](https://vueuse.org/)、[Day.js](https://day.js.org/) |
-| 表格 | [PapaParse](https://www.papaparse.com/)（CSV） |
-| 正文渲染 | [marked](https://github.com/markedjs/marked)（分析消息等） |
+| 框架 | Vue 3 |
+| 构建 | Vite |
+| UI 组件 | Element Plus |
+| 图表 | ECharts + vue-echarts |
+| 状态管理 | Pinia |
+| Markdown 渲染 | marked |
+| CSV 解析 | PapaParse |
+| 工具 | VueUse, Day.js |
 
 ### 后端
 
 | 用途 | 技术 |
 |------|------|
-| 桌面壳 | [Tauri 2](https://tauri.app/) |
-| 语言 | [Rust](https://www.rust-lang.org/) |
-| 数据库 | [SQLite](https://www.sqlite.org/) + [sqlx](https://github.com/launchbadge/sqlx) |
-| HTTP | [reqwest](https://github.com/seanmonstar/reqwest)（流式响应等） |
-| 异步 | [tokio](https://tokio.rs/) |
-| Excel | [calamine](https://github.com/tafia/calamine)、[rust_xlsxwriter](https://github.com/jmcnamara/rust_xlsxwriter) |
+| 桌面框架 | Tauri 2 |
+| 语言 | Rust |
+| 数据库 | SQLite + sqlx |
+| HTTP 客户端 | reqwest (SSE 流式) |
+| 异步运行时 | tokio |
+| Excel | calamine + rust_xlsxwriter |
 
-### Tauri 插件（节选）
+### Tauri 插件
 
-- `tauri-plugin-dialog`、`tauri-plugin-fs`、`tauri-plugin-opener` 等（见 `src-tauri/Cargo.toml`）  
+`tauri-plugin-dialog` `tauri-plugin-fs` `tauri-plugin-opener` `tauri-plugin-sql`
 
 ---
 
-## 📦 构建发布
+## 记忆系统架构 (V3)
 
-### 一键构建安装包
+```
+{memory_dir}/
+├── MEMORY.md                  # 跨会话快照（注入 System Prompt，冻结单会话不变）
+├── meta/
+│   └── RULES.md               # 写入规范（动态注入 System Prompt，可自定义）
+├── factual/
+│   ├── INDEX.md               # 文件索引
+│   ├── user-profile.md        # 用户画像（消费习惯、收入、家庭成员等）
+│   ├── finance-rules.md       # 财务规则（分类规则、周期事件）
+│   ├── goals.md               # 财务目标（储蓄计划、预算限制）
+│   └── agent-role.md          # Agent 角色设定（语气、风格、身份）
+├── episodic/
+│   ├── INDEX.md               # 按时间组织的索引
+│   └── YYYY/MM/YYYY-MM-DD.md  # 每日对话摘要
+└── procedural/
+    ├── INDEX.md               # 技巧索引
+    └── workflows.md           # 工作流程与操作经验
+```
+
+### 数据流
+
+1. **启动时** — MemoryStore 初始化目录骨架；Migrator 执行 V2→V3 迁移；Indexer 同步 FTS5；Governor 定时巡检
+2. **对话时** — SystemPromptBuilder 动态拼装：BOOTSTRAP → AGENTS.md → agent-role → MEMORY.md 快照 → user-profile → 工具指南
+3. **工具调用** — Agent 通过 file_read/file_write/file_edit 操作记忆文件（`meta/` 保护）
+4. **对话后** — Consolidator 分析对话内容，追加记忆条目
+5. **后台** — Governor 每 6 小时压缩超长文件、更新索引、重生成 MEMORY.md
+
+### 快照与缓存保护
+
+为保护 LLM 前缀缓存，System Prompt 中注入的是**对话开始时冻结的 MEMORY.md 快照**，而非实时文件。单个会话内即使 Agent 更新了记忆，快照也不会变化，下个会话才能看到更新。
+
+---
+
+## 构建发布
+
+### 一键构建
 
 ```bash
 npm run build:installer
 ```
 
-等价于 `npm run build` 后执行 `tauri build`。调试包可使用：
+调试版本：
 
 ```bash
 npm run build:installer:debug
 ```
 
-若仓库内提供脚本，也可使用 `build-installer.bat` / `build-installer.ps1`（视本仓库是否包含而定）。
-
-### Windows 打包依赖（可选）
-
-- **NSIS**：生成 `.exe` 安装向导  
-- **WiX**：生成 `.msi`  
-
-详见仓库内 [BUILD.md](BUILD.md)、[打包说明.md](打包说明.md)（若存在）。
-
 ### 输出目录
 
-构建成功后，安装包通常位于：
+`src-tauri/target/release/bundle/`
 
-`src-tauri/target/release/bundle/`（`nsis/`、`msi/` 等子目录）
+### 发版前检查
 
-### 发版前同步版本号
-
-保持以下文件中版本号一致：
-
-- `package.json` 的 `version`  
-- `src-tauri/tauri.conf.json`  
-- `src-tauri/Cargo.toml`  
+保持以下文件版本号一致：`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`
 
 ---
 
-## 📚 使用文档
+## 许可证
 
-更详细的操作说明见 [使用说明.md](使用说明.md)（若与本 README 有出入，以当前软件界面为准）。
-
-**首次运行建议**：在「大模型配置」中填写可用的 API；使用「智能分析」「快速记账」前请确认网络与密钥有效。  
-
----
-
-## 🤝 贡献与问题
-
-欢迎提交 Issue / PR。提交前可本地执行 `cargo fmt`、`cargo test` 与前端构建检查。
-
----
-
-## 📄 许可证
-
-本项目采用 [MIT License](LICENSE)。
-
----
-
-## 🙏 致谢
-
-[Tauri](https://tauri.app/)、[Vue.js](https://vuejs.org/)、[Element Plus](https://element-plus.org/)、[Rust](https://www.rust-lang.org/) 及生态中所有依赖项目。
-
----
-
-<div align="center">
-
-**用 ❤️ 构建**
-
-[⬆ 回到顶部](#-moneysage)
-
-</div>
+[MIT License](LICENSE)

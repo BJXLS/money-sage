@@ -388,12 +388,12 @@ fn rebuild_file(header: &[String], sections: &[Section]) -> String {
 
         lines.push(section.heading.clone());
 
-        for entry in &section.entries {
-            lines.push(entry.clone());
-        }
-
         for other in &section.other_lines {
             lines.push(other.clone());
+        }
+
+        for entry in &section.entries {
+            lines.push(entry.clone());
         }
     }
 
@@ -416,8 +416,9 @@ fn build_compression_prompt(entries: &[String]) -> String {
 1. 保留所有关键事实（如具体金额、日期、名称、分类规则等）
 2. 保留时间演化脉络（如"从X修正为Y"、"首次记录→后续更新"）
 3. 合并重复或相似信息，去除冗余描述
-4. 用一到两句话总结，尽量简洁
-5. 不要编造，只基于提供的条目
+4. 若原始条目标记了 [重要]、[纠正] 或 [矛盾]，摘要中必须显式保留对应标记
+5. 用一到两句话总结，尽量简洁
+6. 不要编造，只基于提供的条目
 
 原始条目：
 {}

@@ -149,9 +149,9 @@ impl SnapshotGenerator {
                         let entries: Vec<String> = content
                             .lines()
                             .filter(|l| l.trim_start().starts_with('&'))
-                            .take(max_per_file)
                             .filter_map(|line| parse_summary(line))
                             .collect();
+                        let entries = prioritize_entries(entries, max_per_file);
                         result.extend(entries);
                     }
                 }
@@ -251,6 +251,22 @@ fn parse_summary(line: &str) -> Option<String> {
     Some(content.to_string())
 }
 
+/// 按重要性排序条目：含 [重要]/[纠正]/[矛盾] 的优先，其余保持原序
+fn prioritize_entries(entries: Vec<String>, max: usize) -> Vec<String> {
+    let mut important = Vec::new();
+    let mut normal = Vec::new();
+    for entry in entries {
+        if entry.contains("[重要]") || entry.contains("[纠正]") || entry.contains("[矛盾]") {
+            important.push(entry);
+        } else {
+            normal.push(entry);
+        }
+    }
+    important.extend(normal);
+    important.truncate(max);
+    important
+}
+
 fn limit_chars(input: &str, max_chars: usize) -> String {
     if input.chars().count() <= max_chars {
         return input.to_string();
@@ -266,7 +282,8 @@ fn limit_chars(input: &str, max_chars: usize) -> String {
         }
         if count >= max_chars.saturating_sub(50) {
             // 留 50 字符给截断标记
-            return format!("{}\n\n（内容过多，已截断）", &input[..last_newline]);
+            let cutoff = if last_newline > 0 { last_newline } else { i };
+            return format!("{}\n\n（内容过多，已截断）", &input[..cutoff]);
         }
     }
     input.to_string()

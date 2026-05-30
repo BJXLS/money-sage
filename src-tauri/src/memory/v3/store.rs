@@ -154,6 +154,85 @@ const DEFAULT_WORKFLOWS_MD: &str = r#"<!-- memory-file
 <!-- 批量导入经验、分类技巧、快捷操作等 -->
 "#;
 
+const DEFAULT_META_SCHEMA_MD: &str = r#"# Memory Schema 规范
+
+本文件定义了 MoneySage 记忆系统 V3 的文件格式规范，供 Agent 参考。
+
+## 目录结构
+
+```
+memory/
+├── MEMORY.md              # 自动生成的记忆快照（≤2000 字符）
+├── factual/               # 事实记忆
+│   ├── INDEX.md
+│   └── *.md               # 用户画像、财务规则、目标、角色设定
+├── episodic/              # 情景记忆
+│   ├── INDEX.md
+│   └── YYYY/MM/YYYY-MM-DD.md
+├── procedural/            # 程序记忆
+│   ├── INDEX.md
+│   └── *.md               # 工作流技巧
+└── meta/                  # 系统规范（Agent 不可修改）
+    ├── RULES.md
+    └── SCHEMA.md          # 本文件
+```
+
+## 文件格式
+
+### 1. 元数据注释（文件首行）
+
+每个 `.md` 记忆文件（不含 INDEX.md、MEMORY.md）必须以如下 HTML 注释开头：
+
+```markdown
+<!-- memory-file
+  category: factual
+  created: 2026-05-23T10:00:00+08:00
+  updated: 2026-05-23T14:30:00+08:00
+  char_count: 1840
+  entry_count: 15
+-->
+```
+
+| 字段 | 说明 |
+|------|------|
+| `category` | `factual` / `episodic` / `procedural` |
+| `created` | 文件创建时间（ISO 8601） |
+| `updated` | 最后更新时间（自动维护） |
+| `char_count` | 当前文件字符数（自动维护） |
+| `entry_count` | `&` 条目数（自动维护） |
+
+### 2. 时间戳条目格式
+
+记忆内容以 `&` 开头，格式如下：
+
+```
+& <ISO 8601 时间> | <来源> | <内容>
+```
+
+示例：
+```
+& 2026-05-23T14:30:00+08:00 | agent:analysis | 用户本月餐饮预算为 3000 元
+```
+
+- 同一 `##` 标题下，新条目插入在顶部（时间倒序）
+- 来源可以是 `agent:analysis`、`agent:consolidator`、`agent:governor` 等
+
+### 3. 内置标记
+
+| 标记 | 语义 |
+|------|------|
+| `[重要]` | 该条目信息重要，快照生成时优先保留 |
+| `[纠正]` | 用户对先前信息的纠正 |
+| `[矛盾]` | 与先前记忆存在矛盾，需关注 |
+| `[历史压缩]` | 由 Governor 自动压缩的旧条目摘要 |
+
+## 大小限制
+
+- 单个记忆文件 ≤ 2000 字符
+- 超过时 Governor 会在后台自动压缩（保留最近 10 条，旧条目 LLM 摘要）
+- Agent 无需手动处理压缩
+"#;
+
 /// 记忆文件系统存储层
 #[derive(Clone)]
 pub struct MemoryStore {
@@ -191,6 +270,7 @@ impl MemoryStore {
         // meta/
         self.ensure_dir("meta")?;
         self.ensure_file("meta/RULES.md", DEFAULT_META_RULES_MD)?;
+        self.ensure_file("meta/SCHEMA.md", DEFAULT_META_SCHEMA_MD)?;
 
         // factual/
         self.ensure_dir("factual")?;
@@ -226,6 +306,7 @@ impl MemoryStore {
                 fs::create_dir_all(parent)?;
             }
         }
+        let content = Self::refresh_memory_meta(content);
         let mut file = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
@@ -235,6 +316,35 @@ impl MemoryStore {
         file.write_all(content.as_bytes())?;
         // file 在此处 drop，flock 自动释放
         Ok(())
+    }
+
+    /// 若内容包含 memory-file 元数据注释，自动更新 updated / char_count / entry_count
+    fn refresh_memory_meta(content: &str) -> String {
+        if !content.contains("<!-- memory-file") {
+            return content.to_string();
+        }
+
+        let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+        let char_count = content.chars().count();
+        let entry_count = content.lines().filter(|l| l.trim_start().starts_with("& ")).count();
+
+        content
+            .lines()
+            .map(|line| {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("updated:") {
+                    return format!("{}updated: {}", &line[..line.len() - trimmed.len()], now);
+                }
+                if trimmed.starts_with("char_count:") {
+                    return format!("{}char_count: {}", &line[..line.len() - trimmed.len()], char_count);
+                }
+                if trimmed.starts_with("entry_count:") {
+                    return format!("{}entry_count: {}", &line[..line.len() - trimmed.len()], entry_count);
+                }
+                line.to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// 检查文件是否存在

@@ -1600,7 +1600,7 @@ impl Database {
             .bind(item.budget_id)
             .bind(&item.description)
             .bind(&item.description)
-            .bind(&item.description)
+            .bind(&item.raw_category_name)
             .bind(0.9f64)
             .bind(idx as i64)
             .execute(&mut *tx)

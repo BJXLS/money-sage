@@ -14,6 +14,77 @@ use crate::models::{
 use crate::telemetry::TokenUsageRecorder;
 use crate::utils::http_client::{AIHttpClient, AIProvider, ClientConfig};
 
+/// 根据 AI 返回的分类名称匹配系统中的分类ID
+/// AI 可能返回 "大类-小类" 格式，需要拆分后优先匹配小类
+/// 优先匹配与 transaction_type 一致的分类，增强类型安全性
+fn match_category_name(categories: &[Category], ai_category: &str, tx_type: &str) -> i64 {
+    let ai_trimmed = ai_category.trim();
+    if ai_trimmed.is_empty() {
+        return 0;
+    }
+    let ai_lower = ai_trimmed.to_lowercase();
+
+    // 按类型过滤分类（优先同类型，允许跨类型兜底）
+    let same_type_cats: Vec<&Category> = categories.iter().filter(|c| c.r#type == tx_type).collect();
+    let candidates: &[&Category] = if !same_type_cats.is_empty() {
+        &same_type_cats
+    } else {
+        // 需要把 categories 转成引用数组，这里直接用 categories.iter() 但不太好处理
+        // 简单做法：直接用 same_type_cats（可能为空），后面再兜底
+        &same_type_cats
+    };
+
+    // 1. 先尝试精确匹配（优先同类型）
+    if let Some(c) = categories.iter().find(|c| c.name == ai_trimmed && c.r#type == tx_type) {
+        return c.id;
+    }
+    if let Some(c) = categories.iter().find(|c| c.name == ai_trimmed) {
+        return c.id;
+    }
+
+    // 2. 拆分 "大类-小类" 格式，优先匹配小类（最后一部分）
+    let parts: Vec<&str> = ai_trimmed.split('-').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    if parts.len() > 1 {
+        let sub_name = parts.last().unwrap();
+        // 优先在同类型中匹配
+        if let Some(c) = categories.iter().find(|c| c.name == *sub_name && c.r#type == tx_type) {
+            return c.id;
+        }
+        if let Some(c) = categories.iter().find(|c| c.name == *sub_name) {
+            return c.id;
+        }
+    }
+
+    // 3. 尝试匹配大类（第一部分）
+    if parts.len() > 1 {
+        let parent_name = parts.first().unwrap();
+        if let Some(c) = categories.iter().find(|c| c.name == *parent_name && c.r#type == tx_type) {
+            return c.id;
+        }
+        if let Some(c) = categories.iter().find(|c| c.name == *parent_name) {
+            return c.id;
+        }
+    }
+
+    // 4. 模糊匹配：AI 名称包含分类名，或分类名包含 AI 名称（优先同类型）
+    if let Some(c) = categories.iter().find(|c| {
+        let c_lower = c.name.to_lowercase();
+        (ai_lower.contains(&c_lower) || c_lower.contains(&ai_lower)) && c.r#type == tx_type
+    }) {
+        return c.id;
+    }
+
+    // 5. 跨类型兜底模糊匹配
+    if let Some(c) = categories.iter().find(|c| {
+        let c_lower = c.name.to_lowercase();
+        ai_lower.contains(&c_lower) || c_lower.contains(&ai_lower)
+    }) {
+        return c.id;
+    }
+
+    0
+}
+
 pub struct QuickNoteParseTool {
     pool: SqlitePool,
     session_id: Option<String>,
@@ -173,9 +244,19 @@ impl LocalTool for QuickNoteParseTool {
             }
         };
 
+        let db = Database {
+            pool: self.pool.clone(),
+        };
+        // 查询所有分类用于匹配 AI 识别的分类名称
+        let categories = db.get_categories().await.unwrap_or_default();
+
         let mut candidates = Vec::new();
         let mut items = Vec::new();
         for t in parsed.transactions {
+            // 根据 AI 识别的分类名称尝试匹配分类ID
+            // AI 可能返回 "大类-小类" 格式，需要拆分后分别匹配
+            let category_id = match_category_name(&categories, &t.category, &t.transaction_type);
+
             candidates.push(json!({
                 "date": t.date,
                 "amount": t.amount,
@@ -187,14 +268,12 @@ impl LocalTool for QuickNoteParseTool {
                 date: t.date,
                 amount: t.amount,
                 transaction_type: t.transaction_type,
-                category_id: 0,
+                category_id,
                 budget_id: None,
                 description: t.remark,
+                raw_category_name: Some(t.category),
             });
         }
-        let db = Database {
-            pool: self.pool.clone(),
-        };
         let draft = db.create_quick_note_draft(&CreateQuickNoteDraftRequest {
             session_id,
             source_message_id: None,

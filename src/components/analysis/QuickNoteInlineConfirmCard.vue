@@ -21,26 +21,79 @@ interface Category {
   parent_id?: number | null
 }
 
-interface BudgetProgress {
-  id: number
-  name: string
-  category_name: string
-  is_active: boolean
-}
-
 const form = reactive({
-  items: props.draft.items.map(i => ({ ...i }))
+  items: props.draft.items.map(i => ({
+    ...i,
+    category_id: i.category_id && i.category_id > 0 ? i.category_id : null,
+    budget_id: i.budget_id && i.budget_id > 0 ? i.budget_id : null,
+  }))
 })
 const allCategories = ref<Category[]>([])
-const allBudgets = ref<BudgetProgress[]>([])
 
 const loadMeta = async () => {
-  const [categories, budgets] = await Promise.all([
-    invoke<Category[]>('get_categories'),
-    invoke<BudgetProgress[]>('get_budgets')
-  ])
+  const categories = await invoke<Category[]>('get_categories')
   allCategories.value = categories || []
-  allBudgets.value = (budgets || []).filter(b => b.is_active)
+
+  // 加载分类后，尝试根据 raw_category_name 自动匹配分类
+  // AI 可能返回 "大类-小类" 格式，需要拆分后优先匹配小类
+  for (const item of form.items) {
+    if (!item.category_id && item.raw_category_name) {
+      const raw = item.raw_category_name.trim()
+      if (!raw) continue
+
+      const txType = item.transaction_type
+      const rawLower = raw.toLowerCase()
+
+      // 辅助函数：优先按类型过滤分类
+      const filterByType = (cats: Category[]) => {
+        const sameType = cats.filter(c => c.type === txType)
+        return sameType.length > 0 ? sameType : cats
+      }
+
+      // 1. 精确匹配（优先同类型）
+      let matched = allCategories.value.find(c => c.name === raw && c.type === txType)
+      if (!matched) {
+        matched = allCategories.value.find(c => c.name === raw)
+      }
+
+      // 2. 拆分 "大类-小类"，优先匹配小类
+      if (!matched && raw.includes('-')) {
+        const parts = raw.split('-').map(s => s.trim()).filter(s => s)
+        if (parts.length > 1) {
+          const subName = parts[parts.length - 1]
+          const candidates = filterByType(allCategories.value)
+          matched = candidates.find(c => c.name === subName)
+
+          // 3. 尝试匹配大类
+          if (!matched) {
+            const parentName = parts[0]
+            const candidates = filterByType(allCategories.value)
+            matched = candidates.find(c => c.name === parentName)
+          }
+        }
+      }
+
+      // 4. 模糊匹配（优先同类型）
+      if (!matched) {
+        const candidates = filterByType(allCategories.value)
+        matched = candidates.find(c => {
+          const cLower = c.name.toLowerCase()
+          return rawLower.includes(cLower) || cLower.includes(rawLower)
+        })
+      }
+      // 5. 跨类型兜底模糊匹配
+      if (!matched) {
+        matched = allCategories.value.find(c => {
+          const cLower = c.name.toLowerCase()
+          return rawLower.includes(cLower) || cLower.includes(rawLower)
+        })
+      }
+
+      if (matched) {
+        item.category_id = matched.id
+      }
+    }
+  }
 }
 
 onMounted(loadMeta)
@@ -99,48 +152,33 @@ const onConfirm = () => {
           </el-select>
         </template>
       </el-table-column>
-      <el-table-column prop="category_id" label="分类" width="180">
+      <el-table-column prop="category_id" label="分类" width="220">
         <template #default="{ row }">
-          <el-select
-            v-model="row.category_id"
-            filterable
-            placeholder="选择分类"
-            size="small"
-            style="width: 100%"
-          >
-            <el-option-group
-              v-for="parentCategory in getParentCategories(row.transaction_type)"
-              :key="parentCategory.id"
-              :label="`${parentCategory.icon || '📁'} ${parentCategory.name}`"
+          <div class="category-cell">
+            <el-select
+              v-model="row.category_id"
+              filterable
+              placeholder="选择分类"
+              size="small"
+              style="width: 100%"
             >
-              <el-option
-                v-for="subCategory in getSubCategories(parentCategory.id)"
-                :key="subCategory.id"
-                :label="subCategory.name"
-                :value="subCategory.id"
-              />
-            </el-option-group>
-          </el-select>
-        </template>
-      </el-table-column>
-      <el-table-column prop="budget_id" label="预算" width="200">
-        <template #default="{ row }">
-          <el-select
-            v-if="row.transaction_type === 'expense'"
-            v-model="row.budget_id"
-            filterable
-            clearable
-            placeholder="选择预算（可选）"
-            size="small"
-          >
-            <el-option
-              v-for="budget in allBudgets"
-              :key="budget.id"
-              :label="`${budget.name}（${budget.category_name}）`"
-              :value="budget.id"
-            />
-          </el-select>
-          <span v-else>-</span>
+              <el-option-group
+                v-for="parentCategory in getParentCategories(row.transaction_type)"
+                :key="parentCategory.id"
+                :label="`${parentCategory.icon || '📁'} ${parentCategory.name}`"
+              >
+                <el-option
+                  v-for="subCategory in getSubCategories(parentCategory.id)"
+                  :key="subCategory.id"
+                  :label="subCategory.name"
+                  :value="subCategory.id"
+                />
+              </el-option-group>
+            </el-select>
+            <span v-if="row.raw_category_name" class="ai-category-hint">
+              AI识别：{{ row.raw_category_name }}
+            </span>
+          </div>
         </template>
       </el-table-column>
       <el-table-column prop="description" label="描述">
@@ -158,4 +196,6 @@ const onConfirm = () => {
 .draft-card { border: 1px solid #2a2a44; border-radius: 8px; padding: 12px; background: #12121f; }
 .title { color: #a5b4fc; margin-bottom: 8px; font-weight: 600; }
 .actions { margin-top: 10px; display: flex; gap: 8px; justify-content: flex-end; }
+.category-cell { display: flex; flex-direction: column; gap: 4px; }
+.ai-category-hint { font-size: 11px; color: #f59e0b; }
 </style>

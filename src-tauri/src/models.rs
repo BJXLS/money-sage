@@ -271,10 +271,11 @@ pub struct SaveTransactionsRequest {
 pub struct ConfirmedTransaction {
     pub date: String,           // YYYY-MM-DD格式
     pub amount: f64,
-    pub transaction_type: String, // income/expense  
+    pub transaction_type: String, // income/expense
     pub category_id: i64,       // 分类ID
     pub budget_id: Option<i64>, // 关联的预算ID（可选）
     pub description: String,    // 备注
+    pub raw_category_name: Option<String>, // AI识别的原始分类名称
 }
 
 // 保存结果

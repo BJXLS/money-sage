@@ -74,11 +74,12 @@ impl LocalTool for QuickNoteSaveTool {
                         .and_then(|v| v.as_str())
                         .unwrap_or_default()
                         .to_string(),
+                    raw_category_name: it.get("raw_category_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
                 })
                 .collect()
         } else {
             let db_items = sqlx::query(
-                "SELECT date, amount, transaction_type, category_id, budget_id, description, note
+                "SELECT date, amount, transaction_type, category_id, budget_id, description, note, raw_category_name
                  FROM quick_note_draft_items WHERE draft_id = ? ORDER BY sort_order ASC, id ASC",
             )
             .bind(&draft_id)
@@ -98,6 +99,7 @@ impl LocalTool for QuickNoteSaveTool {
                             .ok()
                             .flatten()
                             .unwrap_or_default(),
+                        raw_category_name: r.try_get::<Option<String>, _>("raw_category_name").ok().flatten(),
                     }
                 })
                 .collect()

@@ -1739,8 +1739,8 @@ async fn send_analysis_message_stream(
     let pool = db_state.db.pool.clone();
     let store = (*db_state.memory_store).clone();
     tokio::spawn(async move {
-        // 延迟 30 秒，确保前端已收到流结束事件
-        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+        // 延迟 1 小时再总结，避免用户仍在连续对话中
+        tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
         let changelog = memory::v3::Changelog::new(pool.clone());
         let consolidator = memory::v3::MemoryConsolidator::new(pool, store, changelog);
         match consolidator.consolidate(&sid, &conversation_log).await {

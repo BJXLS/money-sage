@@ -111,6 +111,7 @@ export interface QuickNoteDraftItem {
   budget_id?: number | null
   description?: string
   note?: string
+  raw_category_name?: string | null
 }
 
 export interface QuickNoteDraft {

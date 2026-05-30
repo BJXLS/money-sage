@@ -67,9 +67,6 @@ impl LocalTool for MemorySearchTool {
             .unwrap_or(5)
             .clamp(1, 10);
 
-        // 搜索前先同步索引（确保最新）
-        let _ = self.indexer.sync_all().await;
-
         let result = self.indexer.search(&query, top_k).await?;
 
         let factual: Vec<Value> = result

@@ -77,6 +77,8 @@ impl LocalToolRegistry {
                 session_id.clone(),
             )));
 
+        let pool_for_file_tools = pool.clone();
+
         // Memory V3 搜索工具
         if let Some(ref mdir) = memory_dir {
             let memory_store = crate::memory::v3::MemoryStore::new(mdir);
@@ -94,10 +96,12 @@ impl LocalToolRegistry {
         registry.tools.push(Box::new(file_edit::FileEditTool::new(
             workspace_dir.clone(),
             memory_dir.clone(),
+            Some(pool_for_file_tools.clone()),
         )));
         registry.tools.push(Box::new(file_write::FileWriteTool::new(
             workspace_dir.clone(),
             memory_dir.clone(),
+            Some(pool_for_file_tools),
         )));
         registry
             .tools

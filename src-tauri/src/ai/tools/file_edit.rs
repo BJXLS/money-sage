@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
+use sqlx::SqlitePool;
 use std::path::PathBuf;
 
 use super::{LocalTool, workspace_path};
@@ -8,11 +9,12 @@ use super::{LocalTool, workspace_path};
 pub struct FileEditTool {
     workspace_dir: PathBuf,
     memory_dir: Option<PathBuf>,
+    pool: Option<SqlitePool>,
 }
 
 impl FileEditTool {
-    pub fn new(workspace_dir: PathBuf, memory_dir: Option<PathBuf>) -> Self {
-        Self { workspace_dir, memory_dir }
+    pub fn new(workspace_dir: PathBuf, memory_dir: Option<PathBuf>, pool: Option<SqlitePool>) -> Self {
+        Self { workspace_dir, memory_dir, pool }
     }
 
     fn resolve_path(&self, base: &str, file_path: &str) -> Result<PathBuf> {
@@ -185,6 +187,19 @@ impl LocalTool for FileEditTool {
                 "替换文件失败: {}。文件: {}，base: {}",
                 e, file_path, base
             ))?;
+
+        // memory 文件编辑后，后台同步 FTS5 索引
+        if base == "memory" {
+            if let (Some(pool), Some(ref mdir)) = (&self.pool, &self.memory_dir) {
+                let store = crate::memory::v3::MemoryStore::new(mdir);
+                let indexer = crate::memory::v3::MemoryIndexer::new(pool.clone(), store);
+                tokio::spawn(async move {
+                    if let Err(e) = indexer.sync_all().await {
+                        eprintln!("Memory index sync failed after file_edit: {}", e);
+                    }
+                });
+            }
+        }
 
         let replaced_count = if replace_all { occurrences } else { 1 };
         Ok(format!(

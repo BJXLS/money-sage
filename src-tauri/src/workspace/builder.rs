@@ -55,8 +55,9 @@ impl<'a> SystemPromptBuilder<'a> {
         if let Some(store) = self.memory_store {
             let loader = crate::memory::v3::SnapshotLoader::new(store.clone());
             let snapshot = loader.load();
+            let snapshot = self.truncate(&snapshot);
             if !snapshot.trim().is_empty() {
-                parts.push(format!("## 记忆 (Memory Snapshot)\n{}\n\n[System note: 以上是跨会话记忆的快照。当前会话中你新学到的信息，应通过 file_edit/file_write 写入 memory/ 目录，同时更新 memory/MEMORY.md 快照文件。]", snapshot));
+                parts.push(format!("## 记忆 (Memory Snapshot)\n{}\n\n[System note: 以上是跨会话记忆的快照。当前会话中你新学到的信息，应通过 file_edit/file_write 写入 memory/ 目录中合适的位置，必要时也更新 memory/MEMORY.md 快照文件。]", snapshot));
             }
 
             // 6. 用户画像（factual/user-profile.md）

@@ -1120,12 +1120,17 @@ async fn delete_analysis_session(
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-async fn list_workspace_files(state: State<'_, DatabaseState>) -> Result<Vec<workspace::WorkspaceFileInfo>, String> {
+async fn list_workspace_files(
+    state: State<'_, DatabaseState>,
+) -> Result<Vec<workspace::WorkspaceFileInfo>, String> {
     Ok(state.workspace.list_files())
 }
 
 #[tauri::command]
-async fn read_workspace_file(state: State<'_, DatabaseState>, name: String) -> Result<String, String> {
+async fn read_workspace_file(
+    state: State<'_, DatabaseState>,
+    name: String,
+) -> Result<String, String> {
     state
         .workspace
         .read_file(&name)
@@ -1133,7 +1138,11 @@ async fn read_workspace_file(state: State<'_, DatabaseState>, name: String) -> R
 }
 
 #[tauri::command]
-async fn write_workspace_file(state: State<'_, DatabaseState>, name: String, content: String) -> Result<(), String> {
+async fn write_workspace_file(
+    state: State<'_, DatabaseState>,
+    name: String,
+    content: String,
+) -> Result<(), String> {
     state
         .workspace
         .write_file(&name, &content)
@@ -1144,7 +1153,12 @@ async fn write_workspace_file(state: State<'_, DatabaseState>, name: String, con
 #[tauri::command]
 async fn get_memory_dir(state: State<'_, DatabaseState>) -> Result<String, String> {
     // 优先从 app_settings 读取
-    match state.db.get_setting("memory_dir").await.map_err(|e| e.to_string())? {
+    match state
+        .db
+        .get_setting("memory_dir")
+        .await
+        .map_err(|e| e.to_string())?
+    {
         Some(path) if !path.trim().is_empty() => Ok(path),
         _ => {
             // 返回默认路径
@@ -1165,8 +1179,7 @@ async fn set_memory_dir(
 
     // 如果目标目录不存在，创建它
     if !target_dir.exists() {
-        std::fs::create_dir_all(&target_dir)
-            .map_err(|e| format!("创建目标目录失败: {}", e))?;
+        std::fs::create_dir_all(&target_dir).map_err(|e| format!("创建目标目录失败: {}", e))?;
     }
 
     if mode == "copy" {
@@ -1175,28 +1188,40 @@ async fn set_memory_dir(
         let new_store = memory::v3::MemoryStore::new(&target_dir);
 
         // 初始化目标目录骨架
-        new_store.ensure_initialized()
+        new_store
+            .ensure_initialized()
             .map_err(|e| format!("初始化目标目录失败: {}", e))?;
 
         // 复制所有文件
-        new_store.copy_from(current_store)
+        new_store
+            .copy_from(current_store)
             .map_err(|e| format!("复制记忆文件失败: {}", e))?;
 
-        println!("Memory 从 {} 复制到 {}", current_store.memory_dir().display(), target_dir.display());
+        println!(
+            "Memory 从 {} 复制到 {}",
+            current_store.memory_dir().display(),
+            target_dir.display()
+        );
     } else {
         // reset 模式：仅初始化骨架，不复制内容
         let new_store = memory::v3::MemoryStore::new(&target_dir);
-        new_store.ensure_initialized()
+        new_store
+            .ensure_initialized()
             .map_err(|e| format!("初始化目标目录失败: {}", e))?;
         println!("Memory 重置到 {}", target_dir.display());
     }
 
     // 保存路径到 app_settings
-    state.db.set_setting("memory_dir", &path)
+    state
+        .db
+        .set_setting("memory_dir", &path)
         .await
         .map_err(|e| format!("保存配置失败: {}", e))?;
 
-    Ok(format!("记忆目录已设置为: {}。请重启应用以使配置生效。", path))
+    Ok(format!(
+        "记忆目录已设置为: {}。请重启应用以使配置生效。",
+        path
+    ))
 }
 
 /// 流式分析：接收用户消息 → 构建上下文 → 调用 LLM（SSE）→ 工具调用循环 → 持久化
@@ -1299,9 +1324,7 @@ async fn send_analysis_message_stream(
         }
     };
 
-    // 5. 构建财务上下文
-    let today = Local::now();
-    // 6. 收集 MCP 工具上下文
+    // 5. 收集 MCP 工具上下文
     let mcp_tools = mcp_state.manager.get_all_tools().await;
     let mcp_ctx = if mcp_tools.is_empty() {
         None
@@ -1309,7 +1332,7 @@ async fn send_analysis_message_stream(
         Some(McpToolsContext { tools: mcp_tools })
     };
 
-    // 7. 创建本地工具注册表
+    // 6. 创建本地工具注册表
     let memory_dir = Some(db_state.memory_store.memory_dir().to_path_buf());
     let tool_registry = LocalToolRegistry::new(
         db_state.db.pool.clone(),
@@ -1325,7 +1348,7 @@ async fn send_analysis_message_stream(
         Some(tools_json)
     };
 
-    // 8. 组装初始消息
+    // 7. 组装初始消息
     let agent = AnalysisAgent::new(
         llm_config.model.clone(),
         llm_config.temperature as f32,
@@ -1348,7 +1371,7 @@ async fn send_analysis_message_stream(
     messages.extend_from_slice(&history[start..]);
     messages.push(AIMessage::text("user", &request.message));
 
-    // 9. Tool call loop：支持多轮工具调用
+    // 8. Tool call loop：支持多轮工具调用
     const MAX_TOOL_ROUNDS: usize = 8;
     let mut full_content = String::new();
     let request_id = uuid::Uuid::new_v4().to_string();
@@ -1473,7 +1496,9 @@ async fn send_analysis_message_stream(
                             }
 
                             // reasoning_content delta（推理模型的思考过程）
-                            if let Some(reasoning) = json["choices"][0]["delta"]["reasoning_content"].as_str() {
+                            if let Some(reasoning) =
+                                json["choices"][0]["delta"]["reasoning_content"].as_str()
+                            {
                                 if !reasoning.is_empty() {
                                     round_reasoning.push_str(reasoning);
                                 }
@@ -1676,7 +1701,7 @@ async fn send_analysis_message_stream(
         break;
     }
 
-    // 10. 流结束
+    // 9. 流结束
     let _ = app.emit(
         "analysis-stream-chunk",
         StreamChunkPayload {
@@ -1688,7 +1713,7 @@ async fn send_analysis_message_stream(
         },
     );
 
-    // 11. 持久化 assistant 回复 + 更新会话时间戳
+    // 10. 持久化 assistant 回复 + 更新会话时间戳
     if !full_content.is_empty() {
         let _ = db_state
             .db
@@ -1697,7 +1722,7 @@ async fn send_analysis_message_stream(
     }
     let _ = db_state.db.touch_analysis_session(&sid).await;
 
-    // 12. Memory V3 全面记忆整合（Phase 5）
+    // 11. Memory V3 全面记忆整合（Phase 5）
     // 构建本轮对话文本
     let mut conversation_log = String::new();
     for msg in &messages {

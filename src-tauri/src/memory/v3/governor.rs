@@ -1,6 +1,7 @@
 use super::store::MemoryStore;
 use super::snapshot_generator::SnapshotGenerator;
 use super::indexer::MemoryIndexer;
+use super::changelog::Changelog;
 use crate::models::LLMConfig;
 use crate::utils::http_client::{AIHttpClient, AIProvider, AIRequest, AIMessage, ClientConfig};
 use anyhow::Result;
@@ -23,6 +24,7 @@ pub struct MemoryGovernor {
     store: MemoryStore,
     indexer: MemoryIndexer,
     snapshot_gen: SnapshotGenerator,
+    changelog: Changelog,
 }
 
 #[derive(Debug, Default)]
@@ -34,7 +36,7 @@ pub struct GovernorReport {
 }
 
 impl MemoryGovernor {
-    pub fn new(pool: SqlitePool, store: MemoryStore) -> Self {
+    pub fn new(pool: SqlitePool, store: MemoryStore, changelog: Changelog) -> Self {
         let indexer = MemoryIndexer::new(pool.clone(), store.clone());
         let snapshot_gen = SnapshotGenerator::new(store.clone());
         Self {
@@ -42,6 +44,7 @@ impl MemoryGovernor {
             store,
             indexer,
             snapshot_gen,
+            changelog,
         }
     }
 
@@ -142,6 +145,12 @@ impl MemoryGovernor {
         // 重新组装文件并写回
         let new_content = rebuild_file(&header, &sections);
         self.store.write_file(rel_path, &new_content)?;
+        if let Err(e) = self.changelog
+            .log_edit(rel_path, &content, &new_content, "governor", None)
+            .await
+        {
+            eprintln!("Governor 记录压缩变更日志失败 {}: {}", rel_path, e);
+        }
         Ok(())
     }
 
@@ -276,7 +285,14 @@ impl MemoryGovernor {
                 content.push_str(&format!("## {}\n{}\n\n", file_name, summary));
             }
 
+            let old_content = self.store.read_file(&index_path).unwrap_or_default();
             self.store.write_file(&index_path, &content)?;
+            if let Err(e) = self.changelog
+                .log_edit(&index_path, &old_content, &content, "governor", None)
+                .await
+            {
+                eprintln!("Governor 记录 INDEX 变更日志失败 {}: {}", index_path, e);
+            }
         }
 
         Ok(())
@@ -286,7 +302,14 @@ impl MemoryGovernor {
     async fn regenerate_snapshot(&self) -> Result<usize> {
         let snapshot = self.snapshot_gen.regenerate()?;
         let char_count = snapshot.chars().count();
+        let old_content = self.store.read_file("MEMORY.md").unwrap_or_default();
         self.store.write_file("MEMORY.md", &snapshot)?;
+        if let Err(e) = self.changelog
+            .log_edit("MEMORY.md", &old_content, &snapshot, "governor", None)
+            .await
+        {
+            eprintln!("Governor 记录快照变更日志失败: {}", e);
+        }
         Ok(char_count)
     }
 }

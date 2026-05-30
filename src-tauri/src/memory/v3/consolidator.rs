@@ -1,6 +1,7 @@
 use super::store::MemoryStore;
 use super::indexer::MemoryIndexer;
 use super::snapshot_generator::SnapshotGenerator;
+use super::changelog::Changelog;
 use crate::models::LLMConfig;
 use crate::utils::http_client::{AIHttpClient, AIProvider, AIRequest, AIMessage, ClientConfig};
 use anyhow::Result;
@@ -20,6 +21,7 @@ pub struct MemoryConsolidator {
     store: MemoryStore,
     indexer: MemoryIndexer,
     snapshot_gen: SnapshotGenerator,
+    changelog: Changelog,
 }
 
 /// LLM 返回的结构化总结
@@ -56,7 +58,7 @@ pub struct ConsolidationReport {
 }
 
 impl MemoryConsolidator {
-    pub fn new(pool: SqlitePool, store: MemoryStore) -> Self {
+    pub fn new(pool: SqlitePool, store: MemoryStore, changelog: Changelog) -> Self {
         let indexer = MemoryIndexer::new(pool.clone(), store.clone());
         let snapshot_gen = SnapshotGenerator::new(store.clone());
         Self {
@@ -64,6 +66,7 @@ impl MemoryConsolidator {
             store,
             indexer,
             snapshot_gen,
+            changelog,
         }
     }
 
@@ -74,7 +77,7 @@ impl MemoryConsolidator {
     /// * `conversation` — 本轮对话的文本记录，格式为 "user: ...\nassistant: ...\n"
     pub async fn consolidate(
         &self,
-        _session_id: &str,
+        session_id: &str,
         conversation: &str,
     ) -> Result<ConsolidationReport> {
         // 1. 读取当前记忆快照作为上下文
@@ -98,7 +101,7 @@ impl MemoryConsolidator {
 
         // 3. 写入 factual 更新
         for update in &result.factual_updates {
-            if let Err(e) = self.append_to_file(&update.file, &update.heading, &update.content, &now).await {
+            if let Err(e) = self.append_to_file(&update.file, &update.heading, &update.content, &now, Some(session_id)).await {
                 eprintln!("Consolidator 写入 factual 失败 {}: {}", update.file, e);
             } else {
                 report.factual_written += 1;
@@ -121,7 +124,7 @@ impl MemoryConsolidator {
             }
 
             let entry = format!("& {} | agent:analysis | {}", now, summary);
-            if let Err(e) = self.append_line_to_file(&rel_path, &entry).await {
+            if let Err(e) = self.append_line_to_file(&rel_path, &entry, Some(session_id)).await {
                 eprintln!("Consolidator 写入 episodic 失败: {}", e);
             } else {
                 report.episodic_written = true;
@@ -130,7 +133,7 @@ impl MemoryConsolidator {
 
         // 5. 写入 procedural 更新
         for update in &result.procedural_updates {
-            if let Err(e) = self.append_to_file(&update.file, &update.heading, &update.content, &now).await {
+            if let Err(e) = self.append_to_file(&update.file, &update.heading, &update.content, &now, Some(session_id)).await {
                 eprintln!("Consolidator 写入 procedural 失败 {}: {}", update.file, e);
             } else {
                 report.procedural_written += 1;
@@ -140,13 +143,19 @@ impl MemoryConsolidator {
         // 6. 增量更新 MEMORY.md 快照
         if !result.snapshot_updates.is_empty() {
             let current = self.store.read_file("MEMORY.md").unwrap_or_default();
-            let mut updated = current;
+            let mut updated = current.clone();
             for line in &result.snapshot_updates {
                 updated = self.snapshot_gen.append_entry(&updated, "关于你", line);
             }
             if let Err(e) = self.store.write_file("MEMORY.md", &updated) {
                 eprintln!("Consolidator 更新 MEMORY.md 失败: {}", e);
             } else {
+                if let Err(e) = self.changelog
+                    .log_edit("MEMORY.md", &current, &updated, "consolidator", Some(session_id))
+                    .await
+                {
+                    eprintln!("Consolidator 记录 MEMORY.md 变更日志失败: {}", e);
+                }
                 report.snapshot_updated = true;
             }
         }
@@ -299,11 +308,12 @@ impl MemoryConsolidator {
         heading: &Option<String>,
         content: &str,
         timestamp: &str,
+        session_id: Option<&str>,
     ) -> Result<()> {
         let entry = format!("& {} | agent:analysis | {}", timestamp, content);
 
-        let current = self.store.read_file(rel_path).unwrap_or_default();
-        let mut lines: Vec<String> = current.lines().map(|s| s.to_string()).collect();
+        let old_content = self.store.read_file(rel_path).unwrap_or_default();
+        let mut lines: Vec<String> = old_content.lines().map(|s| s.to_string()).collect();
 
         if let Some(h) = heading {
             let target = format!("## {}", h);
@@ -334,19 +344,36 @@ impl MemoryConsolidator {
 
         let new_content = lines.join("\n");
         self.store.write_file(rel_path, &new_content)?;
+        if let Err(e) = self.changelog
+            .log_edit(rel_path, &old_content, &new_content, "consolidator", session_id)
+            .await
+        {
+            eprintln!("Consolidator 记录变更日志失败 {}: {}", rel_path, e);
+        }
         Ok(())
     }
 
     /// 在文件末尾追加一行
-    async fn append_line_to_file(&self, rel_path: &str, line: &str) -> Result<()> {
-        let current = self.store.read_file(rel_path).unwrap_or_default();
-        let mut new_content = current;
+    async fn append_line_to_file(
+        &self,
+        rel_path: &str,
+        line: &str,
+        session_id: Option<&str>,
+    ) -> Result<()> {
+        let old_content = self.store.read_file(rel_path).unwrap_or_default();
+        let mut new_content = old_content.clone();
         if !new_content.ends_with('\n') && !new_content.is_empty() {
             new_content.push('\n');
         }
         new_content.push_str(line);
         new_content.push('\n');
         self.store.write_file(rel_path, &new_content)?;
+        if let Err(e) = self.changelog
+            .log_edit(rel_path, &old_content, &new_content, "consolidator", session_id)
+            .await
+        {
+            eprintln!("Consolidator 记录变更日志失败 {}: {}", rel_path, e);
+        }
         Ok(())
     }
 }

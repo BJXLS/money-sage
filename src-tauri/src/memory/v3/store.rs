@@ -1,5 +1,7 @@
 use anyhow::Result;
+use fs2::FileExt;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_MEMORY_MD: &str = r#"# 记忆快照
@@ -216,7 +218,7 @@ impl MemoryStore {
         Ok(fs::read_to_string(&path)?)
     }
 
-    /// 写入 memory/ 下的文件（自动创建父目录）
+    /// 写入 memory/ 下的文件（自动创建父目录，带文件锁）
     pub fn write_file(&self, rel_path: &str, content: &str) -> Result<()> {
         let path = self.resolve_path(rel_path)?;
         if let Some(parent) = path.parent() {
@@ -224,7 +226,14 @@ impl MemoryStore {
                 fs::create_dir_all(parent)?;
             }
         }
-        fs::write(&path, content)?;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&path)?;
+        file.lock_exclusive()?;
+        file.write_all(content.as_bytes())?;
+        // file 在此处 drop，flock 自动释放
         Ok(())
     }
 

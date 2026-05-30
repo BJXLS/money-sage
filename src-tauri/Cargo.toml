@@ -39,4 +39,5 @@ async-trait = "0.1"
 sha2 = "0.10"
 calamine = "0.31"
 rust_xlsxwriter = "0.92"
+fs2 = "0.4"
 

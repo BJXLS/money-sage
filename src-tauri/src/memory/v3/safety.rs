@@ -50,8 +50,7 @@ pub fn scan_memory_write(content: &str) -> Result<(), String> {
         "password:",
         "secret:",
         "token:",
-        "cat .env",
-        ".env",
+        "cat .env",     // 命令行读取 .env 的上下文模式
     ];
     for pat in &secret_patterns {
         if lower.contains(pat) {

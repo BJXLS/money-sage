@@ -1715,7 +1715,8 @@ async fn send_analysis_message_stream(
     tokio::spawn(async move {
         // 延迟 30 秒，确保前端已收到流结束事件
         tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-        let consolidator = memory::v3::MemoryConsolidator::new(pool, store);
+        let changelog = memory::v3::Changelog::new(pool.clone());
+        let consolidator = memory::v3::MemoryConsolidator::new(pool, store, changelog);
         match consolidator.consolidate(&sid, &conversation_log).await {
             Ok(report) => {
                 if report.factual_written > 0
@@ -2005,9 +2006,10 @@ pub fn run() {
                     let pool = db.pool.clone();
                     let store = (*memory_store).clone();
                     tokio::spawn(async move {
+                        let changelog = memory::v3::Changelog::new(pool.clone());
                         // 首次巡检：启动后 60 秒
                         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                        let governor = memory::v3::MemoryGovernor::new(pool.clone(), store.clone());
+                        let governor = memory::v3::MemoryGovernor::new(pool.clone(), store.clone(), changelog.clone());
                         match governor.run().await {
                             Ok(report) => println!(
                                 "Memory Governor 首次巡检: compressed={}, indices={}, snapshot={} chars",
@@ -2020,7 +2022,7 @@ pub fn run() {
                         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(6 * 3600));
                         loop {
                             interval.tick().await;
-                            let governor = memory::v3::MemoryGovernor::new(pool.clone(), store.clone());
+                            let governor = memory::v3::MemoryGovernor::new(pool.clone(), store.clone(), changelog.clone());
                             match governor.run().await {
                                 Ok(report) => println!(
                                     "Memory Governor 定期巡检: compressed={}, indices={}, snapshot={} chars",

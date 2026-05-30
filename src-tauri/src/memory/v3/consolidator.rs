@@ -1,10 +1,11 @@
 use super::store::MemoryStore;
 use super::indexer::MemoryIndexer;
 use super::snapshot_generator::SnapshotGenerator;
+use crate::models::LLMConfig;
+use crate::utils::http_client::{AIHttpClient, AIProvider, AIRequest, AIMessage, ClientConfig};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::sync::Arc;
 
 /// 记忆整合器 —— 每次对话结束后，调用 LLM 全面总结并自动写入记忆
 ///
@@ -71,21 +72,22 @@ impl MemoryConsolidator {
     /// # Arguments
     /// * `session_id` — 当前会话 ID
     /// * `conversation` — 本轮对话的文本记录，格式为 "user: ...\nassistant: ...\n"
-    /// * `llm_client` — HTTP 客户端，用于调用辅助模型
     pub async fn consolidate(
         &self,
-        session_id: &str,
+        _session_id: &str,
         conversation: &str,
     ) -> Result<ConsolidationReport> {
         // 1. 读取当前记忆快照作为上下文
         let current_memory = self.store.read_file("MEMORY.md").unwrap_or_default();
 
-        // 2. 构建 LLM 提示词
-        let prompt = build_consolidation_prompt(conversation, &current_memory);
-
-        // 3. 调用辅助模型（这里先用规则引擎降级，后续接入真实 LLM）
-        // TODO: 接入辅助模型（使用 AIHttpClient 或配置的 aux model）
-        let result = self.rule_based_extract(conversation).await?;
+        // 2. 调用 LLM 进行总结（失败时降级到规则引擎）
+        let result = match self.llm_extract(conversation, &current_memory).await {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Consolidator LLM 调用失败，降级到规则引擎: {}", e);
+                self.rule_based_extract(conversation).await?
+            }
+        };
 
         if !result.worth_remembering {
             return Ok(ConsolidationReport::default());
@@ -94,7 +96,7 @@ impl MemoryConsolidator {
         let mut report = ConsolidationReport::default();
         let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z").to_string();
 
-        // 4. 写入 factual 更新
+        // 3. 写入 factual 更新
         for update in &result.factual_updates {
             if let Err(e) = self.append_to_file(&update.file, &update.heading, &update.content, &now).await {
                 eprintln!("Consolidator 写入 factual 失败 {}: {}", update.file, e);
@@ -103,7 +105,7 @@ impl MemoryConsolidator {
             }
         }
 
-        // 5. 写入 episodic 摘要
+        // 4. 写入 episodic 摘要
         if let Some(summary) = &result.episodic_summary {
             let date = chrono::Local::now().format("%Y-%m-%d").to_string();
             let year = chrono::Local::now().format("%Y").to_string();
@@ -126,7 +128,7 @@ impl MemoryConsolidator {
             }
         }
 
-        // 6. 写入 procedural 更新
+        // 5. 写入 procedural 更新
         for update in &result.procedural_updates {
             if let Err(e) = self.append_to_file(&update.file, &update.heading, &update.content, &now).await {
                 eprintln!("Consolidator 写入 procedural 失败 {}: {}", update.file, e);
@@ -135,7 +137,7 @@ impl MemoryConsolidator {
             }
         }
 
-        // 7. 增量更新 MEMORY.md 快照
+        // 6. 增量更新 MEMORY.md 快照
         if !result.snapshot_updates.is_empty() {
             let current = self.store.read_file("MEMORY.md").unwrap_or_default();
             let mut updated = current;
@@ -149,12 +151,85 @@ impl MemoryConsolidator {
             }
         }
 
-        // 8. 同步 FTS5 索引
+        // 7. 同步 FTS5 索引
         if let Err(e) = self.indexer.sync_all().await {
             eprintln!("Consolidator 索引同步失败: {}", e);
         }
 
         Ok(report)
+    }
+
+    // ── LLM 辅助提取 ──
+
+    /// 调用 LLM 提取结构化记忆信息
+    async fn llm_extract(
+        &self,
+        conversation: &str,
+        current_memory: &str,
+    ) -> Result<ConsolidationResult> {
+        let llm_config = self.fetch_llm_config().await?;
+        let prompt = build_consolidation_prompt(conversation, current_memory);
+
+        let client = build_http_client(&llm_config)?;
+        let request = AIRequest {
+            model: llm_config.model,
+            messages: vec![
+                AIMessage::text(
+                    "system",
+                    "你是一个专业的记忆整理助手。你的任务是从对话中提取值得长期记忆的信息。\n\n要求：\n1. 只提取用户明确提供或确认的事实\n2. 不要编造，不要推测\n3. 必须严格输出 JSON 格式，不要添加 markdown 代码块或其他解释\n4. 如果对话只是闲聊、查余额或没有新信息，worth_remembering 应为 false",
+                ),
+                AIMessage::text("user", prompt),
+            ],
+            temperature: llm_config.temperature as f32,
+            max_tokens: llm_config.max_tokens as u32,
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stream: None,
+            enable_thinking: llm_config.enable_thinking,
+            tools: None,
+            tool_choice: None,
+        };
+
+        let response = client.chat_completion(request).await?;
+        let text = response
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content_text().to_string())
+            .unwrap_or_default();
+
+        parse_consolidation_result(&text)
+    }
+
+    /// 从数据库获取活跃 LLM 配置
+    async fn fetch_llm_config(&self) -> Result<LLMConfig> {
+        let row = sqlx::query(
+            "SELECT * FROM llm_configs WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("没有活跃的 LLM 配置"))?;
+
+        use sqlx::Row;
+        Ok(LLMConfig {
+            id: row.get("id"),
+            config_name: row.try_get("config_name").unwrap_or_default(),
+            provider: row
+                .try_get("provider")
+                .unwrap_or_else(|_| row.try_get("platform").unwrap_or_default()),
+            base_url: row.try_get("base_url").unwrap_or_default(),
+            api_key: row
+                .try_get("api_key")
+                .unwrap_or_else(|_| row.try_get("app_key").unwrap_or_default()),
+            model: row.try_get("model").unwrap_or_default(),
+            temperature: row.try_get::<f64, _>("temperature").unwrap_or(0.7),
+            max_tokens: row.try_get::<i64, _>("max_tokens").unwrap_or(2048),
+            enable_thinking: row.try_get::<i64, _>("enable_thinking").unwrap_or(0) != 0,
+            is_active: true,
+            created_at: row.try_get("created_at").unwrap_or_default(),
+            updated_at: row.try_get("updated_at").unwrap_or_default(),
+        })
     }
 
     /// 规则引擎降级：当 LLM 不可用时，用简单规则提取关键信息
@@ -276,7 +351,9 @@ impl MemoryConsolidator {
     }
 }
 
-/// 构建 LLM 总结提示词（用于后续接入真实 LLM）
+// ── 辅助函数 ──
+
+/// 构建 LLM 总结提示词
 fn build_consolidation_prompt(conversation: &str, current_memory: &str) -> String {
     format!(
         r#"你是一位记忆整理助手。请分析以下对话，判断是否有值得跨会话记住的信息。
@@ -302,18 +379,80 @@ fn build_consolidation_prompt(conversation: &str, current_memory: &str) -> Strin
 规则：
 - worth_remembering：只有对话中包含用户明确提供的新信息时才为 true
 - factual_updates：写入 factual/ 下的具体文件，content 不含时间戳
+  - 个人信息 → factual/user-profile.md
+  - 分类规则/周期事件 → factual/finance-rules.md
+  - 财务目标 → factual/goals.md
+  - Agent 角色偏好 → factual/agent-role.md
 - episodic_summary：一句话概括本轮对话主题（可选）
 - snapshot_updates：MEMORY.md 中需要新增或更新的摘要行（可选）
+- procedural_updates：工作流技巧 → procedural/workflows.md（可选）
 - 不要编造，只基于对话内容
 - 如果对话只是查余额、闲聊，worth_remembering 应为 false"#,
         current_memory, conversation
     )
 }
 
+/// 从 LLM 响应中提取并解析 JSON
+fn parse_consolidation_result(text: &str) -> Result<ConsolidationResult> {
+    let json_str = extract_json(text)?;
+    let result: ConsolidationResult = serde_json::from_str(&json_str)
+        .map_err(|e| anyhow::anyhow!("JSON 解析失败: {}\n原文: {}", e, json_str))?;
+    Ok(result)
+}
+
+/// 从文本中提取 JSON 片段
+fn extract_json(text: &str) -> Result<String> {
+    let trimmed = text.trim();
+
+    // 1. 尝试直接解析
+    if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
+        return Ok(trimmed.to_string());
+    }
+
+    // 2. 提取 ```json ... ``` 代码块
+    if let Some(start) = trimmed.find("```json") {
+        let after = &trimmed[start + 7..];
+        if let Some(end) = after.find("```") {
+            return Ok(after[..end].trim().to_string());
+        }
+    }
+
+    // 3. 提取 ``` ... ``` 代码块
+    if let Some(start) = trimmed.find("```") {
+        let after = &trimmed[start + 3..];
+        if let Some(end) = after.find("```") {
+            return Ok(after[..end].trim().to_string());
+        }
+    }
+
+    // 4. 找第一个 '{' 到最后一个 '}'
+    if let Some(start) = trimmed.find('{') {
+        if let Some(end) = trimmed.rfind('}') {
+            if start < end {
+                return Ok(trimmed[start..=end].to_string());
+            }
+        }
+    }
+
+    Err(anyhow::anyhow!("无法从 LLM 响应中提取 JSON: {}", text))
+}
+
+/// 根据 LLM 配置构建 HTTP 客户端
+fn build_http_client(config: &LLMConfig) -> Result<AIHttpClient> {
+    let client_config = ClientConfig {
+        provider: AIProvider::Custom(config.provider.clone()),
+        base_url: config.base_url.clone(),
+        api_key: config.api_key.clone(),
+        timeout_secs: 30,
+        max_retries: 1,
+        headers: std::collections::HashMap::new(),
+    };
+    AIHttpClient::new(client_config)
+}
+
 // ── 简单规则提取函数（降级方案）──
 
 fn extract_salary_info(text: &str) -> Option<String> {
-    // 简单规则：找 "工资" 后面的数字和描述
     let lower = text.to_lowercase();
     if let Some(idx) = lower.find("工资") {
         let after = &text[idx..];
@@ -325,7 +464,6 @@ fn extract_salary_info(text: &str) -> Option<String> {
 }
 
 fn extract_classification_rule(text: &str) -> Option<String> {
-    // 简单规则：找 "A 归到 B" 或 "A 属于 B"
     let lower = text.to_lowercase();
     if let Some(idx) = lower.find("归到") {
         let before = &text[..idx];
@@ -349,7 +487,6 @@ fn extract_classification_rule(text: &str) -> Option<String> {
 }
 
 fn extract_goal_info(text: &str) -> Option<String> {
-    // 简单规则：找 "目标" "存钱" 后面的数字
     let lower = text.to_lowercase();
     let keywords = ["目标", "存钱", "储蓄"];
     for kw in keywords {
@@ -386,7 +523,6 @@ fn find_first_number(text: &str) -> Option<String> {
 }
 
 fn generate_episodic_summary(text: &str) -> String {
-    // 取对话的前 100 字作为摘要
     let trimmed = text.trim();
     if trimmed.len() > 100 {
         format!("{}", &trimmed[..100])

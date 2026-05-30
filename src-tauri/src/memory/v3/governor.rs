@@ -1,13 +1,15 @@
 use super::store::MemoryStore;
 use super::snapshot_generator::SnapshotGenerator;
 use super::indexer::MemoryIndexer;
+use crate::models::LLMConfig;
+use crate::utils::http_client::{AIHttpClient, AIProvider, AIRequest, AIMessage, ClientConfig};
 use anyhow::Result;
 use sqlx::SqlitePool;
 
 /// MemoryGovernor — 异步记忆治理器
 ///
 /// 在独立 tokio task 中运行，负责：
-/// 1. 压缩超过 2000 字符的文件
+/// 1. 压缩超过 2000 字符的文件（保留最近 10 条，旧条目用 LLM 压缩）
 /// 2. 维护各文件夹的 INDEX.md
 /// 3. 重新生成 MEMORY.md 快照
 ///
@@ -93,65 +95,130 @@ impl MemoryGovernor {
         Ok(report)
     }
 
-    /// 压缩单个文件：保留最近 5 条完整 & 行，旧条目合并为摘要
+    /// 压缩单个文件：保留最近 10 条完整 & 行，旧条目用 LLM 压缩为摘要
     async fn compress_file(&self, rel_path: &str, _char_count: usize) -> Result<()> {
         let content = self.store.read_file(rel_path)?;
-        let mut new_lines: Vec<String> = Vec::new();
-        let mut current_heading = String::new();
-        let mut heading_entries: Vec<String> = Vec::new();
 
-        for line in content.lines() {
-            let trimmed = line.trim_start();
-            if trimmed.starts_with("## ") {
-                // 处理上一个 heading 的条目
-                if !current_heading.is_empty() && heading_entries.len() > 5 {
-                    flush_heading(&mut new_lines, &current_heading, &mut heading_entries)?;
-                } else if !current_heading.is_empty() {
-                    new_lines.push(current_heading.clone());
-                    for e in &heading_entries {
-                        new_lines.push(e.clone());
+        // 解析文件结构：文件头 + 若干 section
+        let (header, mut sections) = parse_file(&content);
+
+        let mut changed = false;
+        for section in &mut sections {
+            if section.entries.len() > 10 {
+                // 保留最近 10 条（entries[0..10]，因为新条目插入在 heading 后最前面）
+                let recent: Vec<String> = section.entries.iter().take(10).cloned().collect();
+                let old: Vec<String> = section.entries.iter().skip(10).cloned().collect();
+
+                // 用 LLM 压缩旧条目（失败则降级为机械摘要）
+                let summary_text = match self.summarize_entries(&old).await {
+                    Ok(text) => text,
+                    Err(e) => {
+                        eprintln!(
+                            "Governor LLM 压缩失败，使用机械摘要: {}",
+                            e
+                        );
+                        format!("共 {} 条旧记录", old.len())
                     }
-                }
-                current_heading = line.to_string();
-                heading_entries.clear();
-                continue;
-            }
-            if trimmed.starts_with('&') {
-                heading_entries.push(line.to_string());
-            } else {
-                // 非记忆行（元数据注释、空行等）保留
-                if !current_heading.is_empty() && !heading_entries.is_empty() {
-                    // 还在 heading 内，先刷出已有条目
-                    if heading_entries.len() > 5 {
-                        flush_heading(&mut new_lines, &current_heading, &mut heading_entries)?;
-                    } else {
-                        new_lines.push(current_heading.clone());
-                        for e in &heading_entries {
-                            new_lines.push(e.clone());
-                        }
-                    }
-                    current_heading.clear();
-                    heading_entries.clear();
-                }
-                new_lines.push(line.to_string());
+                };
+
+                let now = chrono::Local::now()
+                    .format("%Y-%m-%dT%H:%M:%S%:z")
+                    .to_string();
+                let summary_entry = format!(
+                    "& {} | agent:governor | [历史压缩] {}",
+                    now, summary_text
+                );
+
+                section.entries = recent;
+                section.entries.push(summary_entry);
+                changed = true;
             }
         }
 
-        // 处理最后一个 heading
-        if !current_heading.is_empty() {
-            if heading_entries.len() > 5 {
-                flush_heading(&mut new_lines, &current_heading, &mut heading_entries)?;
-            } else {
-                new_lines.push(current_heading);
-                for e in heading_entries {
-                    new_lines.push(e);
-                }
-            }
+        if !changed {
+            return Ok(());
         }
 
-        let new_content = new_lines.join("\n");
+        // 重新组装文件并写回
+        let new_content = rebuild_file(&header, &sections);
         self.store.write_file(rel_path, &new_content)?;
         Ok(())
+    }
+
+    /// 调用 LLM 压缩旧条目，保留关键信息和时间信息
+    async fn summarize_entries(&self, entries: &[String]) -> Result<String> {
+        if entries.is_empty() {
+            return Ok(String::new());
+        }
+
+        let llm_config = self.fetch_llm_config().await?;
+        let prompt = build_compression_prompt(entries);
+
+        let client = build_http_client(&llm_config)?;
+        let request = AIRequest {
+            model: llm_config.model,
+            messages: vec![
+                AIMessage::text(
+                    "system",
+                    "你是一个记忆压缩助手。你的任务是将多条旧记忆条目压缩为一条简洁的摘要，保留关键事实和时间演化脉络。"
+                ),
+                AIMessage::text("user", prompt),
+            ],
+            temperature: (llm_config.temperature * 0.5) as f32, // 低温度，更稳定
+            max_tokens: 512,
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stream: None,
+            enable_thinking: false,
+            tools: None,
+            tool_choice: None,
+        };
+
+        let response = client.chat_completion(request).await?;
+        let text = response
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content_text().to_string())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+
+        if text.is_empty() {
+            return Ok(format!("共 {} 条旧记录", entries.len()));
+        }
+        Ok(text)
+    }
+
+    /// 从数据库获取活跃 LLM 配置
+    async fn fetch_llm_config(&self) -> Result<LLMConfig> {
+        let row = sqlx::query(
+            "SELECT * FROM llm_configs WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("没有活跃的 LLM 配置"))?;
+
+        use sqlx::Row;
+        Ok(LLMConfig {
+            id: row.get("id"),
+            config_name: row.try_get("config_name").unwrap_or_default(),
+            provider: row
+                .try_get("provider")
+                .unwrap_or_else(|_| row.try_get("platform").unwrap_or_default()),
+            base_url: row.try_get("base_url").unwrap_or_default(),
+            api_key: row
+                .try_get("api_key")
+                .unwrap_or_else(|_| row.try_get("app_key").unwrap_or_default()),
+            model: row.try_get("model").unwrap_or_default(),
+            temperature: row.try_get::<f64, _>("temperature").unwrap_or(0.7),
+            max_tokens: row.try_get::<i64, _>("max_tokens").unwrap_or(2048),
+            enable_thinking: row.try_get::<i64, _>("enable_thinking").unwrap_or(0) != 0,
+            is_active: true,
+            created_at: row.try_get("created_at").unwrap_or_default(),
+            updated_at: row.try_get("updated_at").unwrap_or_default(),
+        })
     }
 
     /// 更新各文件夹的 INDEX.md
@@ -179,7 +246,12 @@ impl MemoryGovernor {
 
         for (folder, items) in folders {
             let index_path = format!("{}/INDEX.md", folder);
-            let mut content = format!("# {}/ 索引\n> 共 {} 个文件 | 最后更新：{}\n\n", folder, items.len(), now);
+            let mut content = format!(
+                "# {}/ 索引\n> 共 {} 个文件 | 最后更新：{}\n\n",
+                folder,
+                items.len(),
+                now
+            );
 
             for (path, count) in items {
                 let file_name = std::path::Path::new(&path)
@@ -187,7 +259,9 @@ impl MemoryGovernor {
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
                 // 尝试读取文件第一行非注释内容作为摘要
-                let summary = self.store.read_file(&path)
+                let summary = self
+                    .store
+                    .read_file(&path)
                     .ok()
                     .and_then(|c| {
                         c.lines()
@@ -217,31 +291,127 @@ impl MemoryGovernor {
     }
 }
 
-/// 将 heading 下的条目压缩：保留最近 5 条，其余合并为摘要行
-fn flush_heading(
-    new_lines: &mut Vec<String>,
-    heading: &str,
-    entries: &mut Vec<String>,
-) -> Result<()> {
-    new_lines.push(heading.to_string());
+// ── 文件解析与重组 ──
 
-    // 保留最近 5 条
-    let recent: Vec<String> = entries.iter().rev().take(5).cloned().collect();
-    for e in recent.iter().rev() {
-        new_lines.push(e.clone());
+/// 记忆文件中的一个 section（以 heading 为界）
+#[derive(Debug)]
+struct Section {
+    heading: String,
+    /// heading 后的 & 条目（按时间倒序：最新在前）
+    entries: Vec<String>,
+    /// heading 后的其他行（描述、注释、空行等，被 entries 挤到后面）
+    other_lines: Vec<String>,
+}
+
+/// 解析文件为「文件头 + sections」
+///
+/// 策略：
+/// - 如果文件包含 `## `，按 `## ` 分割 section，其前为文件头
+/// - 如果不含 `## ` 但含 `# `，按第一个 `# ` 分割，其前为文件头
+fn parse_file(content: &str) -> (Vec<String>, Vec<Section>) {
+    let mut header: Vec<String> = Vec::new();
+    let mut sections: Vec<Section> = Vec::new();
+    let mut current: Option<Section> = None;
+
+    let has_h2 = content.lines().any(|l| l.trim_start().starts_with("## "));
+
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let is_heading = if has_h2 {
+            trimmed.starts_with("## ")
+        } else {
+            trimmed.starts_with("# ")
+        };
+
+        if is_heading {
+            if let Some(s) = current.take() {
+                sections.push(s);
+            }
+            current = Some(Section {
+                heading: line.to_string(),
+                entries: Vec::new(),
+                other_lines: Vec::new(),
+            });
+        } else if let Some(ref mut sec) = current {
+            if trimmed.starts_with("& ") {
+                sec.entries.push(line.to_string());
+            } else {
+                sec.other_lines.push(line.to_string());
+            }
+        } else {
+            header.push(line.to_string());
+        }
     }
 
-    // 旧条目合并为摘要
-    let old_count = entries.len().saturating_sub(5);
-    if old_count > 0 {
-        let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z").to_string();
-        let summary = format!(
-            "& {} | agent:governor | [历史压缩] {} 条旧记录已合并（保留最近 5 条）",
-            now, old_count
-        );
-        new_lines.push(summary);
+    if let Some(s) = current.take() {
+        sections.push(s);
     }
 
-    entries.clear();
-    Ok(())
+    (header, sections)
+}
+
+/// 将文件头和 sections 重新组装为完整文件内容
+fn rebuild_file(header: &[String], sections: &[Section]) -> String {
+    let mut lines: Vec<String> = header.to_vec();
+
+    for (_i, section) in sections.iter().enumerate() {
+        // section 之间保留一个空行（但不要连续多个空行）
+        let need_blank = !lines.is_empty()
+            && !lines.last().unwrap().is_empty()
+            && !section.heading.is_empty();
+        if need_blank {
+            lines.push(String::new());
+        }
+
+        lines.push(section.heading.clone());
+
+        for entry in &section.entries {
+            lines.push(entry.clone());
+        }
+
+        for other in &section.other_lines {
+            lines.push(other.clone());
+        }
+    }
+
+    let content = lines.join("\n");
+    if content.ends_with('\n') {
+        content
+    } else {
+        content + "\n"
+    }
+}
+
+// ── LLM 提示词与客户端 ──
+
+fn build_compression_prompt(entries: &[String]) -> String {
+    let entries_text = entries.join("\n");
+    format!(
+        r#"请将以下较旧的记忆条目压缩为一条简洁的摘要。
+
+要求：
+1. 保留所有关键事实（如具体金额、日期、名称、分类规则等）
+2. 保留时间演化脉络（如"从X修正为Y"、"首次记录→后续更新"）
+3. 合并重复或相似信息，去除冗余描述
+4. 用一到两句话总结，尽量简洁
+5. 不要编造，只基于提供的条目
+
+原始条目：
+{}
+
+请直接输出摘要文本（不含时间戳前缀，不要加引号）："#,
+        entries_text
+    )
+}
+
+fn build_http_client(config: &LLMConfig) -> Result<AIHttpClient> {
+    let client_config = ClientConfig {
+        provider: AIProvider::Custom(config.provider.clone()),
+        base_url: config.base_url.clone(),
+        api_key: config.api_key.clone(),
+        timeout_secs: 30,
+        max_retries: 1,
+        headers: std::collections::HashMap::new(),
+    };
+    AIHttpClient::new(client_config)
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './stores'
 import DashboardView from './views/DashboardView.vue'
 import TransactionsView from './views/TransactionsView.vue'
@@ -17,6 +18,7 @@ const showQuickBooking = ref(false)
 const showLLMConfig = ref(false)
 const showMcpConfig = ref(false)
 const isCollapsed = ref(false)
+const isInitializing = ref(true)
 
 const handleMenuSelect = (key: string) => {
   activeMenu.value = key
@@ -51,14 +53,35 @@ const handleLLMConfigSaved = () => {
   showLLMConfig.value = false
 }
 
-onMounted(() => {
-  // 初始化数据
+onMounted(async () => {
+  // 轮询等待后端初始化完成
+  while (true) {
+    try {
+      const ready = await invoke<boolean>('is_app_ready')
+      if (ready) {
+        isInitializing.value = false
+        break
+      }
+    } catch (e) {
+      // 后端可能还没注册完 command，继续等待
+    }
+    await new Promise(r => setTimeout(r, 300))
+  }
+  // 就绪后再加载业务数据
   store.initializeData()
 })
 </script>
 
 <template>
   <div class="app-container">
+    <!-- 系统初始化中遮罩 -->
+    <div v-if="isInitializing" class="init-overlay">
+      <div class="init-content">
+        <el-icon :size="40" class="init-icon"><Loading /></el-icon>
+        <p class="init-text">系统初始化中</p>
+      </div>
+    </div>
+
     <el-container>
       <!-- 侧边栏 -->
       <el-aside :width="isCollapsed ? '64px' : '240px'" class="sidebar" :class="{ 'is-collapsed': isCollapsed }">
@@ -191,6 +214,37 @@ onMounted(() => {
 .app-container {
   height: 100vh;
   background: #0d0d14;
+}
+
+.init-overlay {
+  position: fixed;
+  inset: 0;
+  background: #0d0d14;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.init-content {
+  text-align: center;
+  color: #94a3b8;
+}
+
+.init-icon {
+  animation: spin 1.5s linear infinite;
+  color: #6366f1;
+}
+
+.init-text {
+  margin-top: 16px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .sidebar {

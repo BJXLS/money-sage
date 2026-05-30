@@ -26,23 +26,7 @@ pub fn scan_memory_write(content: &str) -> Result<(), String> {
         }
     }
 
-    // 2. SQL 注入 / 数据操作
-    let sql_patterns = [
-        "drop table",
-        "drop database",
-        "delete from",
-        "alter table",
-        "pragma ",
-        "-- ",
-        ";--",
-    ];
-    for pat in &sql_patterns {
-        if lower.contains(pat) {
-            return Err(format!("检测到潜在的 SQL 注入模式: '{}'", pat));
-        }
-    }
-
-    // 3. 凭证泄露模式
+    // 2. 凭证泄露模式
     let secret_patterns = [
         "sk-",          // OpenAI API key
         "api_key:",

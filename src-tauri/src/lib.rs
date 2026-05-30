@@ -2,6 +2,7 @@
 use anyhow::Result;
 use chrono::NaiveDate;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
 
@@ -1948,6 +1949,12 @@ async fn call_mcp_tool(
         .map_err(|e| e.to_string())
 }
 
+/// 查询应用是否已完成后端初始化
+#[tauri::command]
+fn is_app_ready(ready: State<'_, Arc<AtomicBool>>) -> bool {
+    ready.load(Ordering::Relaxed)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -1959,7 +1966,12 @@ pub fn run() {
                 manager: mcp::McpManager::new(),
             });
 
+            // 注册全局初始化状态（前端通过 is_app_ready 查询）
+            let app_ready = Arc::new(AtomicBool::new(false));
+            app.manage(Arc::clone(&app_ready));
+
             let app_handle = app.handle().clone();
+            let app_ready_clone = Arc::clone(&app_ready);
             tauri::async_runtime::spawn(async move {
                 let app_data_dir = app_handle
                     .path()
@@ -1969,8 +1981,7 @@ pub fn run() {
                 println!("应用数据目录: {}", app_data_dir.display());
 
                 if let Err(e) = std::fs::create_dir_all(&app_data_dir) {
-                    eprintln!("创建应用数据目录失败: {}", e);
-                    return;
+                    eprintln!("创建应用数据目录失败: {}，尝试继续使用...", e);
                 }
 
                 let db_path = app_data_dir.join("money_note.db");
@@ -1998,24 +2009,6 @@ pub fn run() {
                     let memory_store = Arc::new(memory::v3::MemoryStore::new(&memory_dir));
                     if let Err(e) = memory_store.ensure_initialized() {
                         eprintln!("Memory V3 目录初始化失败: {}", e);
-                    }
-                    // V2 → V3 迁移
-                    let migrator = memory::v3::Migrator::new(db.pool.clone(), (*memory_store).clone());
-                    match migrator.already_migrated() {
-                        Ok(false) => match migrator.migrate().await {
-                            Ok(report) => println!(
-                                "Memory V2→V3 迁移完成: classification_rules={}, recurring_events={}, financial_goals={}, user_profiles={}, agent_roles={}, total={}",
-                                report.classification_rules,
-                                report.recurring_events,
-                                report.financial_goals,
-                                report.user_profiles,
-                                report.agent_roles,
-                                report.total_entries
-                            ),
-                            Err(e) => eprintln!("Memory V2→V3 迁移失败: {}", e),
-                        },
-                        Ok(true) => println!("Memory V3 已迁移，跳过"),
-                        Err(e) => eprintln!("检查迁移状态失败: {}", e),
                     }
                     // 同步 FTS5 索引
                     let indexer = memory::v3::MemoryIndexer::new(db.pool.clone(), (*memory_store).clone());
@@ -2120,6 +2113,9 @@ pub fn run() {
                         }
                     }
                 }
+
+                // 标记后端初始化完成
+                app_ready_clone.store(true, Ordering::Relaxed);
             });
 
             Ok(())
@@ -2186,7 +2182,9 @@ pub fn run() {
             write_workspace_file,
             // Memory 目录配置命令
             get_memory_dir,
-            set_memory_dir
+            set_memory_dir,
+            // 初始化状态查询
+            is_app_ready
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

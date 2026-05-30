@@ -103,7 +103,7 @@ impl MemoryIndexer {
 
         report.added = to_insert_filtered.len();
         report.removed = to_delete.len();
-        report.unchanged = current_hashes.len() - report.added;
+        report.unchanged = current_hashes.len().saturating_sub(report.added);
 
         // 执行删除
         for hash in &to_delete {

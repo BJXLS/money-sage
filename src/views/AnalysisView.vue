@@ -98,6 +98,9 @@ const llmConfigs = ref<LLMConfig[]>([])
 const selectedConfigId = ref<number | null>(null)
 const appStore = useAppStore()
 
+// 输入法组合状态（用于区分输入法回车和真实发送回车）
+const isInputComposing = ref(false)
+
 // 流式监听
 let currentUnlisten: UnlistenFn | null = null
 
@@ -338,7 +341,7 @@ const sendMessage = async (text?: string) => {
 }
 
 const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (e.key === 'Enter' && !e.shiftKey && !isInputComposing.value && e.keyCode !== 229) {
     e.preventDefault()
     sendMessage()
   }
@@ -467,8 +470,12 @@ const showWelcome = () => {
 // ─── 生命周期 ────────────────────────────────────────────────────────────────
 
 onMounted(async () => {
-  showWelcome()
   await Promise.all([loadHistory(), loadLLMConfigs()])
+  if (historySessions.value.length > 0) {
+    await restoreSession(historySessions.value[0])
+  } else {
+    showWelcome()
+  }
 })
 
 onUnmounted(() => {
@@ -662,6 +669,8 @@ onUnmounted(() => {
           class="chat-input"
           :disabled="isLoading"
           @keydown="handleKeydown"
+          @compositionstart="isInputComposing = true"
+          @compositionend="isInputComposing = false"
         />
         <el-button
           class="send-btn"

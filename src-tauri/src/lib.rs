@@ -1109,11 +1109,68 @@ async fn delete_analysis_session(
     db_state: State<'_, DatabaseState>,
     session_id: String,
 ) -> Result<(), String> {
+    // 强制删除临时查询文件（无需用户确认）
+    let session_temp_dir = db_state.workspace.workspace_dir().join(".query_temp").join(&session_id);
+    if session_temp_dir.exists() {
+        let _ = tokio::fs::remove_dir_all(&session_temp_dir).await;
+    }
     db_state
         .db
         .delete_analysis_session(&session_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cleanup_session_temp_files(
+    state: State<'_, DatabaseState>,
+    session_id: String,
+) -> Result<(), String> {
+    let session_temp_dir = state.workspace.workspace_dir().join(".query_temp").join(&session_id);
+    if session_temp_dir.exists() {
+        tokio::fs::remove_dir_all(&session_temp_dir).await
+            .map_err(|e| format!("删除临时文件失败: {}", e))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_workspace_size(
+    state: State<'_, DatabaseState>,
+) -> Result<serde_json::Value, String> {
+    let dir = state.workspace.workspace_dir().to_path_buf();
+
+    let size = tokio::task::spawn_blocking(move || {
+        fn dir_size(path: &std::path::Path) -> std::io::Result<u64> {
+            let mut size = 0u64;
+            for entry in std::fs::read_dir(path)? {
+                let entry = entry?;
+                let meta = entry.metadata()?;
+                if meta.is_file() {
+                    size += meta.len();
+                } else if meta.is_dir() {
+                    size += dir_size(&entry.path())?;
+                }
+            }
+            Ok(size)
+        }
+        dir_size(&dir)
+    })
+    .await
+    .map_err(|e| format!("计算任务失败: {}", e))?
+    .map_err(|e| format!("遍历目录失败: {}", e))?;
+
+    let readable = if size < 1024 {
+        format!("{} B", size)
+    } else if size < 1024 * 1024 {
+        format!("{:.2} KB", size as f64 / 1024.0)
+    } else if size < 1024 * 1024 * 1024 {
+        format!("{:.2} MB", size as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.2} GB", size as f64 / (1024.0 * 1024.0 * 1024.0))
+    };
+
+    Ok(serde_json::json!({ "bytes": size, "readable": readable }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1241,6 +1298,11 @@ async fn send_analysis_message_stream(
     use chrono::{Datelike, Local};
 
     let sid = request.session_id.clone();
+    let app_for_cleanup = app.clone();
+    let workspace_dir = db_state.workspace.workspace_dir().to_path_buf();
+    let sid_for_spawn = sid.clone();
+
+    let stream_result: Result<(), String> = async {
 
     // ── 辅助：发出 done / error 事件 ───────────────────────────────────
     let emit_err = |app: &tauri::AppHandle, sid: &str, msg: String| {
@@ -1743,7 +1805,7 @@ async fn send_analysis_message_stream(
         tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
         let changelog = memory::v3::Changelog::new(pool.clone());
         let consolidator = memory::v3::MemoryConsolidator::new(pool, store, changelog);
-        match consolidator.consolidate(&sid, &conversation_log).await {
+        match consolidator.consolidate(&sid_for_spawn, &conversation_log).await {
             Ok(report) => {
                 if report.factual_written > 0
                     || report.episodic_written
@@ -1764,6 +1826,32 @@ async fn send_analysis_message_stream(
     });
 
     Ok(())
+    }.await;
+
+    // 扫描并通知前端临时 CSV 文件
+    let session_temp_dir = workspace_dir.join(".query_temp").join(&sid);
+    let mut temp_files: Vec<String> = Vec::new();
+    if session_temp_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&session_temp_dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_file() {
+                    temp_files.push(entry.file_name().to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    if !temp_files.is_empty() {
+        let _ = app_for_cleanup.emit(
+            "analysis-session-temp-files",
+            serde_json::json!({
+                "session_id": sid,
+                "file_count": temp_files.len(),
+                "files": temp_files,
+            }),
+        );
+    }
+
+    stream_result
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1995,6 +2083,21 @@ pub fn run() {
                     eprintln!("Workspace 初始化失败: {}", e);
                 }
 
+                // 清理遗留的查询临时文件目录
+                let query_temp_dir = workspace_manager.workspace_dir().join(".query_temp");
+                if query_temp_dir.exists() {
+                    if let Ok(entries) = std::fs::read_dir(&query_temp_dir) {
+                        for entry in entries.flatten() {
+                            let path = entry.path();
+                            if path.is_dir() {
+                                if let Err(e) = std::fs::remove_dir_all(&path) {
+                                    eprintln!("[Startup] 清理遗留查询临时目录失败: {} - {}", path.display(), e);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 async fn init_memory_v3(
                     app_data_dir: &std::path::Path,
                     db: &Database,
@@ -2160,6 +2263,7 @@ pub fn run() {
             get_analysis_sessions,
             get_analysis_messages,
             delete_analysis_session,
+            cleanup_session_temp_files,
             send_analysis_message_stream,
             // Token 用量命令
             list_token_usage,
@@ -2180,6 +2284,7 @@ pub fn run() {
             list_workspace_files,
             read_workspace_file,
             write_workspace_file,
+            get_workspace_size,
             // Memory 目录配置命令
             get_memory_dir,
             set_memory_dir,

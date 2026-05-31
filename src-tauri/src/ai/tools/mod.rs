@@ -1,4 +1,5 @@
 pub mod bash_exec;
+pub mod csv_read;
 pub mod file_edit;
 pub mod file_read;
 pub mod file_write;
@@ -8,6 +9,7 @@ pub mod query_database;
 pub mod quick_note_parse;
 pub mod quick_note_save;
 pub mod workspace_path;
+pub mod workspace_size;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -57,10 +59,13 @@ impl LocalToolRegistry {
             .push(Box::new(get_schema::GetDatabaseSchemaTool::new(
                 pool.clone(),
             )));
+        let session_id_for_db = session_id.clone().unwrap_or_else(|| "unknown".to_string());
         registry
             .tools
             .push(Box::new(query_database::QueryDatabaseTool::new(
                 pool.clone(),
+                workspace_dir.clone(),
+                session_id_for_db,
             )));
         registry
             .tools
@@ -102,6 +107,12 @@ impl LocalToolRegistry {
             workspace_dir.clone(),
             memory_dir.clone(),
             Some(pool_for_file_tools),
+        )));
+        registry.tools.push(Box::new(csv_read::CsvReadTool::new(
+            workspace_dir.clone(),
+        )));
+        registry.tools.push(Box::new(workspace_size::WorkspaceSizeTool::new(
+            workspace_dir.clone(),
         )));
         registry
             .tools

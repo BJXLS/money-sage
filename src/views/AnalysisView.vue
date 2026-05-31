@@ -2,6 +2,7 @@
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
 import QuickNoteInlineConfirmCard from '../components/analysis/QuickNoteInlineConfirmCard.vue'
 import { useAppStore, type QuickNoteDraft } from '../stores'
@@ -103,6 +104,7 @@ const isInputComposing = ref(false)
 
 // 流式监听
 let currentUnlisten: UnlistenFn | null = null
+let tempFilesUnlisten: UnlistenFn | null = null
 
 // ─── 加载后端数据 ─────────────────────────────────────────────────────────────
 
@@ -205,6 +207,8 @@ const sendMessage = async (text?: string) => {
       isLoading.value = false
       currentUnlisten?.()
       currentUnlisten = null
+      tempFilesUnlisten?.()
+      tempFilesUnlisten = null
       loadHistory()
       return
     }
@@ -314,6 +318,28 @@ const sendMessage = async (text?: string) => {
     scrollToBottom()
   })
 
+  // 注册临时文件删除确认事件监听
+  tempFilesUnlisten = await listen('analysis-session-temp-files', (event) => {
+    const payload = event.payload as { session_id: string; file_count: number; files: string[] }
+    if (payload.session_id !== sessionId.value) return
+
+    ElMessageBox.confirm(
+      `本次对话生成了 ${payload.file_count} 个临时 CSV 查询结果文件，是否删除？`,
+      '删除临时文件',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '保留',
+        type: 'warning',
+      }
+    )
+      .then(() => {
+        invoke('cleanup_session_temp_files', { sessionId: sessionId.value })
+      })
+      .catch(() => {
+        // 用户选择保留，不做任何操作
+      })
+  })
+
   // 发起流式请求
   try {
     await invoke('send_analysis_message_stream', {
@@ -337,6 +363,8 @@ const sendMessage = async (text?: string) => {
     isLoading.value = false
     currentUnlisten?.()
     currentUnlisten = null
+    tempFilesUnlisten?.()
+    tempFilesUnlisten = null
   }
 }
 
@@ -480,6 +508,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   currentUnlisten?.()
+  tempFilesUnlisten?.()
 })
 </script>
 

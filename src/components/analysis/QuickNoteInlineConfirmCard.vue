@@ -193,9 +193,9 @@ const onConfirm = () => {
 </template>
 
 <style scoped>
-.draft-card { border: 1px solid #2a2a44; border-radius: 8px; padding: 12px; background: #12121f; }
-.title { color: #a5b4fc; margin-bottom: 8px; font-weight: 600; }
-.actions { margin-top: 10px; display: flex; gap: 8px; justify-content: flex-end; }
+.draft-card { border: 1px solid var(--ms-border-subtle); border-radius: var(--ms-radius-md); padding: var(--ms-space-3); background: var(--ms-surface-primary); }
+.title { color: var(--ms-primary-500); margin-bottom: var(--ms-space-2); font-weight: 600; }
+.actions { margin-top: var(--ms-space-3); display: flex; gap: var(--ms-space-2); justify-content: flex-end; }
 .category-cell { display: flex; flex-direction: column; gap: 4px; }
-.ai-category-hint { font-size: 11px; color: #f59e0b; }
+.ai-category-hint { font-size: 11px; color: var(--ms-warning); }
 </style>

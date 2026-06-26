@@ -459,12 +459,12 @@ const getSubCategories = (parentId: number) => {
   margin-bottom: 12px;
   font-size: 16px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .label-icon {
   margin-right: 8px;
-  color: #409eff;
+  color: var(--ms-info);
   font-size: 18px;
 }
 
@@ -482,12 +482,12 @@ const getSubCategories = (parentId: number) => {
   display: flex;
   align-items: center;
   font-size: 13px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .tip-item .el-icon {
   margin-right: 6px;
-  color: #409eff;
+  color: var(--ms-info);
   font-size: 14px;
 }
 
@@ -502,12 +502,12 @@ const getSubCategories = (parentId: number) => {
   margin-bottom: 16px;
   font-size: 16px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .header-icon {
   margin-right: 8px;
-  color: #67c23a;
+  color: var(--ms-income);
   font-size: 18px;
 }
 
@@ -547,47 +547,47 @@ const getSubCategories = (parentId: number) => {
 
 /* 深度样式 */
 :deep(.el-dialog) {
-  background: #2a2a2a;
-  border: 1px solid #404040;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-default);
 }
 
 :deep(.el-dialog__header) {
-  background: #2a2a2a;
-  border-bottom: 1px solid #404040;
+  background: var(--ms-surface-primary);
+  border-bottom: 1px solid var(--ms-border-default);
   padding: 20px 24px 16px;
 }
 
 :deep(.el-dialog__title) {
-  color: #ffffff;
+  color: var(--ms-text-primary);
   font-size: 18px;
   font-weight: 600;
 }
 
 :deep(.el-dialog__headerbtn .el-dialog__close) {
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 :deep(.el-dialog__headerbtn .el-dialog__close:hover) {
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 :deep(.el-dialog__body) {
-  background: #2a2a2a;
-  color: #ffffff;
+  background: var(--ms-surface-primary);
+  color: var(--ms-text-primary);
   padding: 24px;
 }
 
 :deep(.el-dialog__footer) {
-  background: #2a2a2a;
-  border-top: 1px solid #404040;
+  background: var(--ms-surface-primary);
+  border-top: 1px solid var(--ms-border-default);
   padding: 16px 24px 20px;
 }
 
 :deep(.text-input .el-textarea__inner) {
-  background: #404040;
-  border: 1px solid #606060;
+  background: var(--ms-border-default);
+  border: 1px solid var(--ms-border-default);
   border-radius: 8px;
-  color: #ffffff;
+  color: var(--ms-text-primary);
   font-size: 14px;
   line-height: 1.6;
   padding: 16px;
@@ -596,19 +596,19 @@ const getSubCategories = (parentId: number) => {
 }
 
 :deep(.text-input .el-textarea__inner:focus) {
-  border-color: #409eff;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+  border-color: var(--ms-info);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 :deep(.text-input .el-textarea__inner::placeholder) {
-  color: #909399;
+  color: var(--ms-text-tertiary);
   font-size: 13px;
   line-height: 1.5;
 }
 
 :deep(.el-input__count) {
   background: transparent;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
   font-size: 12px;
 }
 
@@ -618,41 +618,41 @@ const getSubCategories = (parentId: number) => {
 }
 
 :deep(.cancel-btn) {
-  background: #404040;
-  border-color: #606060;
-  color: #ffffff;
+  background: var(--ms-border-default);
+  border-color: var(--ms-border-default);
+  color: var(--ms-text-primary);
 }
 
 :deep(.cancel-btn:hover) {
-  background: #606060;
-  border-color: #808080;
+  background: var(--ms-border-default);
+  border-color: var(--ms-text-secondary);
 }
 
 :deep(.clear-btn) {
-  background: #606060;
-  border-color: #707070;
-  color: #ffffff;
+  background: var(--ms-border-default);
+  border-color: var(--ms-border-default);
+  color: var(--ms-text-primary);
 }
 
 :deep(.clear-btn:hover) {
-  background: #707070;
-  border-color: #909090;
+  background: var(--ms-border-default);
+  border-color: var(--ms-text-secondary);
 }
 
 :deep(.submit-btn) {
-  background: #409eff;
-  border-color: #409eff;
+  background: var(--ms-info);
+  border-color: var(--ms-info);
 }
 
 :deep(.submit-btn:hover) {
-  background: #66b1ff;
-  border-color: #66b1ff;
+  background: var(--ms-info);
+  border-color: var(--ms-info);
 }
 
 :deep(.submit-btn:disabled) {
-  background: #404040;
-  border-color: #606060;
-  color: #909399;
+  background: var(--ms-border-default);
+  border-color: var(--ms-border-default);
+  color: var(--ms-text-tertiary);
 }
 
 /* 分类选择器样式 */
@@ -668,10 +668,10 @@ const getSubCategories = (parentId: number) => {
 
 /* 预算选择高亮（空缺提示） */
 :deep(.warning-select .el-select__wrapper) {
-  border-color: #e6a23c !important;
+  border-color: var(--ms-warning) !important;
 }
 
 .dash {
-  color: #909399;
+  color: var(--ms-text-tertiary);
 }
 </style> 

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoneySage — 分类与预算</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body class="h-screen overflow-hidden">
+  <div class="flex h-full">
+    <!-- Sidebar -->
+    <aside class="w-[200px] flex-shrink-0 flex flex-col" style="background-color: var(--bg-secondary); border-right: 1px solid var(--border-subtle);">
+      <div class="h-16 flex items-center px-5 gap-3">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--gradient-primary);">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <span class="text-lg font-bold" style="background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">MoneySage</span>
+      </div>
+      <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <a href="dashboard-prototype.html" class="nav-item">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          <span class="text-sm font-medium">仪表盘</span>
+        </a>
+        <a href="transactions-prototype.html" class="nav-item">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+          <span class="text-sm font-medium">收支记录</span>
+        </a>
+        <a href="categories-budget-prototype.html" class="nav-item active">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+          <span class="text-sm font-medium">分类与预算</span>
+        </a>
+        <a href="analysis-prototype.html" class="nav-item">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+          <span class="text-sm font-medium">智能分析</span>
+        </a>
+      </nav>
+      <div class="p-4 border-t" style="border-color: var(--border-subtle);">
+        <div class="flex items-center gap-3 px-2 py-2 rounded-xl surface">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: var(--gradient-primary);">
+            <span class="text-white text-sm font-bold">G</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium truncate text-primary">GeHao</div>
+            <div class="text-xs text-tertiary">Pro 用户</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col min-w-0" style="background-color: var(--bg-primary);">
+      <!-- Header -->
+      <header class="h-16 flex items-center justify-between px-8 border-b" style="border-color: var(--border-subtle); background-color: var(--bg-primary);">
+        <div>
+          <h1 class="text-xl font-bold text-primary">分类与预算</h1>
+          <p class="text-xs text-tertiary mt-0.5">管理收支分类 · 设置预算目标</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button class="theme-toggle" id="themeToggle" title="切换主题">
+            <svg id="sunIcon" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            <svg id="moonIcon" class="w-5 h-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <div class="flex-1 overflow-y-auto p-8">
+        <div class="max-w-[1440px] mx-auto">
+          <!-- Tabs -->
+          <div class="flex items-center gap-2 mb-6">
+            <button class="tab-btn active" id="tabCategories" onclick="switchTab('categories')">分类管理</button>
+            <button class="tab-btn" id="tabBudgets" onclick="switchTab('budgets')">预算设置</button>
+          </div>
+
+          <!-- Categories Panel -->
+          <div id="categoriesPanel" class="space-y-6">
+            <div class="flex items-center justify-between">
+              <div class="segment-control">
+                <button class="segment-btn active">支出</button>
+                <button class="segment-btn">收入</button>
+              </div>
+              <button class="btn-primary">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                <span class="text-sm">添加分类</span>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <!-- Parent Categories -->
+              <div class="card p-5">
+                <h3 class="font-semibold text-primary mb-4">大类</h3>
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between p-3 rounded-xl cursor-pointer" style="background-color: var(--bg-tertiary); border: 1px solid var(--border-default);">
+                    <div class="flex items-center gap-3">
+                      <div class="category-icon" style="background-color: rgba(245, 158, 11, 0.12);">🍜</div>
+                      <span class="text-sm font-medium text-primary">餐饮</span>
+                    </div>
+                    <span class="text-xs text-tertiary">3 个小类</span>
+                  </div>
+                  <div class="flex items-center justify-between p-3 rounded-xl cursor-pointer hover:bg-[var(--surface-hover)]" style="background-color: var(--surface-secondary);">
+                    <div class="flex items-center gap-3">
+                      <div class="category-icon" style="background-color: rgba(139, 92, 246, 0.12);">🛒</div>
+                      <span class="text-sm font-medium text-primary">购物</span>
+                    </div>
+                    <span class="text-xs text-tertiary">2 个小类</span>
+                  </div>
+                  <div class="flex items-center justify-between p-3 rounded-xl cursor-pointer hover:bg-[var(--surface-hover)]" style="background-color: var(--surface-secondary);">
+                    <div class="flex items-center gap-3">
+                      <div class="category-icon" style="background-color: rgba(59, 130, 246, 0.12);">🚇</div>
+                      <span class="text-sm font-medium text-primary">交通</span>
+                    </div>
+                    <span class="text-xs text-tertiary">2 个小类</span>
+                  </div>
+                  <div class="flex items-center justify-between p-3 rounded-xl cursor-pointer hover:bg-[var(--surface-hover)]" style="background-color: var(--surface-secondary);">
+                    <div class="flex items-center gap-3">
+                      <div class="category-icon" style="background-color: rgba(236, 72, 153, 0.12);">🎬</div>
+                      <span class="text-sm font-medium text-primary">娱乐</span>
+                    </div>
+                    <span class="text-xs text-tertiary">2 个小类</span>
+                  </div>
+                  <div class="flex items-center justify-between p-3 rounded-xl cursor-pointer hover:bg-[var(--surface-hover)]" style="background-color: var(--surface-secondary);">
+                    <div class="flex items-center gap-3">
+                      <div class="category-icon" style="background-color: rgba(16, 185, 129, 0.12);">🏠</div>
+                      <span class="text-sm font-medium text-primary">住房</span>
+                    </div>
+                    <span class="text-xs text-tertiary">1 个小类</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sub Categories -->
+              <div class="lg:col-span-2 card p-5">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-semibold text-primary">餐饮 · 小类</h3>
+                  <button class="btn-ghost text-sm">添加小类</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div class="flex items-center justify-between p-4 rounded-xl surface-secondary border border-[var(--border-subtle)]">
+                    <div class="flex items-center gap-3">
+                      <div class="category-icon" style="background-color: rgba(245, 158, 11, 0.12);">🍱</div>
+                      <div>
+                        <div class="text-sm font-medium text-primary">午餐</div>
+                        <div class="text-xs text-tertiary">本月 ¥ 1,240</div>
+                      </div>
+                    </div>
+                    <div class="flex gap-1">
+                      <button class="theme-toggle w-8 h-8">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                      </button>
+                      <button class="theme-toggle w-8 h-8 hover:text-[var(--expense)]">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between p-4 rounded-xl surface-secondary border border-[var(--border-subtle)]">
+                    <div class="flex items-center gap-3">
+                      <div class="category-icon" style="background-color: rgba(245, 158, 11, 0.12);">🍲</div>
+                      <div>
+                        <div class="text-sm font-medium text-primary">晚餐</div>
+                        <div class="text-xs text-tertiary">本月 ¥ 980</div>
+                      </div>
+                    </div>
+                    <div class="flex gap-1">
+                      <button class="theme-toggle w-8 h-8">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                      </button>
+                      <button class="theme-toggle w-8 h-8 hover:text-[var(--expense)]">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between p-4 rounded-xl surface-secondary border border-[var(--border-subtle)]">
+                    <div class="flex items-center gap-3">
+                      <div class="category-icon" style="background-color: rgba(245, 158, 11, 0.12);">☕</div>
+                      <div>
+                        <div class="text-sm font-medium text-primary">饮品</div>
+                        <div class="text-xs text-tertiary">本月 ¥ 230</div>
+                      </div>
+                    </div>
+                    <div class="flex gap-1">
+                      <button class="theme-toggle w-8 h-8">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                      </button>
+                      <button class="theme-toggle w-8 h-8 hover:text-[var(--expense)]">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Budgets Panel -->
+          <div id="budgetsPanel" class="space-y-6 hidden">
+            <!-- Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div class="card p-5">
+                <div class="text-xs text-tertiary mb-1">总预算</div>
+                <div class="text-2xl font-bold stat-value text-primary">¥ 8,600</div>
+              </div>
+              <div class="card p-5">
+                <div class="text-xs text-tertiary mb-1">已支出</div>
+                <div class="text-2xl font-bold stat-value" style="color: var(--expense);">¥ 6,430</div>
+              </div>
+              <div class="card p-5">
+                <div class="text-xs text-tertiary mb-1">剩余</div>
+                <div class="text-2xl font-bold stat-value" style="color: var(--income);">¥ 2,170</div>
+              </div>
+              <div class="card p-5">
+                <div class="text-xs text-tertiary mb-1">预算执行率</div>
+                <div class="text-2xl font-bold stat-value text-primary">74.8%</div>
+              </div>
+            </div>
+
+            <div class="flex justify-end">
+              <button class="btn-primary">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                <span class="text-sm">新增预算</span>
+              </button>
+            </div>
+
+            <!-- Budget Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div class="card p-5">
+                <div class="flex items-start justify-between mb-4">
+                  <div class="flex items-center gap-3">
+                    <div class="category-icon" style="background-color: rgba(245, 158, 11, 0.12);">🍜</div>
+                    <div>
+                      <div class="text-sm font-medium text-primary">餐饮月度预算</div>
+                      <div class="text-xs text-tertiary">每月周期</div>
+                    </div>
+                  </div>
+                  <span class="badge" style="background-color: rgba(244, 63, 94, 0.1); color: var(--expense);">超支</span>
+                </div>
+                <div class="flex items-baseline justify-between mb-3">
+                  <span class="text-2xl font-bold stat-value" style="color: var(--expense);">¥ 2,450</span>
+                  <span class="text-sm text-secondary">/ ¥ 2,000</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: 100%; background: var(--gradient-expense);"></div>
+                </div>
+                <div class="flex justify-between mt-2 text-xs">
+                  <span class="text-tertiary">已超支 ¥ 450</span>
+                  <span class="text-tertiary">122.5%</span>
+                </div>
+              </div>
+
+              <div class="card p-5">
+                <div class="flex items-start justify-between mb-4">
+                  <div class="flex items-center gap-3">
+                    <div class="category-icon" style="background-color: rgba(139, 92, 246, 0.12);">🛒</div>
+                    <div>
+                      <div class="text-sm font-medium text-primary">购物月度预算</div>
+                      <div class="text-xs text-tertiary">每月周期</div>
+                    </div>
+                  </div>
+                  <span class="badge" style="background-color: rgba(244, 63, 94, 0.1); color: var(--expense);">超支</span>
+                </div>
+                <div class="flex items-baseline justify-between mb-3">
+                  <span class="text-2xl font-bold stat-value" style="color: var(--expense);">¥ 1,680</span>
+                  <span class="text-sm text-secondary">/ ¥ 1,500</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: 100%; background: var(--gradient-expense);"></div>
+                </div>
+                <div class="flex justify-between mt-2 text-xs">
+                  <span class="text-tertiary">已超支 ¥ 180</span>
+                  <span class="text-tertiary">112%</span>
+                </div>
+              </div>
+
+              <div class="card p-5">
+                <div class="flex items-start justify-between mb-4">
+                  <div class="flex items-center gap-3">
+                    <div class="category-icon" style="background-color: rgba(59, 130, 246, 0.12);">🚇</div>
+                    <div>
+                      <div class="text-sm font-medium text-primary">交通月度预算</div>
+                      <div class="text-xs text-tertiary">每月周期</div>
+                    </div>
+                  </div>
+                  <span class="badge" style="background-color: rgba(99, 102, 241, 0.1); color: #6366f1;">正常</span>
+                </div>
+                <div class="flex items-baseline justify-between mb-3">
+                  <span class="text-2xl font-bold stat-value text-primary">¥ 420</span>
+                  <span class="text-sm text-secondary">/ ¥ 600</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: 70%; background: var(--gradient-primary);"></div>
+                </div>
+                <div class="flex justify-between mt-2 text-xs">
+                  <span class="text-tertiary">剩余 ¥ 180</span>
+                  <span class="text-tertiary">70%</span>
+                </div>
+              </div>
+
+              <div class="card p-5">
+                <div class="flex items-start justify-between mb-4">
+                  <div class="flex items-center gap-3">
+                    <div class="category-icon" style="background-color: rgba(236, 72, 153, 0.12);">🎬</div>
+                    <div>
+                      <div class="text-sm font-medium text-primary">娱乐月度预算</div>
+                      <div class="text-xs text-tertiary">每月周期</div>
+                    </div>
+                  </div>
+                  <span class="badge" style="background-color: rgba(245, 158, 11, 0.1); color: var(--warning);">预警</span>
+                </div>
+                <div class="flex items-baseline justify-between mb-3">
+                  <span class="text-2xl font-bold stat-value text-primary">¥ 780</span>
+                  <span class="text-sm text-secondary">/ ¥ 1,000</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: 78%; background-color: var(--warning);"></div>
+                </div>
+                <div class="flex justify-between mt-2 text-xs">
+                  <span class="text-tertiary">剩余 ¥ 220</span>
+                  <span class="text-tertiary">78%</span>
+                </div>
+              </div>
+
+              <div class="card p-5">
+                <div class="flex items-start justify-between mb-4">
+                  <div class="flex items-center gap-3">
+                    <div class="category-icon" style="background-color: rgba(16, 185, 129, 0.12);">🏠</div>
+                    <div>
+                      <div class="text-sm font-medium text-primary">住房月度预算</div>
+                      <div class="text-xs text-tertiary">每月周期</div>
+                    </div>
+                  </div>
+                  <span class="badge" style="background-color: rgba(16, 185, 129, 0.1); color: var(--income);">充足</span>
+                </div>
+                <div class="flex items-baseline justify-between mb-3">
+                  <span class="text-2xl font-bold stat-value text-primary">¥ 1,100</span>
+                  <span class="text-sm text-secondary">/ ¥ 3,500</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: 31%; background: var(--gradient-primary);"></div>
+                </div>
+                <div class="flex justify-between mt-2 text-xs">
+                  <span class="text-tertiary">剩余 ¥ 2,400</span>
+                  <span class="text-tertiary">31%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Theme toggle
+    const themeToggle = document.getElementById('themeToggle');
+    const sunIcon = document.getElementById('sunIcon');
+    const moonIcon = document.getElementById('moonIcon');
+    const html = document.documentElement;
+
+    function updateThemeIcon(theme) {
+      if (theme === 'dark') { sunIcon.classList.add('hidden'); moonIcon.classList.remove('hidden'); }
+      else { sunIcon.classList.remove('hidden'); moonIcon.classList.add('hidden'); }
+    }
+
+    function getInitialTheme() {
+      const saved = localStorage.getItem('money-sage-theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    let currentTheme = getInitialTheme();
+    html.setAttribute('data-theme', currentTheme);
+    updateThemeIcon(currentTheme);
+
+    themeToggle.addEventListener('click', () => {
+      currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+      html.setAttribute('data-theme', currentTheme);
+      localStorage.setItem('money-sage-theme', currentTheme);
+      updateThemeIcon(currentTheme);
+    });
+
+    // Tab switching
+    function switchTab(tab) {
+      const categoriesPanel = document.getElementById('categoriesPanel');
+      const budgetsPanel = document.getElementById('budgetsPanel');
+      const tabCategories = document.getElementById('tabCategories');
+      const tabBudgets = document.getElementById('tabBudgets');
+
+      if (tab === 'categories') {
+        categoriesPanel.classList.remove('hidden');
+        budgetsPanel.classList.add('hidden');
+        tabCategories.classList.add('active');
+        tabBudgets.classList.remove('active');
+      } else {
+        categoriesPanel.classList.add('hidden');
+        budgetsPanel.classList.remove('hidden');
+        tabCategories.classList.remove('active');
+        tabBudgets.classList.add('active');
+      }
+    }
+  </script>
+</body>
+</html>

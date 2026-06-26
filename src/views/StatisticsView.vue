@@ -999,7 +999,7 @@ onMounted(async () => {
 <style scoped>
 .statistics-view {
   padding: 0;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 /* 月份选择器样式 */
@@ -1018,19 +1018,19 @@ onMounted(async () => {
 .section-title {
   font-size: 24px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
   margin: 0 0 8px 0;
 }
 
 .section-subtitle {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
   margin-bottom: 24px;
 }
 
 .monthly-summary-subtitle {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
   margin-bottom: 24px;
 }
 
@@ -1038,7 +1038,7 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .header-left {
@@ -1059,8 +1059,8 @@ onMounted(async () => {
 .pie-chart-card,
 .category-details-card {
   height: 620px; /* 增加高度 */
-  background: #2a2a2a;
-  border: 1px solid #404040;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-default);
 }
 
 .chart-container {
@@ -1086,7 +1086,7 @@ onMounted(async () => {
   gap: 12px;
   justify-content: center;
   align-items: center;
-  border-top: 1px solid #404040;
+  border-top: 1px solid var(--ms-border-default);
   margin-top: 16px;
 }
 
@@ -1109,7 +1109,7 @@ onMounted(async () => {
 
 .legend-name {
   font-size: 12px;
-  color: #ffffff;
+  color: var(--ms-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1118,7 +1118,7 @@ onMounted(async () => {
 
 .legend-value {
   font-size: 11px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
   font-weight: 500;
   flex-shrink: 0;
 }
@@ -1135,7 +1135,7 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   padding: 14px 8px; /* 调整内边距 */
-  border-bottom: 1px solid #404040;
+  border-bottom: 1px solid var(--ms-border-default);
 }
 
 .category-item:last-child {
@@ -1162,7 +1162,7 @@ onMounted(async () => {
 .category-rank {
   font-size: 12px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
   text-align: center;
 }
 
@@ -1189,7 +1189,7 @@ onMounted(async () => {
 .rank-first .category-rank,
 .rank-second .category-rank,
 .rank-third .category-rank {
-  color: #ffffff;
+  color: var(--ms-text-primary);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
@@ -1200,7 +1200,7 @@ onMounted(async () => {
 .category-name {
   font-size: 16px;
   font-weight: 500;
-  color: #ffffff;
+  color: var(--ms-text-primary);
   margin-bottom: 4px;
 }
 
@@ -1212,7 +1212,7 @@ onMounted(async () => {
 
 .percentage {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .category-amount {
@@ -1222,7 +1222,7 @@ onMounted(async () => {
 .amount {
   font-size: 18px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
   margin-bottom: 4px;
 }
 
@@ -1234,19 +1234,19 @@ onMounted(async () => {
 }
 
 .change.increase {
-  color: #F56C6C;
+  color: var(--ms-expense);
 }
 
 .change.decrease {
-  color: #67C23A;
+  color: var(--ms-income);
 }
 
 .change.no-change {
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .change.no-data {
-  color: #909399;
+  color: var(--ms-text-tertiary);
 }
 
 /* 第二区域：支出趋势 */
@@ -1256,8 +1256,8 @@ onMounted(async () => {
 
 .trend-card {
   height: 500px;
-  background: #2a2a2a;
-  border: 1px solid #404040;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-default);
 }
 
 .trend-tabs {
@@ -1267,7 +1267,7 @@ onMounted(async () => {
 .monthly-total {
   font-size: 16px;
   font-weight: 600;
-  color: #F56C6C;
+  color: var(--ms-expense);
 }
 
 .trend-chart-container {
@@ -1292,14 +1292,14 @@ onMounted(async () => {
 .budget-overview-card {
   min-height: 400px;
   height: auto;
-  background: #2a2a2a;
-  border: 1px solid #404040;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-default);
 }
 
 .daily-budget-card {
   height: 400px;
-  background: #2a2a2a;
-  border: 1px solid #404040;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-default);
 }
 
 .budget-stats {
@@ -1325,17 +1325,17 @@ onMounted(async () => {
 }
 
 .budget-icon {
-  background: linear-gradient(135deg, #409EFF, #66B1FF);
+  background: linear-gradient(135deg, var(--ms-info), #66B1FF);
   color: white;
 }
 
 .spent-icon {
-  background: linear-gradient(135deg, #F56C6C, #F78989);
+  background: linear-gradient(135deg, var(--ms-expense), var(--ms-expense-light));
   color: white;
 }
 
 .remaining-icon {
-  background: linear-gradient(135deg, #67C23A, #85CE61);
+  background: linear-gradient(135deg, var(--ms-income), var(--ms-income-light));
   color: white;
 }
 
@@ -1345,21 +1345,21 @@ onMounted(async () => {
 
 .stat-label {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
   margin-bottom: 4px;
 }
 
 .stat-value {
   font-size: 20px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .progress-section {
-  background: #1a1a1a;
+  background: var(--ms-bg-secondary);
   padding: 20px;
   border-radius: 8px;
-  border: 1px solid #404040;
+  border: 1px solid var(--ms-border-default);
 }
 
 .progress-header {
@@ -1371,13 +1371,13 @@ onMounted(async () => {
 
 .progress-label {
   font-size: 16px;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .progress-percentage {
   font-size: 24px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .budget-progress {
@@ -1388,7 +1388,7 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .daily-budget {
@@ -1401,28 +1401,28 @@ onMounted(async () => {
 .daily-amount {
   text-align: center;
   padding: 24px;
-  background: #1a1a1a;
+  background: var(--ms-bg-secondary);
   border-radius: 8px;
-  border: 1px solid #404040;
+  border: 1px solid var(--ms-border-default);
 }
 
 .amount-label {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
   margin-bottom: 8px;
 }
 
 .amount-value {
   font-size: 28px;
   font-weight: 600;
-  color: #67C23A;
+  color: var(--ms-income);
 }
 
 .daily-suggestion {
-  background: #1a1a1a;
+  background: var(--ms-bg-secondary);
   padding: 20px;
   border-radius: 8px;
-  border: 1px solid #404040;
+  border: 1px solid var(--ms-border-default);
 }
 
 .suggestion-item {
@@ -1437,20 +1437,20 @@ onMounted(async () => {
 
 .suggestion-label {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .suggestion-value {
   font-size: 14px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .budget-status {
-  background: #1a1a1a;
+  background: var(--ms-bg-secondary);
   padding: 16px;
   border-radius: 8px;
-  border: 1px solid #404040;
+  border: 1px solid var(--ms-border-default);
 }
 
 .status-item {
@@ -1458,11 +1458,11 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
-  color: #67C23A;
+  color: var(--ms-income);
 }
 
 .status-item.status-warning {
-  color: #E6A23C;
+  color: var(--ms-warning);
 }
 
 .status-text {
@@ -1477,22 +1477,22 @@ onMounted(async () => {
 
 .spending-label {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .spending-value {
   font-size: 16px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 /* 当前有效预算样式 */
 .current-budgets-section {
   margin-top: 20px;
   padding: 16px;
-  background: #1a1a1a;
+  background: var(--ms-bg-secondary);
   border-radius: 8px;
-  border: 1px solid #404040;
+  border: 1px solid var(--ms-border-default);
 }
 
 .section-header {
@@ -1505,12 +1505,12 @@ onMounted(async () => {
 .section-title-small {
   font-size: 14px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .budget-count {
   font-size: 12px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
   background: rgba(64, 64, 64, 0.3);
   padding: 2px 8px;
   border-radius: 12px;
@@ -1542,12 +1542,12 @@ onMounted(async () => {
 .budget-name {
   font-size: 13px;
   font-weight: 500;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .budget-category {
   font-size: 12px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .budget-amount {
@@ -1559,7 +1559,7 @@ onMounted(async () => {
 
 .budget-period-type {
   font-size: 10px;
-  color: #909399;
+  color: var(--ms-text-tertiary);
   background: rgba(64, 64, 64, 0.3);
   padding: 1px 6px;
   border-radius: 8px;
@@ -1568,23 +1568,23 @@ onMounted(async () => {
 .budget-amount-value {
   font-size: 13px;
   font-weight: 600;
-  color: #67C23A;
+  color: var(--ms-income);
 }
 
 /* 无预算提示样式 */
 .no-budget-section {
   margin-top: 20px;
   padding: 20px;
-  background: #1a1a1a;
+  background: var(--ms-bg-secondary);
   border-radius: 8px;
-  border: 1px solid #404040;
+  border: 1px solid var(--ms-border-default);
 }
 
 .no-budget-tip {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
   font-size: 14px;
   justify-content: center;
 }
@@ -1595,8 +1595,8 @@ onMounted(async () => {
 }
 
 .event-budget-card {
-  background: #2a2a2a;
-  border: 1px solid #404040;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-default);
 }
 
 .event-budget-list {
@@ -1606,9 +1606,9 @@ onMounted(async () => {
 
 .event-budget-item {
   padding: 20px;
-  background: #1a1a1a;
+  background: var(--ms-bg-secondary);
   border-radius: 8px;
-  border: 1px solid #404040;
+  border: 1px solid var(--ms-border-default);
   margin-bottom: 16px;
 }
 
@@ -1651,19 +1651,19 @@ onMounted(async () => {
 .budget-name {
   font-size: 18px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
   margin-bottom: 4px;
 }
 
 .budget-category {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
   margin-bottom: 4px;
 }
 
 .budget-date {
   font-size: 12px;
-  color: #909399;
+  color: var(--ms-text-tertiary);
 }
 
 .budget-amount-info {
@@ -1673,13 +1673,13 @@ onMounted(async () => {
 .spent-amount {
   font-size: 20px;
   font-weight: 600;
-  color: #F56C6C;
+  color: var(--ms-expense);
   margin-bottom: 4px;
 }
 
 .total-amount {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .budget-progress-section {
@@ -1696,12 +1696,12 @@ onMounted(async () => {
 .progress-label {
   font-size: 16px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .remaining-amount {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .budget-status {
@@ -1718,20 +1718,20 @@ onMounted(async () => {
 }
 
 .status-good {
-  color: #67C23A;
+  color: var(--ms-income);
 }
 
 .status-warning {
-  color: #E6A23C;
+  color: var(--ms-warning);
 }
 
 .status-danger {
-  color: #F56C6C;
+  color: var(--ms-expense);
 }
 
 .progress-days {
   font-size: 12px;
-  color: #909399;
+  color: var(--ms-text-tertiary);
 }
 
 .empty-state {
@@ -1749,19 +1749,19 @@ onMounted(async () => {
 
 .category-details::-webkit-scrollbar-track,
 .event-budget-list::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: var(--ms-bg-secondary);
   border-radius: 3px;
 }
 
 .category-details::-webkit-scrollbar-thumb,
 .event-budget-list::-webkit-scrollbar-thumb {
-  background: #606060;
+  background: var(--ms-text-tertiary);
   border-radius: 3px;
 }
 
 .category-details::-webkit-scrollbar-thumb:hover,
 .event-budget-list::-webkit-scrollbar-thumb:hover {
-  background: #808080;
+  background: var(--ms-text-secondary);
 }
 
 /* 响应式设计 */

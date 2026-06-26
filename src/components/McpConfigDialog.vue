@@ -457,7 +457,7 @@ function handleClose() {
 .server-list-panel {
   width: 210px;
   flex-shrink: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--ms-border-subtle);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -470,7 +470,7 @@ function handleClose() {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #475569;
+  color: var(--ms-text-tertiary);
   padding-bottom: 4px;
 }
 
@@ -481,7 +481,7 @@ function handleClose() {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: #475569;
+  color: var(--ms-text-tertiary);
 }
 
 .empty-icon { font-size: 28px; }
@@ -499,15 +499,15 @@ function handleClose() {
 .server-item {
   padding: 10px 10px 8px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ms-border-subtle);
   background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .server-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--ms-border-subtle);
+  border-color: var(--ms-border-default);
 }
 
 .server-item.is-selected {
@@ -530,23 +530,23 @@ function handleClose() {
 }
 
 .server-status-dot.is-connected {
-  background: #10b981;
+  background: var(--ms-income);
   box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
 }
 
 .server-status-dot.is-disconnected {
-  background: #475569;
+  background: var(--ms-text-tertiary);
 }
 
 .server-status-dot.is-error {
-  background: #ef4444;
+  background: var(--ms-expense);
   box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
 }
 
 .server-item-name {
   font-size: 13px;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--ms-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -555,7 +555,7 @@ function handleClose() {
 
 .server-item-cmd {
   font-size: 11px;
-  color: #475569;
+  color: var(--ms-text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -563,7 +563,7 @@ function handleClose() {
 
 .server-item-tools {
   font-size: 10px;
-  color: #10b981;
+  color: var(--ms-income);
   margin-top: 2px;
 }
 
@@ -577,32 +577,32 @@ function handleClose() {
   width: 24px !important;
   height: 24px !important;
   padding: 0 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid var(--ms-border-subtle) !important;
   background: rgba(255, 255, 255, 0.04) !important;
 }
 
 .start-btn:hover {
   background: rgba(16, 185, 129, 0.15) !important;
   border-color: rgba(16, 185, 129, 0.4) !important;
-  color: #10b981 !important;
+  color: var(--ms-income) !important;
 }
 
 .stop-btn:hover {
   background: rgba(245, 158, 11, 0.15) !important;
   border-color: rgba(245, 158, 11, 0.4) !important;
-  color: #f59e0b !important;
+  color: var(--ms-warning) !important;
 }
 
 .delete-btn:hover {
   background: rgba(239, 68, 68, 0.15) !important;
   border-color: rgba(239, 68, 68, 0.4) !important;
-  color: #ef4444 !important;
+  color: var(--ms-expense) !important;
 }
 
 .new-server-btn {
   background: rgba(99, 102, 241, 0.1) !important;
   border: 1px dashed rgba(99, 102, 241, 0.4) !important;
-  color: #a5b4fc !important;
+  color: var(--ms-primary-400) !important;
   width: 100%;
   border-radius: 10px !important;
   font-size: 13px !important;
@@ -633,7 +633,7 @@ function handleClose() {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #475569;
+  color: var(--ms-text-tertiary);
   margin-bottom: 8px;
 }
 
@@ -650,15 +650,15 @@ function handleClose() {
   gap: 4px;
   padding: 8px 4px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--ms-border-subtle);
   background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .preset-card:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--ms-border-subtle);
+  border-color: rgba(99, 102, 241, 0.15);
   transform: translateY(-1px);
 }
 
@@ -667,7 +667,7 @@ function handleClose() {
 .preset-name {
   font-size: 11px;
   font-weight: 500;
-  color: #94a3b8;
+  color: var(--ms-text-secondary);
   text-align: center;
 }
 
@@ -681,7 +681,7 @@ function handleClose() {
 :deep(.server-form .el-form-item__label) {
   font-size: 12px !important;
   font-weight: 600;
-  color: #64748b !important;
+  color: var(--ms-text-tertiary) !important;
   letter-spacing: 0.02em;
   padding-bottom: 4px !important;
   line-height: 1 !important;
@@ -698,7 +698,7 @@ function handleClose() {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #10b981;
+  color: var(--ms-income);
   margin-bottom: 8px;
 }
 
@@ -720,13 +720,13 @@ function handleClose() {
 .tool-name {
   font-size: 12px;
   font-weight: 600;
-  color: #a7f3d0;
+  color: var(--ms-income-light);
   font-family: 'Consolas', 'Courier New', monospace;
 }
 
 .tool-desc {
   font-size: 11px;
-  color: #64748b;
+  color: var(--ms-text-tertiary);
   margin-top: 2px;
   line-height: 1.4;
 }
@@ -740,7 +740,7 @@ function handleClose() {
   border-radius: 10px;
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #f87171;
+  color: var(--ms-expense-light);
   font-size: 13px;
 }
 
@@ -758,7 +758,7 @@ function handleClose() {
 .server-items::-webkit-scrollbar-thumb,
 .server-detail-panel::-webkit-scrollbar-thumb,
 .tools-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ms-border-default);
   border-radius: 2px;
 }
 </style>

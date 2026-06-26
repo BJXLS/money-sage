@@ -1,255 +1,13 @@
-<template>
-  <div class="budget-view">
-    <!-- 顶部搜索栏 -->
-    <div class="header-section">
-      <div class="search-container">
-        <el-input
-          v-model="searchQuery"
-          placeholder="搜索预算..."
-          prefix-icon="Search"
-          class="search-input"
-          clearable
-        />
-      </div>
-      <el-button 
-        type="primary" 
-        @click="showAddBudgetDialog = true"
-        class="add-budget-btn"
-      >
-        <el-icon><Plus /></el-icon>
-        添加预算
-      </el-button>
-    </div>
-
-    <!-- 统计卡片 -->
-    <div class="stats-cards">
-      <div class="stat-card">
-        <div class="stat-header">
-          <h3>总预算</h3>
-          <el-icon class="stat-icon"><Money /></el-icon>
-        </div>
-        <div class="stat-amount">¥{{ formatAmount(totalBudget) }}</div>
-        <div class="stat-desc">本月预算</div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-header">
-          <h3>已使用</h3>
-          <el-icon class="stat-icon"><TrendCharts /></el-icon>
-        </div>
-        <div class="stat-amount used">¥{{ formatAmount(totalSpent) }}</div>
-        <div class="stat-desc">
-          <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: `${spentPercentage}%` }"></div>
-          </div>
-          <span>{{ spentPercentage.toFixed(1) }}%</span>
-        </div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-header">
-          <h3>预算类别</h3>
-          <el-icon class="stat-icon"><Grid /></el-icon>
-        </div>
-        <div class="stat-amount">{{ budgetCount }}</div>
-        <div class="stat-desc">
-          <span class="category-split">
-            {{ timeBudgetCount }}个时间预算，{{ eventBudgetCount }}个事件预算
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 预算列表 -->
-    <div class="budget-list-section">
-      <h3 class="section-title">预算列表</h3>
-      
-      <el-table
-        :data="filteredBudgets"
-        style="width: 100%"
-        class="budget-table"
-      >
-        <el-table-column label="预算名称" min-width="150">
-          <template #default="{ row }">
-            <div class="budget-name">
-              <span 
-                class="budget-type-badge"
-                :class="row.budget_type"
-              >
-                {{ row.budget_type === 'time' ? '时间' : '事件' }}
-              </span>
-              {{ row.name }}
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="类型" width="120">
-          <template #default="{ row }">
-            <div class="category-display">
-              <span 
-                class="category-icon" 
-                :style="{ color: row.category_color }"
-              >
-                {{ row.category_icon || '💰' }}
-              </span>
-              <span class="category-name">{{ row.category_name }}</span>
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="预算金额" width="120">
-          <template #default="{ row }">
-            <span class="budget-amount">¥{{ formatAmount(row.amount) }}</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="已用金额" width="120">
-          <template #default="{ row }">
-            <span class="spent-amount">¥{{ formatAmount(row.spent) }}</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="剩余金额" width="120">
-          <template #default="{ row }">
-            <span 
-              class="remaining-amount"
-              :class="{ 'over-budget': row.remaining < 0 }"
-            >
-              ¥{{ formatAmount(row.remaining) }}
-            </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="时间范围" width="200">
-          <template #default="{ row }">
-            <div class="date-range">
-              <template v-if="row.budget_type === 'time'">
-                {{ formatDate(row.start_date) }} 至 {{ formatDate(row.end_date) }}
-              </template>
-              <template v-else>
-                <span class="event-badge">-</span>
-              </template>
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="进度" width="150">
-          <template #default="{ row }">
-            <div class="progress-cell">
-              <div 
-                class="progress-bar-small"
-                :class="{ 'over-budget': row.percentage > 100 }"
-              >
-                <div 
-                  class="progress-fill-small" 
-                  :style="{ width: `${Math.min(row.percentage, 100)}%` }"
-                ></div>
-              </div>
-              <span class="progress-text">{{ row.percentage.toFixed(1) }}%</span>
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="操作" width="160" fixed="right">
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-button
-                size="small"
-                text
-                @click="openBudgetDetail(row)"
-              >
-                详情
-              </el-button>
-              <el-button
-                size="small"
-                text
-                @click="editBudget(row)"
-                class="edit-btn"
-              >
-                <el-icon><Edit /></el-icon>
-              </el-button>
-              <el-button
-                size="small"
-                text
-                type="danger"
-                @click="deleteBudget(row.id)"
-                class="delete-btn"
-              >
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <!-- 空状态 -->
-      <div v-if="budgets.length === 0" class="empty-state">
-        <el-empty description="暂无预算记录">
-          <el-button type="primary" @click="showAddBudgetDialog = true">
-            添加第一个预算
-          </el-button>
-        </el-empty>
-      </div>
-    </div>
-
-    <!-- 添加预算对话框 -->
-    <AddBudgetDialog
-      v-model="showAddBudgetDialog"
-      :budget="editingBudget"
-      @success="handleBudgetSuccess"
-    />
-
-    <!-- 预算详情抽屉 -->
-    <el-drawer v-model="showDetail" title="预算详情" size="50%">
-      <template #default>
-        <div v-if="currentBudget" class="budget-detail">
-          <div class="detail-header">
-            <div class="category-display">
-              <span class="category-icon" :style="{ color: currentBudget.category_color }">
-                {{ currentBudget.category_icon || '💰' }}
-              </span>
-              <span class="category-name">{{ currentBudget.category_name }}</span>
-            </div>
-            <div class="amounts">
-              <div>预算：¥{{ formatAmount(currentBudget.amount) }}</div>
-              <div>已用：¥{{ formatAmount(currentBudget.spent) }}</div>
-              <div>剩余：¥{{ formatAmount(currentBudget.remaining) }}</div>
-            </div>
-          </div>
-          <el-divider />
-          <h4>关联交易</h4>
-          <el-table :data="budgetTransactions" size="small">
-            <el-table-column label="日期" width="120" prop="date" />
-            <el-table-column label="金额" width="120">
-              <template #default="{ row }">-¥{{ formatAmount(row.amount) }}</template>
-            </el-table-column>
-            <el-table-column label="描述" min-width="200" prop="description" />
-          </el-table>
-        </div>
-        <div v-else>未选择预算</div>
-      </template>
-    </el-drawer>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Plus, 
-  Money, 
-  TrendCharts, 
-  Grid,
-  Edit,
-  Delete
-} from '@element-plus/icons-vue'
+import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { useAppStore, type BudgetProgress } from '../stores'
 import AddBudgetDialog from '../components/AddBudgetDialog.vue'
 import dayjs from 'dayjs'
 
 const store = useAppStore()
 
-// 响应式数据
 const searchQuery = ref('')
 const showAddBudgetDialog = ref(false)
 const editingBudget = ref<BudgetProgress | null>(null)
@@ -257,49 +15,39 @@ const showDetail = ref(false)
 const currentBudget = ref<BudgetProgress | null>(null)
 const budgetTransactions = ref<any[]>([])
 
-// 计算属性
 const budgets = computed(() => store.budgets)
 
 const filteredBudgets = computed(() => {
   if (!searchQuery.value) return budgets.value
-  return budgets.value.filter(budget => 
-    budget.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-    budget.category_name.toLowerCase().includes(searchQuery.value.toLowerCase())
+  const q = searchQuery.value.toLowerCase()
+  return budgets.value.filter(b =>
+    b.name.toLowerCase().includes(q) || b.category_name.toLowerCase().includes(q)
   )
 })
 
-const totalBudget = computed(() => {
-  return budgets.value.reduce((sum, budget) => sum + budget.amount, 0)
+const totalBudget = computed(() => budgets.value.reduce((sum, b) => sum + b.amount, 0))
+const totalSpent = computed(() => budgets.value.reduce((sum, b) => sum + b.spent, 0))
+const totalRemaining = computed(() => totalBudget.value - totalSpent.value)
+const usagePercentage = computed(() => {
+  if (totalBudget.value === 0) return 0
+  return (totalSpent.value / totalBudget.value) * 100
 })
 
-const totalSpent = computed(() => {
-  return budgets.value.reduce((sum, budget) => sum + budget.spent, 0)
-})
-
-const spentPercentage = computed(() => {
-  return totalBudget.value > 0 ? (totalSpent.value / totalBudget.value) * 100 : 0
-})
-
-const budgetCount = computed(() => budgets.value.length)
-
-const timeBudgetCount = computed(() => {
-  return budgets.value.filter(budget => budget.budget_type === 'time').length
-})
-
-const eventBudgetCount = computed(() => {
-  return budgets.value.filter(budget => budget.budget_type === 'event').length
-})
-
-// 方法
 const formatAmount = (amount: number) => {
-  return Math.abs(amount).toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })
+  return Math.abs(amount).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
-const formatDate = (date: string) => {
-  return dayjs(date).format('YYYY-MM-DD')
+const getStatusInfo = (percentage: number) => {
+  if (percentage >= 100) return { text: '超支', type: 'danger', color: 'var(--ms-expense)' }
+  if (percentage >= 80) return { text: '预警', type: 'warning', color: 'var(--ms-warning)' }
+  if (percentage >= 50) return { text: '正常', type: 'primary', color: 'var(--ms-primary-500)' }
+  return { text: '充足', type: 'success', color: 'var(--ms-income)' }
+}
+
+const getProgressStyle = (percentage: number) => {
+  if (percentage >= 100) return { background: 'var(--ms-gradient-expense)' }
+  if (percentage >= 80) return { backgroundColor: 'var(--ms-warning)' }
+  return { background: 'var(--ms-gradient-primary)' }
 }
 
 const editBudget = (budget: BudgetProgress) => {
@@ -310,17 +58,12 @@ const editBudget = (budget: BudgetProgress) => {
 const deleteBudget = async (id: number) => {
   try {
     await ElMessageBox.confirm('确定要删除这个预算吗？', '确认删除', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
+      confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
     })
-    
     await store.deleteBudget(id)
     ElMessage.success('预算删除成功')
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除预算失败')
-    }
+    if (error !== 'cancel') ElMessage.error('删除预算失败')
   }
 }
 
@@ -332,7 +75,6 @@ const handleBudgetSuccess = () => {
 const openBudgetDetail = async (budget: BudgetProgress) => {
   currentBudget.value = budget
   showDetail.value = true
-  // 取该预算周期内的交易并按 budget_id 过滤
   const start = dayjs(budget.start_date).format('YYYY-MM-DD')
   const end = dayjs(budget.end_date || dayjs().format('YYYY-MM-DD')).format('YYYY-MM-DD')
   try {
@@ -343,322 +85,374 @@ const openBudgetDetail = async (budget: BudgetProgress) => {
   }
 }
 
-// 生命周期
 onMounted(() => {
   store.fetchBudgets()
   store.fetchCategories()
 })
 </script>
 
+<template>
+  <div class="budget-view">
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">总预算</div>
+        <div class="stat-value">¥ {{ formatAmount(totalBudget) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">已支出</div>
+        <div class="stat-value" style="color: var(--ms-expense);">¥ {{ formatAmount(totalSpent) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">剩余</div>
+        <div class="stat-value" :style="{ color: totalRemaining < 0 ? 'var(--ms-expense)' : 'var(--ms-income)' }">¥ {{ formatAmount(totalRemaining) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">预算执行率</div>
+        <div class="stat-value">{{ usagePercentage.toFixed(1) }}%</div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <el-input v-model="searchQuery" placeholder="搜索预算..." prefix-icon="Search" clearable class="search-input" />
+      <button class="add-btn" @click="showAddBudgetDialog = true">
+        <el-icon><Plus /></el-icon>
+        <span>新增预算</span>
+      </button>
+    </div>
+
+    <!-- Budget Grid -->
+    <div v-if="filteredBudgets.length > 0" class="budget-grid">
+      <div v-for="budget in filteredBudgets" :key="budget.id" class="budget-card">
+        <div class="budget-card-header">
+          <div class="budget-category">
+            <div class="category-icon" :style="{ backgroundColor: `${budget.category_color || '#6366f1'}1a` }">
+              {{ budget.category_icon || '💰' }}
+            </div>
+            <div>
+              <div class="budget-name">{{ budget.name }}</div>
+              <div class="budget-type">{{ budget.category_name }} · {{ budget.budget_type === 'time' ? '每月周期' : '事件预算' }}</div>
+            </div>
+          </div>
+          <span class="status-badge" :style="{ backgroundColor: `${getStatusInfo(budget.percentage).color}1a`, color: getStatusInfo(budget.percentage).color }">
+            {{ getStatusInfo(budget.percentage).text }}
+          </span>
+        </div>
+        <div class="budget-amounts">
+          <span class="spent-amount" :style="{ color: budget.percentage >= 100 ? 'var(--ms-expense)' : 'var(--ms-text-primary)' }">¥{{ formatAmount(budget.spent) }}</span>
+          <span class="total-amount">/ ¥{{ formatAmount(budget.amount) }}</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" :style="{ width: `${Math.min(budget.percentage, 100)}%`, ...getProgressStyle(budget.percentage) }"></div>
+        </div>
+        <div class="budget-card-footer">
+          <span v-if="budget.percentage >= 100" class="footer-text" style="color: var(--ms-expense);">已超支 ¥{{ formatAmount(Math.abs(budget.remaining)) }}</span>
+          <span v-else class="footer-text">剩余 ¥{{ formatAmount(budget.remaining) }}</span>
+          <span class="footer-text">{{ budget.percentage.toFixed(1) }}%</span>
+        </div>
+        <div class="budget-card-actions">
+          <button class="action-btn" @click="openBudgetDetail(budget)">详情</button>
+          <button class="action-btn" @click="editBudget(budget)"><el-icon><Edit /></el-icon></button>
+          <button class="action-btn danger" @click="deleteBudget(budget.id)"><el-icon><Delete /></el-icon></button>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="empty-state">
+      <el-empty description="暂无预算记录">
+        <button class="add-btn" @click="showAddBudgetDialog = true">添加第一个预算</button>
+      </el-empty>
+    </div>
+
+    <!-- Add/Edit Dialog -->
+    <AddBudgetDialog v-model="showAddBudgetDialog" :budget="editingBudget" @success="handleBudgetSuccess" />
+
+    <!-- Detail Drawer -->
+    <el-drawer v-model="showDetail" title="预算详情" size="50%">
+      <div v-if="currentBudget" class="budget-detail">
+        <div class="detail-header">
+          <div class="budget-category">
+            <div class="category-icon" :style="{ backgroundColor: `${currentBudget.category_color || '#6366f1'}1a` }">
+              {{ currentBudget.category_icon || '💰' }}
+            </div>
+            <span class="category-name">{{ currentBudget.category_name }}</span>
+          </div>
+          <div class="amounts">
+            <div>预算：¥{{ formatAmount(currentBudget.amount) }}</div>
+            <div>已用：¥{{ formatAmount(currentBudget.spent) }}</div>
+            <div>剩余：¥{{ formatAmount(currentBudget.remaining) }}</div>
+          </div>
+        </div>
+        <el-divider />
+        <h4>关联交易</h4>
+        <el-table :data="budgetTransactions" size="small">
+          <el-table-column label="日期" width="120" prop="date" />
+          <el-table-column label="金额" width="120">
+            <template #default="{ row }">
+              <span :class="row.type">{{ row.type === 'income' ? '+' : '-' }}¥{{ formatAmount(row.amount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="描述" min-width="200" prop="description" />
+        </el-table>
+      </div>
+      <div v-else>未选择预算</div>
+    </el-drawer>
+  </div>
+</template>
+
 <style scoped>
 .budget-view {
-  padding: 24px;
-  background: #1a1a1a;
-  min-height: 100vh;
-  color: #ffffff;
-}
-
-.header-section {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
+  flex-direction: column;
+  gap: var(--ms-space-5);
 }
 
-.search-container {
-  flex: 1;
-  max-width: 400px;
-}
-
-.search-input {
-  width: 100%;
-}
-
-.add-budget-btn {
-  margin-left: 16px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.stats-cards {
+.stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
-  margin-bottom: 32px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--ms-space-5);
 }
 
 .stat-card {
-  background: #2a2a2a;
-  border-radius: 12px;
-  padding: 24px;
-  border: 1px solid #404040;
-  transition: all 0.3s ease;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-subtle);
+  border-radius: var(--ms-radius-xl);
+  padding: var(--ms-space-4) var(--ms-space-5);
+  box-shadow: var(--ms-shadow-sm);
 }
 
-.stat-card:hover {
-  border-color: #606060;
-  transform: translateY(-2px);
+.stat-label {
+  font-size: var(--ms-text-xs);
+  color: var(--ms-text-tertiary);
+  margin-bottom: var(--ms-space-1);
 }
 
-.stat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.stat-header h3 {
-  margin: 0;
-  font-size: 16px;
-  color: #b0b0b0;
-}
-
-.stat-icon {
+.stat-value {
   font-size: 24px;
-  color: #409eff;
+  font-weight: var(--ms-font-bold);
+  color: var(--ms-text-primary);
 }
 
-.stat-amount {
-  font-size: 32px;
-  font-weight: 700;
-  color: #ffffff;
-  margin-bottom: 8px;
-}
-
-.stat-amount.used {
-  color: #f56c6c;
-}
-
-.stat-desc {
-  font-size: 14px;
-  color: #b0b0b0;
+.toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: var(--ms-space-4);
+}
+
+.search-input {
+  max-width: 360px;
+}
+
+.add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--ms-radius-lg);
+  font-size: var(--ms-text-sm);
+  font-weight: var(--ms-font-medium);
+  color: white;
+  background: var(--ms-gradient-primary);
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.add-btn:hover {
+  opacity: 0.9;
+}
+
+.budget-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--ms-space-5);
+}
+
+.budget-card {
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-subtle);
+  border-radius: var(--ms-radius-xl);
+  padding: var(--ms-space-5);
+  box-shadow: var(--ms-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ms-space-3);
+}
+
+.budget-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.budget-category {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-3);
+}
+
+.category-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ms-radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.budget-name {
+  font-size: var(--ms-text-sm);
+  font-weight: var(--ms-font-semibold);
+  color: var(--ms-text-primary);
+}
+
+.budget-type {
+  font-size: var(--ms-text-xs);
+  color: var(--ms-text-tertiary);
+  margin-top: 2px;
+}
+
+.status-badge {
+  font-size: 11px;
+  font-weight: var(--ms-font-medium);
+  padding: 2px 8px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.budget-amounts {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.spent-amount {
+  font-size: 24px;
+  font-weight: var(--ms-font-bold);
+}
+
+.total-amount {
+  font-size: var(--ms-text-sm);
+  color: var(--ms-text-secondary);
 }
 
 .progress-bar {
-  width: 120px;
-  height: 4px;
-  background: #404040;
-  border-radius: 2px;
+  height: 6px;
+  background-color: var(--ms-bg-tertiary);
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: #409eff;
   transition: width 0.3s ease;
 }
 
-.category-split {
-  font-size: 12px;
+.budget-card-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--ms-text-xs);
+  color: var(--ms-text-tertiary);
 }
 
-.budget-list-section {
-  background: #2a2a2a;
-  border-radius: 12px;
-  padding: 24px;
-  border: 1px solid #404040;
+.budget-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ms-space-1);
+  padding-top: var(--ms-space-2);
+  border-top: 1px solid var(--ms-border-subtle);
 }
 
-.section-title {
-  margin: 0 0 20px 0;
-  font-size: 18px;
-  color: #ffffff;
-}
-
-.budget-table {
-  background: transparent;
-}
-
-.budget-name {
+.action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--ms-radius-md);
+  border: none;
+  background-color: transparent;
+  color: var(--ms-text-secondary);
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  transition: all 0.2s ease;
 }
 
-.budget-type-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
+.action-btn:hover {
+  background-color: var(--ms-bg-tertiary);
+  color: var(--ms-text-primary);
 }
 
-.budget-type-badge.time {
-  background: #409eff20;
-  color: #409eff;
-}
-
-.budget-type-badge.event {
-  background: #67c23a20;
-  color: #67c23a;
-}
-
-.category-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.category-icon {
-  font-size: 16px;
-}
-
-.category-name {
-  font-size: 14px;
-  color: #ffffff;
-}
-
-.budget-amount {
-  font-weight: 600;
-  color: #67c23a;
-}
-
-.spent-amount {
-  font-weight: 600;
-  color: #f56c6c;
-}
-
-.remaining-amount {
-  font-weight: 600;
-  color: #409eff;
-}
-
-.remaining-amount.over-budget {
-  color: #f56c6c;
-}
-
-.date-range {
-  font-size: 14px;
-  color: #b0b0b0;
-}
-
-.event-badge {
-  color: #67c23a;
-  font-weight: 500;
-}
-
-.progress-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.progress-bar-small {
-  width: 60px;
-  height: 6px;
-  background: #404040;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.progress-bar-small.over-budget {
-  background: #f56c6c20;
-}
-
-.progress-fill-small {
-  height: 100%;
-  background: #409eff;
-  transition: width 0.3s ease;
-}
-
-.progress-bar-small.over-budget .progress-fill-small {
-  background: #f56c6c;
-}
-
-.progress-text {
-  font-size: 12px;
-  color: #b0b0b0;
-  min-width: 40px;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.edit-btn:hover {
-  color: #409eff;
-}
-
-.delete-btn:hover {
-  color: #f56c6c;
+.action-btn.danger:hover {
+  background-color: rgba(244, 63, 94, 0.1);
+  color: var(--ms-expense);
 }
 
 .empty-state {
-  text-align: center;
-  padding: 60px 20px;
+  padding: var(--ms-space-10) 0;
 }
 
-/* 深色主题适配 */
-:deep(.el-table) {
-  background: transparent;
-  color: #ffffff;
+.budget-detail {
+  color: var(--ms-text-primary);
 }
 
-:deep(.el-table__header) {
-  background: #1a1a1a;
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ms-space-4);
+  flex-wrap: wrap;
 }
 
-:deep(.el-table th) {
-  background: #1a1a1a;
-  color: #b0b0b0;
-  border-color: #404040;
+.detail-header .category-name {
+  font-size: var(--ms-text-lg);
+  font-weight: var(--ms-font-semibold);
 }
 
-:deep(.el-table td) {
-  background: transparent;
-  border-color: #404040;
-  color: #ffffff;
+.detail-header .amounts {
+  font-size: var(--ms-text-sm);
+  color: var(--ms-text-secondary);
+  text-align: right;
 }
 
-:deep(.el-table__row:hover) {
-  background: #404040;
+.detail-header .amounts div {
+  margin-bottom: 4px;
 }
 
-:deep(.el-input__inner) {
-  background: #2a2a2a;
-  border-color: #404040;
-  color: #ffffff;
-}
+.income { color: var(--ms-income); }
+.expense { color: var(--ms-expense); }
 
-:deep(.el-input__inner:focus) {
-  border-color: #409eff;
-}
-
-:deep(.el-empty) {
-  background: transparent;
-}
-
-:deep(.el-empty__description) {
-  color: #b0b0b0;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .budget-view {
-    padding: 16px;
+@media (max-width: 1280px) {
+  .budget-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
-  
-  .stats-cards {
+}
+
+@media (max-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-grid {
     grid-template-columns: 1fr;
   }
-  
-  .header-section {
-    flex-direction: column;
-    gap: 16px;
+
+  .budget-grid {
+    grid-template-columns: 1fr;
   }
-  
-  .search-container {
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-input {
     max-width: 100%;
   }
-  
-  .add-budget-btn {
-    margin-left: 0;
-    width: 100%;
-  }
 }
-</style> 
+</style>

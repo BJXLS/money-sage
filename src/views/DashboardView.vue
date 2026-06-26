@@ -1,258 +1,46 @@
-<template>
-  <div class="dashboard-root">
-    <el-tabs v-model="activeTab" class="dashboard-tabs">
-      <el-tab-pane label="总览" name="overview">
-        <div class="dashboard">
-    <!-- 统计卡片 -->
-    <el-row :gutter="20" class="stats-cards">
-      <el-col :xs="24" :sm="12" :md="8" :lg="6">
-        <el-card class="stat-card income-card">
-          <div class="stat-content">
-            <div class="stat-icon">
-              <el-icon><TrendCharts /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-label">本月收入</div>
-              <div class="stat-value">¥{{ formatAmount(store.currentMonthIncome) }}</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      
-      <el-col :xs="24" :sm="12" :md="8" :lg="6">
-        <el-card class="stat-card expense-card">
-          <div class="stat-content">
-            <div class="stat-icon">
-              <el-icon><Minus /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-label">本月支出</div>
-              <div class="stat-value">¥{{ formatAmount(store.currentMonthExpense) }}</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      
-      <el-col :xs="24" :sm="12" :md="8" :lg="6">
-        <el-card class="stat-card balance-card">
-          <div class="stat-content">
-            <div class="stat-icon">
-              <el-icon><Wallet /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-label">本月结余</div>
-              <div class="stat-value" :class="{ 'negative': store.currentMonthBalance < 0 }">
-                ¥{{ formatAmount(store.currentMonthBalance) }}
-              </div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      
-      <el-col :xs="24" :sm="12" :md="8" :lg="6">
-        <el-card class="stat-card transactions-card">
-          <div class="stat-content">
-            <div class="stat-icon">
-              <el-icon><List /></el-icon>
-            </div>
-            <div class="stat-info">
-              <div class="stat-label">交易笔数</div>
-              <div class="stat-value">{{ store.transactions.length }}</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-    
-    <!-- 图表区域 -->
-    <el-row :gutter="20" class="charts-section">
-      <el-col :xs="24" :lg="12">
-        <el-card class="chart-card">
-          <template #header>
-            <div class="card-header">
-              <span>收支趋势</span>
-              <el-select v-model="trendPeriod" size="small" @change="updateTrendChart">
-                <el-option label="近3个月" value="3"></el-option>
-                <el-option label="近6个月" value="6"></el-option>
-                <el-option label="近12个月" value="12"></el-option>
-              </el-select>
-            </div>
-          </template>
-          <div class="chart-container">
-            <v-chart 
-              ref="trendChartRef"
-              :option="trendChartOption" 
-              class="trend-chart"
-              :loading="store.loading"
-            />
-          </div>
-        </el-card>
-      </el-col>
-      
-      <el-col :xs="24" :lg="12">
-        <el-card class="chart-card">
-          <template #header>
-            <div class="card-header">
-              <span>支出分布</span>
-              <el-date-picker
-                v-model="currentMonth"
-                type="month"
-                size="small"
-                format="YYYY-MM"
-                value-format="YYYY-MM"
-                @change="updateCategoryChart"
-              />
-            </div>
-          </template>
-          <div class="chart-container">
-            <v-chart 
-              ref="pieChartRef"
-              :option="pieChartOption" 
-              class="pie-chart"
-              :loading="store.loading"
-            />
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-    
-    <!-- 底部区域 -->
-    <el-row :gutter="20" class="bottom-section">
-      <!-- 最近交易 -->
-      <el-col :xs="24" :lg="14">
-        <el-card class="recent-transactions">
-          <template #header>
-            <div class="card-header">
-              <span>最近交易</span>
-              <el-button size="small" @click="goToTransactions">查看全部</el-button>
-            </div>
-          </template>
-          <div class="transactions-list">
-            <div 
-              v-for="transaction in recentTransactions" 
-              :key="transaction.id"
-              class="transaction-item"
-            >
-              <div class="transaction-left">
-                <div class="transaction-icon" :style="{ color: transaction.category_color }">
-                  {{ transaction.category_icon || '💰' }}
-                </div>
-                <div class="transaction-info">
-                  <div class="transaction-desc">{{ transaction.description || transaction.category_name }}</div>
-                  <div class="transaction-date">{{ formatDate(transaction.date) }}</div>
-                </div>
-              </div>
-              <div class="transaction-amount" :class="transaction.type">
-                {{ transaction.type === 'income' ? '+' : '-' }}¥{{ formatAmount(transaction.amount) }}
-              </div>
-            </div>
-            
-            <div v-if="recentTransactions.length === 0" class="empty-state">
-              <el-empty description="暂无交易记录" />
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      
-      <!-- 预算进度 -->
-      <el-col :xs="24" :lg="10">
-        <el-card class="budget-progress">
-          <template #header>
-            <div class="card-header">
-              <span>预算执行</span>
-              <el-button size="small" @click="goToBudget">管理预算</el-button>
-            </div>
-          </template>
-          <div class="budget-list">
-            <div 
-              v-for="budget in activeBudgets" 
-              :key="budget.id"
-              class="budget-item"
-            >
-              <div class="budget-header">
-                <div class="budget-category">
-                  <span class="category-icon" :style="{ color: budget.category_color }">
-                    {{ budget.category_icon || '💰' }}
-                  </span>
-                  {{ budget.name }}
-                </div>
-                <div class="budget-amount">
-                  ¥{{ formatAmount(budget.spent) }} / ¥{{ formatAmount(budget.amount) }}
-                </div>
-              </div>
-              <div class="budget-progress-bar">
-                <el-progress 
-                  :percentage="Math.min(budget.percentage, 100)" 
-                  :color="getProgressColor(budget.percentage)"
-                  :show-text="false"
-                />
-              </div>
-              <div class="budget-status">
-                <span v-if="budget.percentage < 80" class="status-good">
-                  还可支出 ¥{{ formatAmount(budget.remaining) }}
-                </span>
-                <span v-else-if="budget.percentage < 100" class="status-warning">
-                  接近预算上限
-                </span>
-                <span v-else class="status-danger">
-                  已超支 ¥{{ formatAmount(Math.abs(budget.remaining)) }}
-                </span>
-              </div>
-            </div>
-            
-            <div v-if="activeBudgets.length === 0" class="empty-state">
-              <el-empty description="暂无预算设置" />
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-        </div>
-      </el-tab-pane>
-      <el-tab-pane label="深度分析" name="deep" lazy>
-        <div class="deep-tab-inner">
-          <StatisticsView />
-        </div>
-      </el-tab-pane>
-    </el-tabs>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
-import StatisticsView from './StatisticsView.vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, PieChart } from 'echarts/charts'
 import {
-  TitleComponent,
+  GridComponent,
   TooltipComponent,
   LegendComponent,
-  GridComponent
+  TitleComponent,
+  DatasetComponent,
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { useAppStore } from '../stores'
+import MoneyCard from '../components/ui/MoneyCard.vue'
+import MoneyStat from '../components/ui/MoneyStat.vue'
+import MoneyProgress from '../components/ui/MoneyProgress.vue'
+import { useTheme } from '../composables/useTheme'
 import dayjs from 'dayjs'
 
-// 注册ECharts组件
 use([
   CanvasRenderer,
   LineChart,
   PieChart,
-  TitleComponent,
+  GridComponent,
   TooltipComponent,
   LegendComponent,
-  GridComponent
+  TitleComponent,
+  DatasetComponent,
 ])
 
 const store = useAppStore()
-const activeTab = ref('overview')
-const trendPeriod = ref('6')
-const currentMonth = ref(dayjs().format('YYYY-MM'))
-const trendChartRef = ref()
-const pieChartRef = ref()
+const { isDark } = useTheme()
 
-// 计算属性
+const trendPeriod = ref(6)
+const currentMonth = ref(dayjs().format('YYYY-MM'))
+
+const netWorthTrend = computed(() => {
+  const current = store.currentMonthBalance
+  const last = current * 0.92 // mock for prototype; replace with real data
+  return Number((((current - last) / last) * 100).toFixed(1))
+})
+
 const recentTransactions = computed(() => {
   return store.transactions.slice(0, 8)
 })
@@ -261,463 +49,511 @@ const activeBudgets = computed(() => {
   return store.budgets.slice(0, 5)
 })
 
-// 趋势图配置
+const formatAmount = (amount: number) => {
+  return amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+const formatDate = (date: string) => {
+  return dayjs(date).format('M月D日')
+}
+
+const getProgressColor = (percentage: number) => {
+  if (percentage >= 100) return 'danger'
+  if (percentage >= 80) return 'warning'
+  return 'primary'
+}
+
+// Trend chart
 const trendChartOption = computed(() => {
-  const data = store.monthlyStats.slice(0, parseInt(trendPeriod.value))
+  const months = store.monthlyStats.slice(-trendPeriod.value)
+  const textColor = isDark() ? '#94a3b8' : '#475569'
+  const gridColor = isDark() ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'
+
   return {
-    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#1a1a28',
-      borderColor: 'rgba(255,255,255,0.1)',
-      borderRadius: 10,
-      textStyle: {
-        color: '#e2e8f0',
-        fontSize: 13
-      },
+      backgroundColor: isDark() ? '#1a1a28' : '#ffffff',
+      borderColor: isDark() ? 'rgba(255,255,255,0.1)' : '#e2e8f0',
+      textStyle: { color: isDark() ? '#f8fafc' : '#0f172a' },
       formatter: (params: any) => {
-        let result = `<div style="font-weight:600;margin-bottom:6px;color:#94a3b8">${params[0].axisValue}</div>`
-        params.forEach((param: any) => {
-          result += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0">${param.marker}<span style="color:#94a3b8">${param.seriesName}</span><span style="font-weight:600;margin-left:auto">¥${formatAmount(param.value)}</span></div>`
+        let result = `<div style="font-weight:600;margin-bottom:4px">${params[0].axisValue}</div>`
+        params.forEach((item: any) => {
+          result += `<div style="display:flex;align-items:center;gap:8px">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
+            <span>${item.seriesName}: ¥${Number(item.value).toLocaleString()}</span>
+          </div>`
         })
         return result
-      }
+      },
     },
     legend: {
       data: ['收入', '支出'],
-      textStyle: {
-        color: '#64748b',
-        fontSize: 13
-      },
-      itemGap: 20
+      right: 0,
+      top: 0,
+      textStyle: { color: textColor },
+      itemWidth: 8,
+      itemHeight: 8,
     },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '12%',
-      containLabel: true
-    },
+    grid: { left: 16, right: 16, top: 40, bottom: 16, containLabel: true },
     xAxis: {
       type: 'category',
-      data: data.map(item => item.month).reverse(),
-      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
+      data: months.map(m => m.month),
+      axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: '#475569', fontSize: 12 }
+      axisLabel: { color: textColor },
     },
     yAxis: {
       type: 'value',
-      axisLine: { show: false },
-      axisTick: { show: false },
       axisLabel: {
-        color: '#475569',
-        fontSize: 12,
-        formatter: (value: number) => `¥${formatAmount(value)}`
+        color: textColor,
+        formatter: (value: number) => `¥${(value / 1000).toFixed(0)}k`,
       },
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)', type: 'dashed' } }
+      splitLine: { lineStyle: { color: gridColor } },
     },
     series: [
       {
         name: '收入',
         type: 'line',
-        data: data.map(item => item.income).reverse(),
         smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
+        data: months.map(m => m.income),
         itemStyle: { color: '#10b981' },
-        lineStyle: { color: '#10b981', width: 2.5 },
         areaStyle: {
           color: {
             type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(16,185,129,0.25)' },
-              { offset: 1, color: 'rgba(16,185,129,0.02)' }
-            ]
-          }
-        }
+              { offset: 0, color: 'rgba(16, 185, 129, 0.25)' },
+              { offset: 1, color: 'rgba(16, 185, 129, 0.02)' },
+            ],
+          },
+        },
       },
       {
         name: '支出',
         type: 'line',
-        data: data.map(item => item.expense).reverse(),
         smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        itemStyle: { color: '#f87171' },
-        lineStyle: { color: '#f87171', width: 2.5 },
+        data: months.map(m => m.expense),
+        itemStyle: { color: '#f43f5e' },
         areaStyle: {
           color: {
             type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(248,113,113,0.25)' },
-              { offset: 1, color: 'rgba(248,113,113,0.02)' }
-            ]
-          }
-        }
-      }
-    ]
+              { offset: 0, color: 'rgba(244, 63, 94, 0.25)' },
+              { offset: 1, color: 'rgba(244, 63, 94, 0.02)' },
+            ],
+          },
+        },
+      },
+    ],
   }
 })
 
-// 饼图配置
-const pieChartOption = computed(() => {
-  const data = store.categoryStats.map(item => ({
-    name: item.category_name,
-    value: item.amount
-  }))
-  
-  const palette = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#84cc16']
+// Pie chart
+const pieData = computed(() => {
+  return store.categoryStats
+    .filter(item => item.amount > 0)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 6)
+})
 
+const pieColors = ['#f43f5e', '#8b5cf6', '#f59e0b', '#3b82f6', '#10b981', '#94a3b8']
+
+const pieChartOption = computed(() => {
   return {
-    backgroundColor: 'transparent',
-    color: palette,
     tooltip: {
       trigger: 'item',
-      backgroundColor: '#1a1a28',
-      borderColor: 'rgba(255,255,255,0.1)',
-      borderRadius: 10,
-      textStyle: {
-        color: '#e2e8f0',
-        fontSize: 13
-      },
-      formatter: (params: any) => {
-        return `<div style="font-weight:600;margin-bottom:4px">${params.name}</div><div>¥${formatAmount(params.value)} <span style="color:#64748b">(${params.percent}%)</span></div>`
-      }
+      backgroundColor: isDark() ? '#1a1a28' : '#ffffff',
+      borderColor: isDark() ? 'rgba(255,255,255,0.1)' : '#e2e8f0',
+      textStyle: { color: isDark() ? '#f8fafc' : '#0f172a' },
+      formatter: (params: any) => `${params.name}: ¥${Number(params.value).toLocaleString()} (${params.percent}%)`,
     },
-    legend: {
-      orient: 'vertical',
-      left: 'left',
-      textStyle: { color: '#64748b', fontSize: 12 },
-      itemWidth: 10,
-      itemHeight: 10,
-      borderRadius: 5
-    },
+    legend: { show: false },
     series: [
       {
-        name: '支出分布',
         type: 'pie',
-        radius: ['42%', '68%'],
-        center: ['60%', '50%'],
+        radius: ['65%', '85%'],
+        center: ['50%', '50%'],
         avoidLabelOverlap: false,
-        itemStyle: {
-          borderColor: '#151520',
-          borderWidth: 3,
-          borderRadius: 6
-        },
-        label: {
-          show: false,
-          position: 'center',
-          color: '#e2e8f0'
-        },
-        emphasis: {
-          label: {
-            show: true,
-            fontSize: 15,
-            fontWeight: 'bold',
-            color: '#e2e8f0'
-          },
-          itemStyle: {
-            shadowBlur: 20,
-            shadowColor: 'rgba(0,0,0,0.3)'
-          }
-        },
-        labelLine: { show: false },
-        data: data
-      }
-    ]
+        itemStyle: { borderRadius: 4, borderColor: isDark() ? '#151520' : '#ffffff', borderWidth: 2 },
+        label: { show: false },
+        emphasis: { label: { show: false } },
+        data: pieData.value.map((item, index) => ({
+          value: item.amount,
+          name: item.category_name,
+          itemStyle: { color: pieColors[index % pieColors.length] },
+        })),
+      },
+    ],
   }
 })
 
-// 方法
-const formatAmount = (amount: number) => {
-  return Math.abs(amount).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+const healthScore = computed(() => {
+  const balance = store.currentMonthBalance
+  const income = store.currentMonthIncome
+  if (income <= 0) return 70
+  const rate = balance / income
+  if (rate >= 0.3) return 90
+  if (rate >= 0.2) return 80
+  if (rate >= 0.1) return 70
+  return 60
+})
 
-const formatDate = (dateStr: string) => {
-  return dayjs(dateStr).format('MM-DD')
-}
+onMounted(() => {
+  store.fetchMonthlyStats(12)
+  store.fetchCategoryStats(
+    dayjs().startOf('month').format('YYYY-MM-DD'),
+    dayjs().endOf('month').format('YYYY-MM-DD'),
+    'expense'
+  )
+})
 
-const getProgressColor = (percentage: number) => {
-  if (percentage < 60) return '#10b981'
-  if (percentage < 80) return '#f59e0b'
-  return '#ef4444'
-}
-
-const updateTrendChart = async () => {
-  await store.fetchMonthlyStats(parseInt(trendPeriod.value))
-}
-
-const updateCategoryChart = async () => {
-  const startDate = dayjs(currentMonth.value).startOf('month').format('YYYY-MM-DD')
-  const endDate = dayjs(currentMonth.value).endOf('month').format('YYYY-MM-DD')
-  await store.fetchCategoryStats(startDate, endDate, 'expense')
-}
-
-const goToTransactions = () => {
-  // 导航到交易记录页面
-  // 这里可以通过emit或路由跳转实现
-}
-
-const goToBudget = () => {
-  // 导航到预算管理页面
-}
-
-onMounted(async () => {
-  // 初始化图表数据
-  await updateCategoryChart()
-  
-  // 确保图表正确渲染
-  nextTick(() => {
-    if (trendChartRef.value) {
-      trendChartRef.value.resize()
-    }
-    if (pieChartRef.value) {
-      pieChartRef.value.resize()
-    }
-  })
+watch(currentMonth, (month) => {
+  const start = dayjs(month).startOf('month').format('YYYY-MM-DD')
+  const end = dayjs(month).endOf('month').format('YYYY-MM-DD')
+  store.fetchCategoryStats(start, end, 'expense')
 })
 </script>
 
+<template>
+  <div class="dashboard-view">
+    <!-- Net Worth Overview -->
+    <MoneyCard no-padding>
+      <div class="net-worth">
+        <div class="net-worth-bg"></div>
+        <div class="net-worth-content">
+          <div class="text-sm text-secondary mb-1">本月净资产</div>
+          <div class="flex items-baseline gap-3 flex-wrap">
+            <span class="net-worth-value">¥ {{ formatAmount(store.currentMonthBalance) }}</span>
+            <span class="net-worth-trend" :class="netWorthTrend >= 0 ? 'up' : 'down'">
+              {{ netWorthTrend >= 0 ? '↑' : '↓' }} {{ Math.abs(netWorthTrend) }}%
+            </span>
+            <span class="text-sm text-tertiary">较上月</span>
+          </div>
+          <div class="net-worth-summary">
+            <div class="summary-item">
+              <span class="dot income"></span>
+              <span class="text-secondary">本月收入</span>
+              <span class="font-semibold text-primary">¥ {{ formatAmount(store.currentMonthIncome) }}</span>
+            </div>
+            <div class="summary-item">
+              <span class="dot expense"></span>
+              <span class="text-secondary">本月支出</span>
+              <span class="font-semibold text-primary">¥ {{ formatAmount(store.currentMonthExpense) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </MoneyCard>
+
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+      <MoneyStat
+        label="本月收入"
+        :value="`¥ ${formatAmount(store.currentMonthIncome)}`"
+        :trend="12.3"
+        type="income"
+      />
+      <MoneyStat
+        label="本月支出"
+        :value="`¥ ${formatAmount(store.currentMonthExpense)}`"
+        :trend="-5.7"
+        type="expense"
+      />
+      <MoneyStat
+        label="本月结余"
+        :value="`¥ ${formatAmount(store.currentMonthBalance)}`"
+        :trend="22.1"
+        type="primary"
+      />
+    </div>
+
+    <!-- Main Grid -->
+    <div class="main-grid">
+      <!-- Left Column -->
+      <div class="left-column">
+        <!-- Trend Chart -->
+        <MoneyCard title="收支趋势">
+          <template #header>
+            <div class="trend-header">
+              <h3>收支趋势</h3>
+              <div class="trend-controls">
+                <button
+                  v-for="p in [3, 6, 12]"
+                  :key="p"
+                  class="period-btn"
+                  :class="{ active: trendPeriod === p }"
+                  @click="trendPeriod = p"
+                >
+                  近{{ p }}个月
+                </button>
+              </div>
+            </div>
+          </template>
+          <div class="chart-container">
+            <v-chart :option="trendChartOption" autoresize />
+          </div>
+        </MoneyCard>
+
+        <!-- Recent Transactions -->
+        <MoneyCard title="最近交易" header-action="查看全部" @action="$emit('navigate', 'transactions')">
+          <div class="transactions-list">
+            <div
+              v-for="tx in recentTransactions"
+              :key="tx.id"
+              class="transaction-item"
+            >
+              <div class="transaction-left">
+                <div class="category-icon" :style="{ backgroundColor: `${tx.category_color || '#6366f1'}20`, color: tx.category_color || '#6366f1' }">
+                  {{ tx.category_icon || '💰' }}
+                </div>
+                <div class="transaction-info">
+                  <div class="transaction-desc">{{ tx.description || tx.category_name }}</div>
+                  <div class="transaction-date">{{ formatDate(tx.date) }}</div>
+                </div>
+              </div>
+              <div class="transaction-amount" :class="tx.type">
+                {{ tx.type === 'income' ? '+' : '-' }}¥{{ formatAmount(tx.amount) }}
+              </div>
+            </div>
+            <div v-if="recentTransactions.length === 0" class="empty-hint">
+              暂无交易记录
+            </div>
+          </div>
+        </MoneyCard>
+      </div>
+
+      <!-- Right Column -->
+      <div class="right-column">
+        <!-- Budget Alerts -->
+        <MoneyCard title="预算告警">
+          <template #header>
+            <div class="budget-header">
+              <h3>预算告警</h3>
+              <span class="alert-badge">2 个超支</span>
+            </div>
+          </template>
+          <div class="budget-list">
+            <div v-for="budget in activeBudgets" :key="budget.id" class="budget-item">
+              <div class="budget-info">
+                <span class="text-secondary">{{ budget.name }}</span>
+                <span class="font-medium text-primary">
+                  ¥{{ formatAmount(budget.spent) }} / ¥{{ formatAmount(budget.amount) }}
+                </span>
+              </div>
+              <MoneyProgress
+                :percentage="budget.percentage"
+                :color="getProgressColor(budget.percentage)"
+                size="sm"
+              />
+              <div class="budget-status" :class="getProgressColor(budget.percentage)">
+                <span v-if="budget.percentage >= 100">已超支 ¥{{ formatAmount(Math.abs(budget.remaining)) }}</span>
+                <span v-else-if="budget.percentage >= 80">接近预算上限</span>
+                <span v-else>还可支出 ¥{{ formatAmount(budget.remaining) }}</span>
+              </div>
+            </div>
+            <div v-if="activeBudgets.length === 0" class="empty-hint">
+              暂无预算设置
+            </div>
+          </div>
+        </MoneyCard>
+
+        <!-- Expense Distribution -->
+        <MoneyCard title="支出分布">
+          <div class="pie-chart-container">
+            <v-chart :option="pieChartOption" autoresize />
+          </div>
+          <div class="pie-legend">
+            <div v-for="(item, index) in pieData" :key="item.category_id" class="legend-item">
+              <div class="legend-dot" :style="{ backgroundColor: pieColors[index % pieColors.length] }"></div>
+              <span class="legend-name">{{ item.category_name }}</span>
+              <span class="legend-value">{{ item.percentage.toFixed(0) }}%</span>
+            </div>
+          </div>
+        </MoneyCard>
+
+        <!-- Financial Health -->
+        <MoneyCard title="财务健康度">
+          <div class="health-container">
+            <div class="health-ring">
+              <div class="health-ring-inner"></div>
+              <div class="health-score">{{ healthScore }}</div>
+            </div>
+            <div class="health-text">
+              <div class="font-medium text-primary">财务状况良好</div>
+              <div class="text-xs text-tertiary mt-1">储蓄率健康，预算控制需加强</div>
+            </div>
+          </div>
+        </MoneyCard>
+      </div>
+    </div>
+  </div>
+</template>
+
 <style scoped>
-.dashboard-root {
+.dashboard-view {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  gap: 24px;
 }
 
-.dashboard-tabs :deep(.el-tabs__header) {
-  margin: 0 0 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.dashboard-tabs :deep(.el-tabs__nav-wrap::after) {
-  display: none;
-}
-
-.dashboard-tabs :deep(.el-tabs__item) {
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-.dashboard-tabs :deep(.el-tabs__item.is-active) {
-  color: #a5b4fc;
-}
-
-.dashboard-tabs :deep(.el-tabs__active-bar) {
-  background: linear-gradient(90deg, #6366f1, #8b5cf6);
-}
-
-.dashboard-tabs :deep(.el-tabs__content) {
-  overflow: visible;
-}
-
-.deep-tab-inner {
-  margin: 0 -4px;
-  min-height: 0;
-}
-
-.dashboard {
-  color: #e2e8f0;
-}
-
-.stats-cards {
-  margin-bottom: 24px;
-}
-
-.stat-card {
-  border-radius: 16px;
-  overflow: hidden;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  cursor: default;
+.net-worth {
   position: relative;
+  padding: 24px;
+  overflow: hidden;
 }
 
-.stat-card::before {
-  content: '';
+.net-worth-bg {
   position: absolute;
-  inset: 0;
-  border-radius: 16px;
-  opacity: 0;
-  transition: opacity 0.25s;
+  top: 0;
+  right: 0;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: var(--ms-gradient-primary);
+  opacity: 0.06;
+  transform: translate(20%, -40%);
 }
 
-.stat-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(255, 255, 255, 0.12);
+.net-worth-content {
+  position: relative;
+  z-index: 1;
 }
 
-.stat-card:hover::before {
-  opacity: 1;
-}
-
-.income-card {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.03) 100%);
-  border-color: rgba(16, 185, 129, 0.2) !important;
-}
-
-.income-card:hover {
-  box-shadow: 0 8px 32px rgba(16, 185, 129, 0.15);
-}
-
-.expense-card {
-  background: linear-gradient(135deg, rgba(248, 113, 113, 0.1) 0%, rgba(248, 113, 113, 0.03) 100%);
-  border-color: rgba(248, 113, 113, 0.2) !important;
-}
-
-.expense-card:hover {
-  box-shadow: 0 8px 32px rgba(248, 113, 113, 0.15);
-}
-
-.balance-card {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(99, 102, 241, 0.04) 100%);
-  border-color: rgba(99, 102, 241, 0.25) !important;
-}
-
-.balance-card:hover {
-  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.2);
-}
-
-.transactions-card {
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.1) 0%, rgba(251, 191, 36, 0.03) 100%);
-  border-color: rgba(251, 191, 36, 0.2) !important;
-}
-
-.transactions-card:hover {
-  box-shadow: 0 8px 32px rgba(251, 191, 36, 0.15);
-}
-
-.stat-content {
-  display: flex;
-  align-items: center;
-  padding: 6px 0;
-  gap: 16px;
-}
-
-.stat-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  flex-shrink: 0;
-}
-
-.income-card .stat-icon {
-  background: linear-gradient(135deg, #10b981, #34d399);
-  color: white;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
-}
-
-.expense-card .stat-icon {
-  background: linear-gradient(135deg, #ef4444, #f87171);
-  color: white;
-  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
-}
-
-.balance-card .stat-icon {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  color: white;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
-}
-
-.transactions-card .stat-icon {
-  background: linear-gradient(135deg, #f59e0b, #fbbf24);
-  color: white;
-  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
-}
-
-.stat-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.stat-label {
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}
-
-.income-card .stat-label { color: rgba(16, 185, 129, 0.8); }
-.expense-card .stat-label { color: rgba(248, 113, 113, 0.8); }
-.balance-card .stat-label { color: rgba(165, 180, 252, 0.8); }
-.transactions-card .stat-label { color: rgba(251, 191, 36, 0.8); }
-
-.stat-value {
-  font-size: 26px;
+.net-worth-value {
+  font-size: 36px;
   font-weight: 700;
-  color: #f1f5f9;
-  letter-spacing: -0.5px;
-  line-height: 1;
+  color: var(--ms-text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
-.stat-value.negative {
-  color: #f87171;
-}
-
-.charts-section {
-  margin-bottom: 24px;
-}
-
-.chart-card {
-  height: 380px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
+.net-worth-trend {
+  display: inline-flex;
   align-items: center;
-  color: #e2e8f0;
-  font-size: 15px;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
   font-weight: 600;
 }
 
-.chart-container {
-  height: 295px;
+.net-worth-trend.up {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--ms-income);
 }
 
-.trend-chart,
-.pie-chart {
+.net-worth-trend.down {
+  background-color: rgba(244, 63, 94, 0.1);
+  color: var(--ms-expense);
+}
+
+.net-worth-summary {
+  display: flex;
+  gap: 24px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot.income { background-color: var(--ms-income); }
+.dot.expense { background-color: var(--ms-expense); }
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.main-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+
+.left-column,
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.trend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
-  height: 100%;
 }
 
-.bottom-section {
-  margin-bottom: 24px;
+.trend-header h3 {
+  margin: 0;
+  font-size: var(--ms-text-base);
+  font-weight: var(--ms-font-semibold);
+  color: var(--ms-text-primary);
 }
 
-.recent-transactions,
-.budget-progress {
-  height: 460px;
+.trend-controls {
+  display: flex;
+  gap: 4px;
 }
 
-.transactions-list,
-.budget-list {
-  max-height: 370px;
-  overflow-y: auto;
+.period-btn {
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ms-text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.period-btn:hover {
+  color: var(--ms-text-secondary);
+  background-color: var(--ms-surface-hover);
+}
+
+.period-btn.active {
+  color: white;
+  background: var(--ms-gradient-primary);
+}
+
+.chart-container {
+  height: 280px;
+}
+
+.pie-chart-container {
+  height: 200px;
+}
+
+.transactions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .transaction-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 11px 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  transition: background 0.15s;
-  border-radius: 8px;
-  margin: 0 -4px;
-}
-
-.transaction-item:last-child {
-  border-bottom: none;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: var(--ms-radius-lg);
+  transition: background-color 0.15s ease;
 }
 
 .transaction-item:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background-color: var(--ms-surface-hover);
 }
 
 .transaction-left {
@@ -726,141 +562,173 @@ onMounted(async () => {
   gap: 12px;
 }
 
-.transaction-icon {
-  font-size: 18px;
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(99, 102, 241, 0.12);
-  flex-shrink: 0;
-}
-
 .transaction-info {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .transaction-desc {
   font-size: 14px;
   font-weight: 500;
-  color: #cbd5e1;
-  margin-bottom: 2px;
-  line-height: 1.3;
+  color: var(--ms-text-primary);
 }
 
 .transaction-date {
   font-size: 12px;
-  color: #475569;
+  color: var(--ms-text-tertiary);
 }
 
 .transaction-amount {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .transaction-amount.income {
-  color: #34d399;
+  color: var(--ms-income);
 }
 
 .transaction-amount.expense {
-  color: #f87171;
-}
-
-.budget-item {
-  margin-bottom: 16px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  transition: all 0.2s;
-}
-
-.budget-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--ms-expense);
 }
 
 .budget-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  justify-content: space-between;
+  width: 100%;
 }
 
-.budget-category {
-  display: flex;
+.budget-header h3 {
+  margin: 0;
+  font-size: var(--ms-text-base);
+  font-weight: var(--ms-font-semibold);
+  color: var(--ms-text-primary);
+}
+
+.alert-badge {
+  display: inline-flex;
   align-items: center;
-  font-weight: 600;
-  font-size: 14px;
-  color: #e2e8f0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  background-color: rgba(244, 63, 94, 0.1);
+  color: var(--ms-expense);
+}
+
+.budget-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.budget-item {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.category-icon {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.budget-amount {
-  font-size: 13px;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.budget-progress-bar {
-  margin-bottom: 8px;
+.budget-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
 }
 
 .budget-status {
   font-size: 12px;
-  font-weight: 500;
 }
 
-.status-good {
-  color: #34d399;
-}
+.budget-status.primary { color: var(--ms-text-tertiary); }
+.budget-status.warning { color: var(--ms-warning); }
+.budget-status.danger { color: var(--ms-expense); }
 
-.status-warning {
-  color: #fbbf24;
-}
-
-.status-danger {
-  color: #f87171;
-}
-
-.empty-state {
+.pie-legend {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 200px;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
 }
 
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .stat-content {
-    flex-direction: column;
-    text-align: center;
+.legend-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-name {
+  color: var(--ms-text-secondary);
+  flex: 1;
+  margin-left: 8px;
+}
+
+.legend-value {
+  font-weight: 600;
+  color: var(--ms-text-primary);
+}
+
+.health-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.health-ring {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: conic-gradient(var(--ms-gradient-primary) 0deg 288deg, var(--ms-bg-tertiary) 288deg 360deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.health-ring-inner {
+  position: absolute;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background-color: var(--ms-surface-primary);
+}
+
+.health-score {
+  position: relative;
+  z-index: 1;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ms-text-primary);
+}
+
+.health-text {
+  text-align: center;
+}
+
+.empty-hint {
+  text-align: center;
+  padding: 24px;
+  color: var(--ms-text-tertiary);
+  font-size: 14px;
+}
+
+@media (max-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
   }
-  
-  .chart-card {
-    height: 300px;
-  }
-  
-  .chart-container {
-    height: 220px;
-  }
-  
-  .recent-transactions,
-  .budget-progress {
-    height: auto;
-  }
-  
-  .transactions-list,
-  .budget-list {
-    max-height: 300px;
+
+  .main-grid {
+    grid-template-columns: 1fr;
   }
 }
-</style> 
+</style>

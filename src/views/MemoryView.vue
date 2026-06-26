@@ -127,7 +127,7 @@ onMounted(async () => {
   <div class="workspace-editor">
     <!-- Memory 目录配置 -->
     <div class="memory-path-bar">
-      <div class="path-label">记忆目录：</div>
+      <div class="path-label">记忆目录</div>
       <el-input
         v-model="memoryPathInput"
         placeholder="默认路径"
@@ -144,7 +144,7 @@ onMounted(async () => {
       <span class="path-hint">修改后需重启应用</span>
     </div>
 
-    <div class="file-sidebar">
+    <aside class="file-sidebar">
       <div class="sidebar-header">配置文件</div>
       <div
         v-for="file in store.workspaceFiles"
@@ -157,9 +157,9 @@ onMounted(async () => {
         <span class="file-meta">{{ file.char_count }}字</span>
         <span v-if="!file.exists" class="file-badge">未创建</span>
       </div>
-    </div>
+    </aside>
 
-    <div class="editor-area">
+    <main class="editor-area">
       <div class="editor-toolbar">
         <div class="toolbar-left">
           <span class="file-title">{{ FILE_LABELS[activeFile] || activeFile }}</span>
@@ -197,7 +197,7 @@ onMounted(async () => {
           </span>
         </div>
       </div>
-    </div>
+    </main>
   </div>
 </template>
 
@@ -205,200 +205,199 @@ onMounted(async () => {
 .workspace-editor {
   display: flex;
   flex-wrap: wrap;
-  height: calc(100vh - 112px);
-  gap: 16px;
+  height: 100%;
+  gap: var(--ms-space-4);
 }
 
 .memory-path-bar {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: #151520;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 14px;
-  padding: 14px 20px;
+  gap: var(--ms-space-3);
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-subtle);
+  border-radius: var(--ms-radius-xl);
+  padding: var(--ms-space-3) var(--ms-space-5);
   flex-shrink: 0;
+  box-shadow: var(--ms-shadow-sm);
 }
 
 .path-label {
-  font-size: 14px;
+  font-size: var(--ms-text-sm);
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--ms-text-primary);
   white-space: nowrap;
 }
 
-.path-input {
-  flex: 1;
-  max-width: 500px;
-}
+.path-input { flex: 1; max-width: 500px; }
 
 .path-hint {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--ms-text-xs);
+  color: var(--ms-text-tertiary);
   margin-left: auto;
 }
 
 .file-sidebar {
   width: 220px;
   flex-shrink: 0;
-  background: #151520;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 14px;
-  padding: 16px 0;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-subtle);
+  border-radius: var(--ms-radius-xl);
+  padding: var(--ms-space-4) 0;
   overflow-y: auto;
+  box-shadow: var(--ms-shadow-sm);
 }
 
-.sidebar-header {
-  padding: 0 16px 12px;
-  font-size: 13px;
+.file-sidebar .sidebar-header {
+  padding: 0 var(--ms-space-4) var(--ms-space-3);
+  font-size: var(--ms-text-xs);
   font-weight: 600;
-  color: #64748b;
+  color: var(--ms-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  margin-bottom: 8px;
+  border-bottom: 1px solid var(--ms-border-subtle);
+  margin-bottom: var(--ms-space-2);
 }
 
 .file-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  margin: 2px 10px;
-  border-radius: 10px;
+  padding: var(--ms-space-2) var(--ms-space-4);
+  margin: 2px var(--ms-space-3);
+  border-radius: var(--ms-radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #94a3b8;
-  font-size: 14px;
+  color: var(--ms-text-secondary);
+  font-size: var(--ms-text-sm);
+  border: 1px solid transparent;
 }
 
 .file-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #cbd5e1;
+  background: var(--ms-surface-hover);
+  color: var(--ms-text-primary);
 }
 
 .file-item.active {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--ms-primary-500);
+  border-color: rgba(99, 102, 241, 0.25);
 }
 
-.file-item.missing {
-  opacity: 0.6;
-}
+.file-item.missing { opacity: 0.6; }
 
-.file-name {
-  font-weight: 500;
-}
+.file-name { font-weight: 500; }
 
 .file-meta {
-  font-size: 11px;
-  color: #64748b;
+  font-size: var(--ms-text-xs);
+  color: var(--ms-text-tertiary);
   margin-left: auto;
-  margin-right: 8px;
+  margin-right: var(--ms-space-2);
 }
 
 .file-badge {
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--ms-warning);
 }
 
 .editor-area {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #151520;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 14px;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-subtle);
+  border-radius: var(--ms-radius-xl);
   overflow: hidden;
+  box-shadow: var(--ms-shadow-sm);
+  min-width: 0;
 }
 
 .editor-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: var(--ms-space-3) var(--ms-space-5);
+  border-bottom: 1px solid var(--ms-border-subtle);
 }
 
 .toolbar-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--ms-space-2);
 }
 
 .file-title {
-  font-size: 15px;
+  font-size: var(--ms-text-base);
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--ms-text-primary);
 }
 
 .unsaved-badge {
-  font-size: 11px;
+  font-size: var(--ms-text-xs);
   padding: 2px 8px;
   border-radius: 4px;
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--ms-warning);
 }
 
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--ms-space-2);
 }
 
 .editor-body {
   flex: 1;
-  padding: 16px 20px;
+  padding: var(--ms-space-4) var(--ms-space-5);
   overflow: hidden;
 }
 
+.editor-textarea { height: 100%; }
 .editor-textarea :deep(.el-textarea__inner) {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
+  background: var(--ms-bg-secondary);
+  border: 1px solid var(--ms-border-subtle);
+  color: var(--ms-text-primary);
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
+  font-size: var(--ms-text-sm);
   line-height: 1.7;
-  border-radius: 10px;
-  padding: 16px;
+  border-radius: var(--ms-radius-lg);
+  padding: var(--ms-space-4);
   height: 100%;
 }
 
 .editor-textarea :deep(.el-textarea__inner:focus) {
-  border-color: rgba(99, 102, 241, 0.5);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+  border-color: var(--ms-primary-500);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
 }
 
 .editor-textarea :deep(.el-textarea__inner::placeholder) {
-  color: #475569;
+  color: var(--ms-text-tertiary);
 }
 
 .editor-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  font-size: 12px;
-  color: #64748b;
+  padding: var(--ms-space-2) var(--ms-space-5);
+  border-top: 1px solid var(--ms-border-subtle);
+  font-size: var(--ms-text-xs);
+  color: var(--ms-text-tertiary);
 }
 
 .footer-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ms-space-2);
 }
 
 .warning {
-  color: #f59e0b;
+  color: var(--ms-warning);
   font-weight: 600;
 }
 
 .limit-warning {
-  color: #f59e0b;
+  color: var(--ms-warning);
 }
 </style>

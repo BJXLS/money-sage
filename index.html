@@ -1,32 +1,33 @@
 <!doctype html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MoneySage - 记账本</title>
+    <script>
+      (function () {
+        try {
+          const stored = localStorage.getItem('money-sage-theme')
+          const theme = stored === 'light' || stored === 'dark'
+            ? stored
+            : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          document.documentElement.setAttribute('data-theme', theme)
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light')
+        }
+      })()
+    </script>
     <style>
       html, body {
         margin: 0;
         padding: 0;
-        background-color: #0d0d14;
-        color: #e2e8f0;
-        font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
-      
-      #app {
-        min-height: 100vh;
-        background-color: #0d0d14;
-      }
-      
-      .dark {
-        color-scheme: dark;
-      }
+      #app { min-height: 100vh; }
     </style>
   </head>
-
   <body>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>

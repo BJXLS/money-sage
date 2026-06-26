@@ -316,12 +316,12 @@ const handleSubmit = async () => {
 .budget-name {
   font-size: 14px;
   font-weight: 500;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .budget-category {
   font-size: 12px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .budget-amount {
@@ -333,11 +333,11 @@ const handleSubmit = async () => {
 
 .budget-remaining {
   font-size: 12px;
-  color: #409eff;
+  color: var(--ms-info);
 }
 
 .budget-remaining.over-budget {
-  color: #f56c6c;
+  color: var(--ms-expense);
 }
 
 :deep(.el-input-number) {

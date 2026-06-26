@@ -135,7 +135,7 @@ onMounted(() => void refresh())
 <template>
   <div class="usage-stats">
     <!-- 筛选栏 -->
-    <el-card class="filter-card" shadow="never">
+    <div class="filter-card">
       <div class="filter-row">
         <el-date-picker
           v-model="dateRange"
@@ -192,7 +192,7 @@ onMounted(() => void refresh())
           </el-button>
         </div>
       </div>
-    </el-card>
+    </div>
 
     <!-- 总览 -->
     <div class="overview-grid">
@@ -217,13 +217,11 @@ onMounted(() => void refresh())
     </div>
 
     <!-- 配置卡片 -->
-    <el-card class="section-card" shadow="never">
-      <template #header>
-        <div class="section-header">
-          <span>按 LLM 配置</span>
-          <span class="section-sub">点击或筛选配置查看详情</span>
-        </div>
-      </template>
+    <div class="section-card">
+      <div class="section-header">
+        <span>按 LLM 配置</span>
+        <span class="section-sub">点击或筛选配置查看详情</span>
+      </div>
       <div v-if="configSummary.length === 0" class="empty-block">
         <el-empty description="暂无 token 用量数据" />
       </div>
@@ -255,16 +253,14 @@ onMounted(() => void refresh())
           <div class="config-time">最近：{{ formatTime(cfg.last_used_at) }}</div>
         </div>
       </div>
-    </el-card>
+    </div>
 
     <!-- 按模型聚合 -->
-    <el-card class="section-card" shadow="never">
-      <template #header>
-        <div class="section-header">
-          <span>按模型</span>
-          <span class="section-sub">同一配置下的不同 model 会单独聚合</span>
-        </div>
-      </template>
+    <div class="section-card">
+      <div class="section-header">
+        <span>按模型</span>
+        <span class="section-sub">同一配置下的不同 model 会单独聚合</span>
+      </div>
       <el-table :data="modelSummary" v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="model" label="模型" min-width="200" />
         <el-table-column prop="provider" label="供应商" width="140" />
@@ -291,16 +287,14 @@ onMounted(() => void refresh())
           <template #default="{ row }">{{ formatTime(row.last_used_at) }}</template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </div>
 
     <!-- 明细 -->
-    <el-card class="section-card" shadow="never">
-      <template #header>
-        <div class="section-header">
-          <span>调用明细</span>
-          <span class="section-sub">每次 LLM 请求一行，按时间倒序</span>
-        </div>
-      </template>
+    <div class="section-card">
+      <div class="section-header">
+        <span>调用明细</span>
+        <span class="section-sub">每次 LLM 请求一行，按时间倒序</span>
+      </div>
       <el-table :data="entries" v-loading="loading" empty-text="暂无数据">
         <el-table-column label="时间" width="170">
           <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
@@ -352,7 +346,7 @@ onMounted(() => void refresh())
           @click="onNextPage"
         >下一页</el-button>
       </div>
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -360,23 +354,27 @@ onMounted(() => void refresh())
 .usage-stats {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ms-space-4);
 }
 
 .filter-card {
-  background: #151520 !important;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-subtle);
+  border-radius: var(--ms-radius-xl);
+  padding: var(--ms-space-4) var(--ms-space-5);
+  box-shadow: var(--ms-shadow-sm);
 }
 
 .filter-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: var(--ms-space-3);
 }
 
 .filter-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--ms-space-2);
   margin-left: auto;
   flex-wrap: wrap;
 }
@@ -384,7 +382,7 @@ onMounted(() => void refresh())
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(180px, 1fr));
-  gap: 14px;
+  gap: var(--ms-space-3);
 }
 
 @media (max-width: 1100px) {
@@ -394,155 +392,157 @@ onMounted(() => void refresh())
 }
 
 .overview-card {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.04));
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
-  padding: 16px 18px;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-subtle);
+  border-radius: var(--ms-radius-xl);
+  padding: var(--ms-space-4) var(--ms-space-5);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--ms-space-1);
   min-height: 92px;
+  box-shadow: var(--ms-shadow-sm);
 }
 
 .overview-label {
-  color: #94a3b8;
-  font-size: 12px;
+  color: var(--ms-text-tertiary);
+  font-size: var(--ms-text-xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .overview-value {
-  color: #e2e8f0;
+  color: var(--ms-text-primary);
   font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #e2e8f0, #a5b4fc);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .overview-sub {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--ms-text-tertiary);
+  font-size: var(--ms-text-xs);
 }
 
 .section-card {
-  background: #151520 !important;
+  background: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-subtle);
+  border-radius: var(--ms-radius-xl);
+  padding: var(--ms-space-4) var(--ms-space-5);
+  box-shadow: var(--ms-shadow-sm);
 }
 
 .section-header {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--ms-space-3);
+  margin-bottom: var(--ms-space-4);
 }
 
 .section-header > span:first-child {
-  color: #e2e8f0;
+  color: var(--ms-text-primary);
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--ms-text-base);
 }
 
 .section-sub {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--ms-text-tertiary);
+  font-size: var(--ms-text-xs);
 }
 
 .empty-block {
-  padding: 24px 0;
+  padding: var(--ms-space-6) 0;
 }
 
 .config-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
+  gap: var(--ms-space-3);
 }
 
 .config-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  padding: 16px 18px;
+  background: var(--ms-bg-secondary);
+  border: 1px solid var(--ms-border-subtle);
+  border-radius: var(--ms-radius-lg);
+  padding: var(--ms-space-4) var(--ms-space-5);
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ms-space-2);
 }
 
 .config-card:hover {
-  border-color: rgba(99, 102, 241, 0.45);
+  border-color: var(--ms-primary-500);
   background: rgba(99, 102, 241, 0.06);
   transform: translateY(-1px);
 }
 
 .config-card.active {
-  border-color: rgba(99, 102, 241, 0.7);
+  border-color: var(--ms-primary-500);
   background: rgba(99, 102, 241, 0.12);
-  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.2);
 }
 
 .config-name {
-  color: #e2e8f0;
+  color: var(--ms-text-primary);
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--ms-text-sm);
 }
 
 .config-provider {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--ms-text-tertiary);
+  font-size: var(--ms-text-xs);
   letter-spacing: 0.02em;
 }
 
 .config-tokens {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--ms-space-1);
 }
 
 .config-tokens .big {
-  color: #a5b4fc;
+  color: var(--ms-primary-500);
   font-size: 22px;
   font-weight: 700;
 }
 
 .config-tokens .unit {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--ms-text-tertiary);
+  font-size: var(--ms-text-xs);
 }
 
 .config-meta {
-  color: #94a3b8;
-  font-size: 12px;
+  color: var(--ms-text-secondary);
+  font-size: var(--ms-text-xs);
   display: flex;
   gap: 4px;
 }
 
 .config-meta .dot {
-  color: #475569;
+  color: var(--ms-text-tertiary);
 }
 
 .config-bar {
   height: 4px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ms-border-subtle);
   border-radius: 999px;
   overflow: hidden;
 }
 
 .config-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  background: var(--ms-gradient-primary);
   transition: width 0.3s;
 }
 
 .config-time {
-  color: #475569;
+  color: var(--ms-text-tertiary);
   font-size: 11px;
 }
 
 .muted {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--ms-text-tertiary);
+  font-size: var(--ms-text-xs);
   margin-left: 4px;
 }
 
@@ -550,12 +550,12 @@ onMounted(() => void refresh())
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 12px;
-  padding-top: 12px;
+  gap: var(--ms-space-3);
+  padding-top: var(--ms-space-3);
 }
 
 .page-num {
-  color: #94a3b8;
-  font-size: 13px;
+  color: var(--ms-text-secondary);
+  font-size: var(--ms-text-sm);
 }
 </style>

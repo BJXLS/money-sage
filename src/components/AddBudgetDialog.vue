@@ -539,11 +539,11 @@ const handleSubmit = async () => {
 
 <style scoped>
 .budget-dialog {
-  background: #2a2a2a;
+  background: var(--ms-surface-primary);
 }
 
 .budget-form {
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .budget-type-selector {
@@ -557,27 +557,27 @@ const handleSubmit = async () => {
   display: flex;
   align-items: center;
   padding: 20px;
-  background: #1a1a1a;
-  border: 2px solid #404040;
+  background: var(--ms-bg-secondary);
+  border: 2px solid var(--ms-border-default);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
 }
 
 .budget-type-card:hover {
-  border-color: #606060;
-  background: #2a2a2a;
+  border-color: var(--ms-border-default);
+  background: var(--ms-surface-primary);
 }
 
 .budget-type-card.active {
-  border-color: #409eff;
-  background: #409eff10;
+  border-color: var(--ms-info);
+  background: var(--ms-info)10;
 }
 
 .type-icon {
   margin-right: 16px;
   font-size: 24px;
-  color: #409eff;
+  color: var(--ms-info);
 }
 
 .type-content {
@@ -587,13 +587,13 @@ const handleSubmit = async () => {
 .type-content h4 {
   margin: 0 0 8px 0;
   font-size: 16px;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 .type-content p {
   margin: 0;
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 .category-option {
@@ -609,14 +609,14 @@ const handleSubmit = async () => {
 .budget-preview {
   margin-top: 24px;
   padding: 20px;
-  background: #1a1a1a;
+  background: var(--ms-bg-secondary);
   border-radius: 8px;
-  border: 1px solid #404040;
+  border: 1px solid var(--ms-border-default);
 }
 
 .budget-preview h4 {
   margin: 0 0 16px 0;
-  color: #ffffff;
+  color: var(--ms-text-primary);
   font-size: 16px;
 }
 
@@ -634,18 +634,18 @@ const handleSubmit = async () => {
 
 .preview-label {
   font-size: 14px;
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
   min-width: 80px;
 }
 
 .preview-value {
   font-size: 14px;
-  color: #ffffff;
+  color: var(--ms-text-primary);
   font-weight: 500;
 }
 
 .preview-value.amount {
-  color: #67c23a;
+  color: var(--ms-income);
   font-weight: 600;
 }
 
@@ -657,13 +657,13 @@ const handleSubmit = async () => {
 }
 
 .budget-type-badge.time {
-  background: #409eff20;
-  color: #409eff;
+  background: var(--ms-info)20;
+  color: var(--ms-info);
 }
 
 .budget-type-badge.event {
-  background: #67c23a20;
-  color: #67c23a;
+  background: var(--ms-income)20;
+  color: var(--ms-income);
 }
 
 .dialog-footer {
@@ -674,93 +674,93 @@ const handleSubmit = async () => {
 
 /* 深色主题适配 */
 :deep(.el-dialog) {
-  background: #2a2a2a;
-  color: #ffffff;
+  background: var(--ms-surface-primary);
+  color: var(--ms-text-primary);
 }
 
 :deep(.el-dialog__header) {
-  border-bottom: 1px solid #404040;
+  border-bottom: 1px solid var(--ms-border-default);
 }
 
 :deep(.el-dialog__title) {
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 :deep(.el-form-item__label) {
-  color: #b0b0b0;
+  color: var(--ms-text-secondary);
 }
 
 :deep(.el-input__inner) {
-  background: #1a1a1a;
-  border-color: #404040;
-  color: #ffffff;
+  background: var(--ms-bg-secondary);
+  border-color: var(--ms-border-default);
+  color: var(--ms-text-primary);
 }
 
 :deep(.el-input__inner:focus) {
-  border-color: #409eff;
+  border-color: var(--ms-info);
 }
 
 :deep(.el-select) {
-  background: #1a1a1a;
+  background: var(--ms-bg-secondary);
 }
 
 :deep(.el-select-dropdown) {
-  background: #2a2a2a;
-  border-color: #404040;
+  background: var(--ms-surface-primary);
+  border-color: var(--ms-border-default);
 }
 
 :deep(.el-option) {
-  background: #2a2a2a;
-  color: #ffffff;
+  background: var(--ms-surface-primary);
+  color: var(--ms-text-primary);
 }
 
 :deep(.el-option:hover) {
-  background: #404040;
+  background: var(--ms-border-default);
 }
 
 :deep(.el-option.selected) {
-  background: #409eff20;
-  color: #409eff;
+  background: var(--ms-info)20;
+  color: var(--ms-info);
 }
 
 :deep(.el-textarea__inner) {
-  background: #1a1a1a;
-  border-color: #404040;
-  color: #ffffff;
+  background: var(--ms-bg-secondary);
+  border-color: var(--ms-border-default);
+  color: var(--ms-text-primary);
 }
 
 :deep(.el-textarea__inner:focus) {
-  border-color: #409eff;
+  border-color: var(--ms-info);
 }
 
 :deep(.el-date-editor) {
-  background: #1a1a1a;
-  border-color: #404040;
+  background: var(--ms-bg-secondary);
+  border-color: var(--ms-border-default);
 }
 
 :deep(.el-date-editor:hover) {
-  border-color: #606060;
+  border-color: var(--ms-border-default);
 }
 
 :deep(.el-date-editor.is-focus) {
-  border-color: #409eff;
+  border-color: var(--ms-info);
 }
 
 :deep(.el-date-editor input) {
   background: transparent;
-  color: #ffffff;
+  color: var(--ms-text-primary);
 }
 
 :deep(.el-switch.is-checked .el-switch__core) {
-  background: #67c23a;
+  background: var(--ms-income);
 }
 
 :deep(.el-switch__core) {
-  background: #f56c6c;
+  background: var(--ms-expense);
 }
 
 :deep(.el-switch__action) {
-  background: #ffffff;
+  background: var(--ms-text-primary);
 }
 
 /* 响应式设计 */

@@ -1,20 +1,3 @@
-<template>
-  <div class="categories-budget-root">
-    <el-tabs v-model="activeTab" class="categories-budget-tabs">
-      <el-tab-pane label="分类管理" name="categories">
-        <div class="tab-pane-inner">
-          <CategoriesView />
-        </div>
-      </el-tab-pane>
-      <el-tab-pane label="预算设置" name="budget" lazy>
-        <div class="tab-pane-inner">
-          <BudgetView />
-        </div>
-      </el-tab-pane>
-    </el-tabs>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref } from 'vue'
 import CategoriesView from './CategoriesView.vue'
@@ -23,6 +6,29 @@ import BudgetView from './BudgetView.vue'
 const activeTab = ref<'categories' | 'budget'>('categories')
 </script>
 
+<template>
+  <div class="categories-budget-root">
+    <div class="tab-header">
+      <button
+        :class="['tab-btn', { active: activeTab === 'categories' }]"
+        @click="activeTab = 'categories'"
+      >
+        分类管理
+      </button>
+      <button
+        :class="['tab-btn', { active: activeTab === 'budget' }]"
+        @click="activeTab = 'budget'"
+      >
+        预算设置
+      </button>
+    </div>
+    <div class="tab-content">
+      <CategoriesView v-if="activeTab === 'categories'" />
+      <BudgetView v-else />
+    </div>
+  </div>
+</template>
+
 <style scoped>
 .categories-budget-root {
   display: flex;
@@ -30,34 +36,40 @@ const activeTab = ref<'categories' | 'budget'>('categories')
   min-height: 0;
 }
 
-.categories-budget-tabs :deep(.el-tabs__header) {
-  margin: 0 0 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+.tab-header {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ms-border-subtle);
 }
 
-.categories-budget-tabs :deep(.el-tabs__nav-wrap::after) {
-  display: none;
+.tab-btn {
+  padding: 8px 16px;
+  border-radius: var(--ms-radius-md);
+  font-size: var(--ms-text-sm);
+  font-weight: var(--ms-font-medium);
+  color: var(--ms-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
 }
 
-.categories-budget-tabs :deep(.el-tabs__item) {
-  color: #94a3b8;
-  font-weight: 500;
+.tab-btn:hover {
+  color: var(--ms-text-primary);
+  background-color: var(--ms-surface-hover);
 }
 
-.categories-budget-tabs :deep(.el-tabs__item.is-active) {
-  color: #a5b4fc;
+.tab-btn.active {
+  color: white;
+  background: var(--ms-gradient-primary);
 }
 
-.categories-budget-tabs :deep(.el-tabs__active-bar) {
-  background: linear-gradient(90deg, #6366f1, #8b5cf6);
-}
-
-.categories-budget-tabs :deep(.el-tabs__content) {
-  overflow: visible;
-}
-
-.tab-pane-inner {
-  margin: 0 -4px;
+.tab-content {
+  flex: 1;
   min-height: 0;
+  overflow: visible;
 }
 </style>

@@ -1,0 +1,74 @@
+@import './tokens/colors.css';
+@import './tokens/typography.css';
+@import './tokens/spacing.css';
+@import './element-overrides.css';
+
+/* Global reset and base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+}
+
+html {
+  color-scheme: light;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--ms-bg-primary);
+  color: var(--ms-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ms-border-default);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ms-text-tertiary);
+}
+
+/* Utility classes */
+.ms-surface {
+  background-color: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-subtle);
+}
+
+.ms-text-primary {
+  color: var(--ms-text-primary);
+}
+
+.ms-text-secondary {
+  color: var(--ms-text-secondary);
+}
+
+.ms-text-tertiary {
+  color: var(--ms-text-tertiary);
+}
+
+.ms-stat-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}

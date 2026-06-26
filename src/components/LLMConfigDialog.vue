@@ -551,7 +551,7 @@ function handleClose() {
 .config-list-panel {
   width: 200px;
   flex-shrink: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--ms-border-subtle);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -564,7 +564,7 @@ function handleClose() {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #475569;
+  color: var(--ms-text-tertiary);
   padding-bottom: 4px;
 }
 
@@ -575,7 +575,7 @@ function handleClose() {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: #475569;
+  color: var(--ms-text-tertiary);
 }
 
 .empty-icon { font-size: 28px; }
@@ -593,7 +593,7 @@ function handleClose() {
 .config-item {
   padding: 10px 10px 8px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ms-border-subtle);
   background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
   transition: all 0.2s;
@@ -601,8 +601,8 @@ function handleClose() {
 }
 
 .config-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--ms-border-subtle);
+  border-color: var(--ms-border-default);
 }
 
 .config-item.is-selected {
@@ -630,14 +630,14 @@ function handleClose() {
   justify-content: center;
   font-size: 10px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ms-text-primary);
   flex-shrink: 0;
 }
 
 .config-item-name {
   font-size: 13px;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--ms-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -647,7 +647,7 @@ function handleClose() {
 .active-badge {
   font-size: 9px;
   font-weight: 700;
-  color: #10b981;
+  color: var(--ms-income);
   background: rgba(16, 185, 129, 0.15);
   border: 1px solid rgba(16, 185, 129, 0.3);
   border-radius: 4px;
@@ -657,7 +657,7 @@ function handleClose() {
 
 .config-item-model {
   font-size: 11px;
-  color: #475569;
+  color: var(--ms-text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -673,26 +673,26 @@ function handleClose() {
   width: 24px !important;
   height: 24px !important;
   padding: 0 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid var(--ms-border-subtle) !important;
   background: rgba(255, 255, 255, 0.04) !important;
 }
 
 .activate-btn:hover {
   background: rgba(16, 185, 129, 0.15) !important;
   border-color: rgba(16, 185, 129, 0.4) !important;
-  color: #10b981 !important;
+  color: var(--ms-income) !important;
 }
 
 .delete-btn:hover {
   background: rgba(239, 68, 68, 0.15) !important;
   border-color: rgba(239, 68, 68, 0.4) !important;
-  color: #ef4444 !important;
+  color: var(--ms-expense) !important;
 }
 
 .new-config-btn {
   background: rgba(99, 102, 241, 0.1) !important;
   border: 1px dashed rgba(99, 102, 241, 0.4) !important;
-  color: #a5b4fc !important;
+  color: var(--ms-primary-400) !important;
   width: 100%;
   border-radius: 10px !important;
   font-size: 13px !important;
@@ -723,7 +723,7 @@ function handleClose() {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #475569;
+  color: var(--ms-text-tertiary);
   margin-bottom: 8px;
 }
 
@@ -740,15 +740,15 @@ function handleClose() {
   gap: 4px;
   padding: 8px 4px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--ms-border-subtle);
   background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .preset-card:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--ms-border-subtle);
+  border-color: rgba(99, 102, 241, 0.15);
   transform: translateY(-1px);
 }
 
@@ -762,13 +762,13 @@ function handleClose() {
 .preset-name {
   font-size: 11px;
   font-weight: 500;
-  color: #94a3b8;
+  color: var(--ms-text-secondary);
   text-align: center;
   line-height: 1.2;
 }
 
 .preset-card.is-selected .preset-name {
-  color: #a5b4fc;
+  color: var(--ms-primary-400);
 }
 
 /* 表单 */
@@ -781,7 +781,7 @@ function handleClose() {
 :deep(.config-form .el-form-item__label) {
   font-size: 12px !important;
   font-weight: 600;
-  color: #64748b !important;
+  color: var(--ms-text-tertiary) !important;
   letter-spacing: 0.02em;
   padding-bottom: 4px !important;
   line-height: 1 !important;
@@ -790,7 +790,7 @@ function handleClose() {
 
 .field-hint {
   font-size: 11px;
-  color: #475569;
+  color: var(--ms-text-tertiary);
   margin-top: 5px;
   display: flex;
   align-items: center;
@@ -804,7 +804,7 @@ function handleClose() {
   background: rgba(99, 102, 241, 0.1);
   border: 1px solid rgba(99, 102, 241, 0.25);
   border-radius: 5px;
-  color: #a5b4fc;
+  color: var(--ms-primary-400);
   cursor: pointer;
   font-size: 11px;
   transition: all 0.15s;
@@ -822,14 +822,14 @@ function handleClose() {
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: #475569;
+  color: var(--ms-text-tertiary);
   cursor: pointer;
   user-select: none;
   transition: color 0.2s;
   margin-bottom: 10px;
 }
 
-.advanced-toggle:hover { color: #94a3b8; }
+.advanced-toggle:hover { color: var(--ms-text-secondary); }
 
 .advanced-toggle .el-icon {
   transition: transform 0.25s;
@@ -843,7 +843,7 @@ function handleClose() {
   padding: 12px;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ms-border-subtle);
   margin-bottom: 4px;
 }
 
@@ -863,13 +863,13 @@ function handleClose() {
 .test-result.success {
   background: rgba(16, 185, 129, 0.1);
   border: 1px solid rgba(16, 185, 129, 0.25);
-  color: #34d399;
+  color: var(--ms-income-light);
 }
 
 .test-result.error {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #f87171;
+  color: var(--ms-expense-light);
 }
 
 /* 底部按钮 */
@@ -902,12 +902,12 @@ function handleClose() {
 .thinking-title {
   font-size: 13px;
   font-weight: 600;
-  color: #c7d2fe;
+  color: var(--ms-primary-400);
 }
 
 .thinking-desc {
   font-size: 11px;
-  color: #64748b;
+  color: var(--ms-text-tertiary);
   line-height: 1.5;
 }
 
@@ -916,7 +916,7 @@ function handleClose() {
   background: rgba(99, 102, 241, 0.15);
   border-radius: 3px;
   padding: 1px 4px;
-  color: #a5b4fc;
+  color: var(--ms-primary-400);
   font-size: 10px;
 }
 
@@ -925,7 +925,7 @@ function handleClose() {
 .config-form-panel::-webkit-scrollbar { width: 4px; }
 .config-items::-webkit-scrollbar-thumb,
 .config-form-panel::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ms-border-default);
   border-radius: 2px;
 }
 </style>

@@ -11,42 +11,39 @@ import UsageStatsView from './views/UsageStatsView.vue'
 import QuickBookingDialog from './components/QuickBookingDialog.vue'
 import LLMConfigDialog from './components/LLMConfigDialog.vue'
 import McpConfigDialog from './components/McpConfigDialog.vue'
+import ThemeToggle from './components/ui/ThemeToggle.vue'
+import MoneyButton from './components/ui/MoneyButton.vue'
 
 const store = useAppStore()
 const activeMenu = ref('dashboard')
 const showQuickBooking = ref(false)
 const showLLMConfig = ref(false)
 const showMcpConfig = ref(false)
-const isCollapsed = ref(false)
 const isInitializing = ref(true)
+
+const menus = [
+  { key: 'dashboard', label: '仪表盘', icon: 'TrendCharts' },
+  { key: 'transactions', label: '收支记录', icon: 'DocumentAdd' },
+  { key: 'categories-budget', label: '分类与预算', icon: 'Grid' },
+  { key: 'smart-analysis', label: '智能分析', icon: 'ChatDotRound' },
+  { key: 'memory', label: '记忆管理', icon: 'Files' },
+  { key: 'usage-stats', label: '用量统计', icon: 'DataLine' },
+]
 
 const handleMenuSelect = (key: string) => {
   activeMenu.value = key
 }
 
-const toggleSidebar = () => {
-  isCollapsed.value = !isCollapsed.value
-}
-
 const getPageTitle = () => {
-  const titles: Record<string, string> = {
-    dashboard: '仪表盘',
-    transactions: '收支记录',
-    'categories-budget': '分类与预算',
-    'smart-analysis': '智能分析',
-    memory: 'Agent 配置',
-    'usage-stats': '用量统计'
-  }
-  return titles[activeMenu.value] || '记账本'
+  const item = menus.find(m => m.key === activeMenu.value)
+  return item?.label || '记账本'
 }
 
-const handleQuickBookingSuccess = (data: any) => {
+const handleQuickBookingSuccess = () => {
   showQuickBooking.value = false
-  // 重新加载数据
   store.fetchTransactions()
   store.fetchMonthlyStats()
   store.fetchBudgets()
-  console.log('快速记账处理结果:', data)
 }
 
 const handleLLMConfigSaved = () => {
@@ -54,7 +51,6 @@ const handleLLMConfigSaved = () => {
 }
 
 onMounted(async () => {
-  // 轮询等待后端初始化完成
   while (true) {
     try {
       const ready = await invoke<boolean>('is_app_ready')
@@ -67,179 +63,317 @@ onMounted(async () => {
     }
     await new Promise(r => setTimeout(r, 300))
   }
-  // 就绪后再加载业务数据
   store.initializeData()
 })
 </script>
 
 <template>
-  <div class="app-container">
-    <!-- 系统初始化中遮罩 -->
-    <div v-if="isInitializing" class="init-overlay">
-      <div class="init-content">
-        <el-icon :size="40" class="init-icon"><Loading /></el-icon>
-        <p class="init-text">系统初始化中</p>
+  <div class="ms-app">
+    <!-- 初始化遮罩 -->
+    <div v-if="isInitializing" class="ms-init-overlay">
+      <div class="ms-init-content">
+        <el-icon :size="40" class="ms-init-icon"><Loading /></el-icon>
+        <p class="ms-init-text">系统初始化中</p>
       </div>
     </div>
 
-    <el-container>
+    <div class="ms-layout">
       <!-- 侧边栏 -->
-      <el-aside :width="isCollapsed ? '64px' : '240px'" class="sidebar" :class="{ 'is-collapsed': isCollapsed }">
-        <div class="logo">
-          <div class="logo-icon">
-            <el-icon :size="18"><Files /></el-icon>
+      <aside class="ms-sidebar">
+        <div class="ms-sidebar-header">
+          <div class="ms-logo">
+            <svg class="ms-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="ms-logo-text">MoneySage</span>
           </div>
-          <h2 v-show="!isCollapsed" class="logo-text">MoneySage</h2>
         </div>
-        
-        <!-- 汉堡菜单按钮 -->
-        <div class="collapse-btn" @click="toggleSidebar">
-          <el-icon><Menu /></el-icon>
-        </div>
-        
-        <el-menu
-          :default-active="activeMenu"
-          class="sidebar-menu"
-          @select="handleMenuSelect"
-          background-color="transparent"
-          text-color="#b0b0b0"
-          active-text-color="#ffffff"
-          :collapse="isCollapsed"
-          :collapse-transition="false"
-        >
-          <el-menu-item index="dashboard">
-            <el-icon><TrendCharts /></el-icon>
-            <template #title>仪表盘</template>
-          </el-menu-item>
-          
-          <el-menu-item index="transactions">
-            <el-icon><DocumentAdd /></el-icon>
-            <template #title>收支记录</template>
-          </el-menu-item>
-          
-          <el-menu-item index="categories-budget">
-            <el-icon><Grid /></el-icon>
-            <template #title>分类与预算</template>
-          </el-menu-item>
 
-          <el-menu-item index="smart-analysis">
-            <el-icon><ChatDotRound /></el-icon>
-            <template #title>智能分析</template>
-          </el-menu-item>
+        <nav class="ms-sidebar-nav">
+          <div
+            v-for="menu in menus"
+            :key="menu.key"
+            class="ms-nav-item"
+            :class="{ active: activeMenu === menu.key }"
+            @click="handleMenuSelect(menu.key)"
+          >
+            <el-icon :size="18">
+              <component :is="menu.icon" />
+            </el-icon>
+            <span>{{ menu.label }}</span>
+          </div>
+        </nav>
 
-          <el-menu-item index="memory">
-            <el-icon><Files /></el-icon>
-            <template #title>记忆管理</template>
-          </el-menu-item>
-
-          <el-menu-item index="usage-stats">
-            <el-icon><DataLine /></el-icon>
-            <template #title>用量统计</template>
-          </el-menu-item>
-        </el-menu>
-      </el-aside>
-      
-      <!-- 主内容区 -->
-      <el-main class="main-content">
-        <!-- 顶部操作栏 -->
-        <div class="header-bar">
-          <div class="header-left">
-            <div class="search-container">
-              <el-input 
-                placeholder="搜索交易记录..." 
-                prefix-icon="Search"
-                class="search-input"
-                clearable
-              />
+        <div class="ms-sidebar-footer">
+          <div class="ms-user-card">
+            <div class="ms-user-avatar">G</div>
+            <div class="ms-user-info">
+              <div class="ms-user-name">GeHao</div>
+              <div class="ms-user-role">Pro 用户</div>
             </div>
-            <h3>{{ getPageTitle() }}</h3>
-          </div>
-          <div class="header-right">
-            <el-button @click="showQuickBooking = true" class="quick-booking-btn">
-              <el-icon><Plus /></el-icon>
-              快速记账
-            </el-button>
-            <el-button @click="showMcpConfig = true" class="mcp-config-btn" title="MCP 工具服务器">
-              <el-icon><Connection /></el-icon>
-            </el-button>
-            <el-button @click="showLLMConfig = true" class="llm-config-btn" title="大模型配置">
-              <el-icon><Setting /></el-icon>
-            </el-button>
           </div>
         </div>
-        
-        <!-- 页面内容 -->
-        <div class="page-content">
-          <!-- 仪表盘 -->
-          <DashboardView v-if="activeMenu === 'dashboard'" />
-          
-          <!-- 交易记录 -->
-          <TransactionsView v-else-if="activeMenu === 'transactions'" />
-          
-          <!-- 分类与预算 -->
-          <CategoriesBudgetView v-else-if="activeMenu === 'categories-budget'" />
-          
-          <!-- 智能分析 -->
-          <AnalysisView v-else-if="activeMenu === 'smart-analysis'" />
-          
-          <!-- 记忆管理 -->
-          <MemoryView v-else-if="activeMenu === 'memory'" />
+      </aside>
 
-          <!-- 用量统计 -->
+      <!-- 主内容 -->
+      <main class="ms-main">
+        <header class="ms-header">
+          <div class="ms-header-left">
+            <h1 class="ms-page-title">{{ getPageTitle() }}</h1>
+            <p class="ms-page-date">{{ new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) }}</p>
+          </div>
+          <div class="ms-header-right">
+            <el-input
+              placeholder="搜索交易记录..."
+              prefix-icon="Search"
+              class="ms-header-search"
+              clearable
+            />
+            <MoneyButton variant="secondary" @click="showMcpConfig = true">
+              <el-icon><Connection /></el-icon>
+              <span class="hidden sm:inline">MCP</span>
+            </MoneyButton>
+            <MoneyButton variant="secondary" @click="showLLMConfig = true">
+              <el-icon><Setting /></el-icon>
+              <span class="hidden sm:inline">设置</span>
+            </MoneyButton>
+            <ThemeToggle />
+            <MoneyButton @click="showQuickBooking = true">
+              <el-icon><Plus /></el-icon>
+              <span>记一笔</span>
+            </MoneyButton>
+          </div>
+        </header>
+
+        <div class="ms-content">
+          <DashboardView v-if="activeMenu === 'dashboard'" />
+          <TransactionsView v-else-if="activeMenu === 'transactions'" />
+          <CategoriesBudgetView v-else-if="activeMenu === 'categories-budget'" />
+          <AnalysisView v-else-if="activeMenu === 'smart-analysis'" />
+          <MemoryView v-else-if="activeMenu === 'memory'" />
           <UsageStatsView v-else-if="activeMenu === 'usage-stats'" />
         </div>
-      </el-main>
-    </el-container>
-    
-    <!-- 快速记账对话框 -->
-    <QuickBookingDialog 
-      v-model="showQuickBooking" 
-      @success="handleQuickBookingSuccess"
-    />
-    
-    <!-- 大模型配置对话框 -->
-    <LLMConfigDialog 
-      v-model="showLLMConfig" 
-      @success="handleLLMConfigSaved"
-    />
+      </main>
+    </div>
 
-    <!-- MCP 服务器配置对话框 -->
-    <McpConfigDialog
-      v-model="showMcpConfig"
-    />
+    <!-- 弹窗 -->
+    <QuickBookingDialog v-model="showQuickBooking" @success="handleQuickBookingSuccess" />
+    <LLMConfigDialog v-model="showLLMConfig" @success="handleLLMConfigSaved" />
+    <McpConfigDialog v-model="showMcpConfig" />
   </div>
 </template>
 
 <style scoped>
-.app-container {
+.ms-app {
   height: 100vh;
-  background: #0d0d14;
+  background-color: var(--ms-bg-primary);
+  color: var(--ms-text-primary);
 }
 
-.init-overlay {
+.ms-layout {
+  display: flex;
+  height: 100%;
+}
+
+/* Sidebar */
+.ms-sidebar {
+  width: var(--ms-sidebar-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--ms-bg-secondary);
+  border-right: 1px solid var(--ms-border-subtle);
+}
+
+.ms-sidebar-header {
+  height: var(--ms-header-height);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--ms-border-subtle);
+}
+
+.ms-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ms-logo-icon {
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border-radius: var(--ms-radius-md);
+  background: var(--ms-gradient-primary);
+  color: white;
+  flex-shrink: 0;
+}
+
+.ms-logo-text {
+  font-size: var(--ms-text-lg);
+  font-weight: var(--ms-font-bold);
+  background: var(--ms-gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ms-sidebar-nav {
+  flex: 1;
+  padding: 12px 10px;
+  overflow-y: auto;
+}
+
+.ms-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--ms-radius-lg);
+  color: var(--ms-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 4px;
+}
+
+.ms-nav-item:hover {
+  background-color: var(--ms-surface-hover);
+  color: var(--ms-text-primary);
+}
+
+.ms-nav-item.active {
+  background: var(--ms-gradient-primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.ms-sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--ms-border-subtle);
+}
+
+.ms-user-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: var(--ms-radius-lg);
+  background-color: var(--ms-surface-primary);
+  border: 1px solid var(--ms-border-subtle);
+}
+
+.ms-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--ms-radius-md);
+  background: var(--ms-gradient-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--ms-text-sm);
+  font-weight: var(--ms-font-bold);
+  flex-shrink: 0;
+}
+
+.ms-user-info {
+  min-width: 0;
+}
+
+.ms-user-name {
+  font-size: var(--ms-text-sm);
+  font-weight: var(--ms-font-medium);
+  color: var(--ms-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ms-user-role {
+  font-size: var(--ms-text-xs);
+  color: var(--ms-text-tertiary);
+}
+
+/* Main */
+.ms-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background-color: var(--ms-bg-primary);
+}
+
+.ms-header {
+  height: var(--ms-header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--ms-border-subtle);
+  background-color: var(--ms-bg-primary);
+  flex-shrink: 0;
+}
+
+.ms-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ms-page-title {
+  margin: 0;
+  font-size: var(--ms-text-xl);
+  font-weight: var(--ms-font-bold);
+  color: var(--ms-text-primary);
+}
+
+.ms-page-date {
+  margin: 0;
+  font-size: var(--ms-text-xs);
+  color: var(--ms-text-tertiary);
+}
+
+.ms-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ms-header-search {
+  width: 240px;
+}
+
+.ms-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+}
+
+/* Init overlay */
+.ms-init-overlay {
   position: fixed;
   inset: 0;
-  background: #0d0d14;
+  background-color: var(--ms-bg-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
 }
 
-.init-content {
+.ms-init-content {
   text-align: center;
-  color: #94a3b8;
+  color: var(--ms-text-secondary);
 }
 
-.init-icon {
+.ms-init-icon {
   animation: spin 1.5s linear infinite;
-  color: #6366f1;
+  color: var(--ms-primary-500);
 }
 
-.init-text {
+.ms-init-text {
   margin-top: 16px;
-  font-size: 16px;
-  font-weight: 500;
+  font-size: var(--ms-text-base);
+  font-weight: var(--ms-font-medium);
 }
 
 @keyframes spin {
@@ -247,651 +381,29 @@ onMounted(async () => {
   to { transform: rotate(360deg); }
 }
 
-.sidebar {
-  background: linear-gradient(180deg, #12121e 0%, #0f0f1a 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  box-shadow: 4px 0 32px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
+/* Responsive */
+@media (max-width: 1024px) {
+  .ms-header-search {
+    display: none;
+  }
 }
 
-.sidebar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 1px;
-  height: 100%;
-  background: linear-gradient(180deg, transparent, rgba(99, 102, 241, 0.3) 30%, rgba(139, 92, 246, 0.3) 70%, transparent);
-  pointer-events: none;
-}
-
-.sidebar.is-collapsed {
-  width: 64px !important;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  padding: 18px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  min-height: 64px;
-  gap: 12px;
-}
-
-.logo-icon {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-}
-
-.logo-text {
-  color: #e2e8f0;
-  margin: 0;
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-  transition: opacity 0.3s ease;
-  white-space: nowrap;
-  background: linear-gradient(135deg, #e2e8f0, #a5b4fc);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.sidebar.is-collapsed .logo-text {
-  opacity: 0;
-  width: 0;
-}
-
-.collapse-btn {
-  position: absolute;
-  top: 18px;
-  right: 12px;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  z-index: 10;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.collapse-btn:hover {
-  background: rgba(99, 102, 241, 0.2);
-  border-color: rgba(99, 102, 241, 0.4);
-}
-
-.collapse-btn .el-icon {
-  color: #94a3b8;
-  font-size: 15px;
-  transition: color 0.2s;
-}
-
-.collapse-btn:hover .el-icon {
-  color: #a5b4fc;
-}
-
-.sidebar-menu {
-  border: none;
-  background: transparent;
-  padding: 12px 0;
-}
-
-.sidebar-menu .el-menu-item {
-  height: 46px;
-  line-height: 46px;
-  margin: 2px 10px;
-  border-radius: 10px;
-  color: #64748b;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.sidebar-menu .el-menu-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #cbd5e1;
-}
-
-.sidebar-menu .el-menu-item.is-active {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.2);
-}
-
-.sidebar-menu .el-menu-item.is-active::before {
-  content: '';
-  position: absolute;
-  left: -1px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 22px;
-  background: linear-gradient(180deg, #6366f1, #8b5cf6);
-  border-radius: 0 3px 3px 0;
-  box-shadow: 0 0 8px rgba(99, 102, 241, 0.6);
-}
-
-.sidebar-menu .el-menu-item .el-icon {
-  margin-right: 10px;
-  font-size: 18px;
-  transition: all 0.2s;
-}
-
-.sidebar.is-collapsed .sidebar-menu .el-menu-item {
-  justify-content: center;
-  margin: 2px 6px;
-}
-
-.sidebar.is-collapsed .sidebar-menu .el-menu-item .el-icon {
-  margin-right: 0;
-}
-
-.main-content {
-  padding: 0;
-  background: #0d0d14;
-  overflow-y: auto;
-}
-
-.header-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 28px;
-  height: 64px;
-  background: rgba(13, 13, 20, 0.85);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.search-container {
-  width: 260px;
-}
-
-.search-input {
-  width: 100%;
-}
-
-.header-left h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #e2e8f0;
-  letter-spacing: -0.2px;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.mcp-config-btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #94a3b8;
-  font-weight: 500;
-  padding: 8px 12px;
-  border-radius: 10px;
-  transition: all 0.2s ease;
-  min-width: auto;
-}
-
-.mcp-config-btn:hover {
-  background: rgba(16, 185, 129, 0.15);
-  border-color: rgba(16, 185, 129, 0.4);
-  color: #10b981;
-}
-
-.mcp-config-btn:focus {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: #e2e8f0;
-}
-
-.llm-config-btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #94a3b8;
-  font-weight: 500;
-  padding: 8px 12px;
-  border-radius: 10px;
-  transition: all 0.2s ease;
-  min-width: auto;
-}
-
-.llm-config-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: #e2e8f0;
-}
-
-.llm-config-btn:focus {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: #e2e8f0;
-}
-
-.quick-booking-btn {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  border: none;
-  color: #ffffff;
-  font-weight: 600;
-  padding: 8px 18px;
-  border-radius: 10px;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35);
-  font-size: 14px;
-}
-
-.quick-booking-btn:hover {
-  background: linear-gradient(135deg, #7c7ff5, #9d6ef8);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
-  transform: translateY(-1px);
-  color: #ffffff;
-  border: none;
-}
-
-.quick-booking-btn:focus {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  border: none;
-  color: #ffffff;
-}
-
-.quick-booking-btn .el-icon {
-  margin-right: 5px;
-}
-
-.page-content {
-  padding: 24px 28px;
-  min-height: calc(100vh - 64px);
-}
-
-:deep(.el-menu-item) {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-:deep(.el-menu-item .el-icon) {
-  color: inherit;
-}
-
-:deep(.el-menu--collapse .el-menu-item .el-icon) {
-  margin-right: 0;
-}
-
-:deep(.search-input .el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 10px !important;
-  padding: 0 14px !important;
-  box-shadow: none !important;
-  transition: all 0.2s;
-}
-
-:deep(.search-input .el-input__wrapper:hover),
-:deep(.search-input .el-input__wrapper.is-focus) {
-  border-color: rgba(99, 102, 241, 0.5) !important;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1) !important;
-}
-
-:deep(.search-input .el-input__inner) {
-  color: #e2e8f0 !important;
-  font-size: 14px !important;
-}
-
-:deep(.search-input .el-input__inner::placeholder) {
-  color: #475569 !important;
-}
-
-:deep(.search-input .el-input__prefix) {
-  color: #475569 !important;
-}
-</style>
-
-<style>
-/* 全局样式 */
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  background: #0d0d14;
-  color: #e2e8f0;
-}
-
-.el-button {
-  font-weight: 500;
-  letter-spacing: 0.01em;
-}
-
-.el-card {
-  border-radius: 14px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  background: #151520;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-.el-table {
-  border-radius: 12px;
-  overflow: hidden;
-  background: #151520;
-}
-
-.el-dialog {
-  border-radius: 16px;
-  background: #151520;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(99, 102, 241, 0.1);
-}
-
-.el-dialog__header {
-  background: #151520;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 20px 24px 16px;
-  border-radius: 16px 16px 0 0;
-}
-
-.el-dialog__title {
-  color: #e2e8f0;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.el-dialog__body {
-  background: #151520;
-  color: #e2e8f0;
-  padding: 20px 24px;
-}
-
-.el-dialog__footer {
-  background: #151520;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 16px 24px;
-  border-radius: 0 0 16px 16px;
-}
-
-.el-form-item__label {
-  font-weight: 500;
-  color: #94a3b8 !important;
-  font-size: 13px;
-}
-
-/* Element Plus 深色主题覆盖 */
-.el-card__body {
-  background: #151520;
-  color: #e2e8f0;
-}
-
-.el-card__header {
-  background: #151520;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  color: #e2e8f0;
-  padding: 16px 20px;
-}
-
-.el-table {
-  background: #151520;
-  color: #e2e8f0;
-}
-
-.el-table th.el-table__cell {
-  background: rgba(255, 255, 255, 0.03) !important;
-  color: #64748b !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.el-table td.el-table__cell {
-  background: transparent !important;
-  color: #cbd5e1;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
-}
-
-.el-table tr:hover td.el-table__cell {
-  background: rgba(255, 255, 255, 0.03) !important;
-}
-
-.el-table__empty-block {
-  background: transparent;
-}
-
-.el-input__wrapper {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  box-shadow: none !important;
-  border-radius: 8px !important;
-  transition: all 0.2s;
-}
-
-.el-input__wrapper:hover {
-  border-color: rgba(255, 255, 255, 0.18) !important;
-}
-
-.el-input__wrapper.is-focus {
-  border-color: rgba(99, 102, 241, 0.6) !important;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12) !important;
-}
-
-.el-input__inner {
-  background: transparent !important;
-  color: #e2e8f0 !important;
-}
-
-.el-input__inner::placeholder {
-  color: #475569 !important;
-}
-
-.el-select .el-input__wrapper {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-.el-select-dropdown {
-  background: #1a1a28 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 10px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
-}
-
-.el-select-dropdown__item {
-  color: #94a3b8 !important;
-  font-size: 14px;
-}
-
-.el-select-dropdown__item.is-hovering {
-  background: rgba(99, 102, 241, 0.1) !important;
-  color: #a5b4fc !important;
-}
-
-.el-select-dropdown__item.is-selected {
-  color: #a5b4fc !important;
-  font-weight: 600;
-}
-
-.el-date-picker__header {
-  background: #1a1a28;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.el-picker-panel {
-  background: #1a1a28 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 12px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
-}
-
-.el-date-table td .el-date-table-cell__text {
-  color: #94a3b8;
-}
-
-.el-date-table td.today .el-date-table-cell__text {
-  color: #a5b4fc;
-}
-
-.el-date-table td.current .el-date-table-cell__text {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
-}
-
-.el-button--primary {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
-  border-color: transparent !important;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-  font-weight: 600;
-}
-
-.el-button--primary:hover {
-  background: linear-gradient(135deg, #7c7ff5, #9d6ef8) !important;
-  border-color: transparent !important;
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
-  transform: translateY(-1px);
-}
-
-.el-button--default {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #94a3b8 !important;
-}
-
-.el-button--default:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  color: #e2e8f0 !important;
-}
-
-.el-button--small {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #94a3b8 !important;
-  border-radius: 8px !important;
-}
-
-.el-button--small:hover {
-  background: rgba(255, 255, 255, 0.12) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  color: #e2e8f0 !important;
-}
-
-.el-empty__description {
-  color: #475569;
-}
-
-.el-empty__image svg path {
-  fill: rgba(255, 255, 255, 0.06) !important;
-}
-
-.el-progress-bar__inner {
-  background: linear-gradient(90deg, #6366f1, #8b5cf6);
-}
-
-.el-progress-bar__outer {
-  background: rgba(255, 255, 255, 0.06) !important;
-}
-
-.el-menu-item .el-icon {
-  color: inherit;
-}
-
-.el-dropdown-menu {
-  background: #1a1a28 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 10px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
-}
-
-.el-dropdown-menu__item {
-  color: #94a3b8 !important;
-}
-
-.el-dropdown-menu__item:hover {
-  background: rgba(99, 102, 241, 0.1) !important;
-  color: #a5b4fc !important;
-}
-
-.el-popover {
-  background: #1a1a28 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #e2e8f0 !important;
-  border-radius: 10px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
-}
-
-.el-tooltip__popper {
-  background: #1a1a28 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #e2e8f0 !important;
-}
-
-/* 滚动条全局美化 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
-}
-
-/* 响应式设计 */
 @media (max-width: 768px) {
-  .el-aside {
+  .ms-sidebar {
     position: fixed;
-    height: 100vh;
-    z-index: 999;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
     transform: translateX(-100%);
     transition: transform 0.3s ease;
   }
-  
-  .el-aside.mobile-show {
+
+  .ms-sidebar.is-open {
     transform: translateX(0);
   }
-  
-  .el-main {
-    margin-left: 0;
-  }
-  
-  .header-bar {
-    padding: 0 16px;
-  }
-  
-  .page-content {
+
+  .ms-content {
     padding: 16px;
   }
 }

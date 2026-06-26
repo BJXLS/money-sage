@@ -7,6 +7,7 @@ import * as ElementPlusIconsVue from "@element-plus/icons-vue";
 import App from "./App.vue";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
+import "./styles/index.css";
 
 // 配置dayjs
 dayjs.locale("zh-cn");
@@ -22,9 +23,6 @@ async function initApp() {
 
   app.use(pinia);
   app.use(ElementPlus);
-  
-  // 设置HTML为深色主题
-  document.documentElement.className = 'dark';
   
   // 在 Tauri 环境中等待初始化完成
   if (window.__TAURI__) {

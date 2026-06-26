@@ -1,0 +1,116 @@
+:root {
+  /* Brand */
+  --ms-primary-50: #eef2ff;
+  --ms-primary-100: #e0e7ff;
+  --ms-primary-400: #818cf8;
+  --ms-primary-500: #6366f1;
+  --ms-primary-600: #8b5cf6;
+  --ms-primary-700: #7c3aed;
+
+  /* Semantic */
+  --ms-income: #10b981;
+  --ms-income-light: #34d399;
+  --ms-expense: #f43f5e;
+  --ms-expense-light: #fb7185;
+  --ms-warning: #f59e0b;
+  --ms-info: #3b82f6;
+  --ms-success: #10b981;
+
+  /* Light theme backgrounds */
+  --ms-bg-primary: #ffffff;
+  --ms-bg-secondary: #f8fafc;
+  --ms-bg-tertiary: #f1f5f9;
+
+  /* Light theme surfaces */
+  --ms-surface-primary: #ffffff;
+  --ms-surface-secondary: #f8fafc;
+  --ms-surface-hover: #f1f5f9;
+  --ms-surface-active: #e2e8f0;
+
+  /* Light theme text */
+  --ms-text-primary: #0f172a;
+  --ms-text-secondary: #475569;
+  --ms-text-tertiary: #94a3b8;
+  --ms-text-inverse: #f8fafc;
+
+  /* Light theme borders */
+  --ms-border-subtle: #e2e8f0;
+  --ms-border-default: #cbd5e1;
+  --ms-border-focus: #6366f1;
+
+  /* Shadows */
+  --ms-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+  --ms-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --ms-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+
+  /* Gradients */
+  --ms-gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --ms-gradient-income: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  --ms-gradient-expense: linear-gradient(135deg, #fb7185 0%, #f43f5e 100%);
+
+  /* Element Plus overrides */
+  --el-color-primary: #6366f1;
+  --el-color-primary-light-3: #818cf8;
+  --el-color-primary-light-5: #a5b4fc;
+  --el-color-primary-light-7: #c7d2fe;
+  --el-color-primary-light-8: #e0e7ff;
+  --el-color-primary-light-9: #eef2ff;
+  --el-color-primary-dark-2: #7c3aed;
+  --el-bg-color: var(--ms-bg-primary);
+  --el-bg-color-page: var(--ms-bg-secondary);
+  --el-bg-color-overlay: var(--ms-surface-primary);
+  --el-text-color-primary: var(--ms-text-primary);
+  --el-text-color-regular: var(--ms-text-secondary);
+  --el-text-color-secondary: var(--ms-text-tertiary);
+  --el-border-color: var(--ms-border-subtle);
+  --el-border-color-light: var(--ms-border-subtle);
+  --el-border-color-lighter: var(--ms-bg-tertiary);
+  --el-fill-color: var(--ms-bg-secondary);
+  --el-fill-color-light: var(--ms-bg-tertiary);
+  --el-fill-color-lighter: var(--ms-surface-secondary);
+  --el-fill-color-blank: var(--ms-surface-primary);
+}
+
+[data-theme='dark'] {
+  /* Dark theme backgrounds */
+  --ms-bg-primary: #0b0b10;
+  --ms-bg-secondary: #12121c;
+  --ms-bg-tertiary: #1a1a28;
+
+  /* Dark theme surfaces */
+  --ms-surface-primary: #151520;
+  --ms-surface-secondary: #1a1a28;
+  --ms-surface-hover: #252536;
+  --ms-surface-active: #2a2a3c;
+
+  /* Dark theme text */
+  --ms-text-primary: #f8fafc;
+  --ms-text-secondary: #94a3b8;
+  --ms-text-tertiary: #64748b;
+  --ms-text-inverse: #0f172a;
+
+  /* Dark theme borders */
+  --ms-border-subtle: rgba(255, 255, 255, 0.08);
+  --ms-border-default: rgba(255, 255, 255, 0.12);
+  --ms-border-focus: #818cf8;
+
+  /* Shadows */
+  --ms-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --ms-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.2);
+  --ms-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+
+  /* Element Plus overrides */
+  --el-bg-color: var(--ms-bg-primary);
+  --el-bg-color-page: var(--ms-bg-secondary);
+  --el-bg-color-overlay: var(--ms-surface-primary);
+  --el-text-color-primary: var(--ms-text-primary);
+  --el-text-color-regular: var(--ms-text-secondary);
+  --el-text-color-secondary: var(--ms-text-tertiary);
+  --el-border-color: var(--ms-border-subtle);
+  --el-border-color-light: var(--ms-border-subtle);
+  --el-border-color-lighter: var(--ms-bg-tertiary);
+  --el-fill-color: var(--ms-bg-secondary);
+  --el-fill-color-light: var(--ms-bg-tertiary);
+  --el-fill-color-lighter: var(--ms-surface-secondary);
+  --el-fill-color-blank: var(--ms-surface-primary);
+}

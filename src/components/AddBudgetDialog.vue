@@ -12,37 +12,45 @@
         ref="formRef"
         :model="form"
         :rules="rules"
-        label-width="80px"
+        label-width="90px"
         size="large"
       >
         <!-- 预算类型选择 -->
-        <el-form-item label="预算类型" prop="budget_type">
+        <el-form-item label="预算类型" prop="uiType">
           <div class="budget-type-selector">
-            <div 
+            <div
               class="budget-type-card"
-              :class="{ active: form.budget_type === 'time' }"
-              @click="handleTypeChange('time')"
+              :class="{ active: form.uiType === 'total' }"
+              @click="handleTypeChange('total')"
             >
-              <div class="type-icon">
-                <el-icon><Clock /></el-icon>
-              </div>
+              <div class="type-icon">🏦</div>
               <div class="type-content">
-                <h4>时间预算</h4>
-                <p>设置特定时间段的预算限制</p>
+                <h4>总预算</h4>
+                <p>控制整体支出</p>
               </div>
             </div>
-            
-            <div 
+
+            <div
               class="budget-type-card"
-              :class="{ active: form.budget_type === 'event' }"
+              :class="{ active: form.uiType === 'category' }"
+              @click="handleTypeChange('category')"
+            >
+              <div class="type-icon">🏷️</div>
+              <div class="type-content">
+                <h4>分类预算</h4>
+                <p>限制某个分类支出</p>
+              </div>
+            </div>
+
+            <div
+              class="budget-type-card"
+              :class="{ active: form.uiType === 'event' }"
               @click="handleTypeChange('event')"
             >
-              <div class="type-icon">
-                <el-icon><Flag /></el-icon>
-              </div>
+              <div class="type-icon">🎯</div>
               <div class="type-content">
                 <h4>事件预算</h4>
-                <p>为特定事件或项目设置预算</p>
+                <p>一次性事件或项目</p>
               </div>
             </div>
           </div>
@@ -57,26 +65,18 @@
           />
         </el-form-item>
 
-        <!-- 预算金额 -->
-        <el-form-item label="预算金额" prop="amount">
-          <el-input
-            v-model="form.amount"
-            type="number"
-            placeholder="请输入预算金额"
-            step="0.01"
-            min="0"
-          >
-            <template #prefix>¥</template>
-          </el-input>
-        </el-form-item>
-
         <!-- 支出分类 -->
-        <el-form-item label="支出分类" prop="category_id">
-          <el-select 
-            v-model="form.category_id" 
-            placeholder="请选择支出小类"
+        <el-form-item
+          v-if="form.uiType === 'category'"
+          label="关联分类"
+          prop="category_id"
+        >
+          <el-select
+            v-model="form.category_id"
+            placeholder="请选择支出分类"
             style="width: 100%"
             filterable
+            @change="handleCategoryChange"
           >
             <el-option-group
               v-for="parent in parentExpenseCategories"
@@ -98,17 +98,34 @@
               </el-option>
             </el-option-group>
           </el-select>
+          <div v-if="recommendedAmount !== null" class="recommend-row">
+            <span class="recommend-tag" @click="applyRecommendedAmount">
+              💡 推荐金额 ¥{{ formatAmount(recommendedAmount) }}
+            </span>
+            <span class="recommend-hint">基于近 3 个月平均支出的 90%</span>
+          </div>
         </el-form-item>
 
-        <!-- 时间预算专用字段 -->
-        <template v-if="form.budget_type === 'time'">
-          <!-- 预算周期 -->
+        <!-- 预算金额 -->
+        <el-form-item label="预算金额" prop="amount">
+          <el-input
+            v-model="form.amount"
+            type="number"
+            placeholder="请输入预算金额"
+            step="0.01"
+            min="0"
+          >
+            <template #prefix>¥</template>
+          </el-input>
+        </el-form-item>
+
+        <!-- 周期与自动续期（总预算/分类预算） -->
+        <template v-if="form.uiType !== 'event'">
           <el-form-item label="预算周期" prop="period_type">
-            <el-select 
-              v-model="form.period_type" 
+            <el-select
+              v-model="form.period_type"
               placeholder="请选择预算周期"
               style="width: 100%"
-              @change="handlePeriodTypeChange"
             >
               <el-option label="每日" value="daily" />
               <el-option label="每周" value="weekly" />
@@ -117,82 +134,40 @@
             </el-select>
           </el-form-item>
 
-          <!-- 时间范围 -->
-          <el-form-item label="时间范围" prop="dateRange">
-            <!-- 每日预算：单日选择 -->
-            <el-date-picker
-              v-if="form.period_type === 'daily'"
-              v-model="form.singleDate"
-              type="date"
-              placeholder="选择日期"
-              format="YYYY-MM-DD"
-              value-format="YYYY-MM-DD"
-              style="width: 100%"
-              @change="handleSingleDateChange"
-            />
-            
-            <!-- 每周预算：周范围选择 -->
-            <el-date-picker
-              v-else-if="form.period_type === 'weekly'"
-              v-model="form.dateRange"
-              type="week"
-              placeholder="选择完整周"
-              format="YYYY年第WW周"
-              value-format="YYYY-MM-DD"
-              style="width: 100%"
-              @change="handleWeekChange"
-            />
-            
-            <!-- 每月预算：月选择 -->
-            <el-date-picker
-              v-else-if="form.period_type === 'monthly'"
-              v-model="form.singleDate"
-              type="month"
-              placeholder="选择完整月"
-              format="YYYY年MM月"
-              value-format="YYYY-MM"
-              style="width: 100%"
-              @change="handleMonthChange"
-            />
-            
-            <!-- 每年预算：年选择 -->
-            <el-date-picker
-              v-else-if="form.period_type === 'yearly'"
-              v-model="form.singleDate"
-              type="year"
-              placeholder="选择完整年"
-              format="YYYY年"
-              value-format="YYYY"
-              style="width: 100%"
-              @change="handleYearChange"
+          <el-form-item label="自动滚动" prop="is_recurring">
+            <el-switch
+              v-model="form.is_recurring"
+              active-text="周期结束后自动续期"
+              inactive-text="不自动续期"
             />
           </el-form-item>
         </template>
 
-        <!-- 事件预算专用字段 -->
-        <template v-if="form.budget_type === 'event'">
-          <!-- 事件描述 -->
-          <el-form-item label="事件描述" prop="description">
-            <el-input
-              v-model="form.description"
-              type="textarea"
-              :rows="3"
-              placeholder="请描述这个预算的具体用途或事件..."
-              maxlength="200"
-              show-word-limit
-            />
-          </el-form-item>
-
-          <!-- 预计完成时间 -->
-          <el-form-item label="预计完成" prop="estimated_date">
-            <el-date-picker
-              v-model="form.estimated_date"
-              type="date"
-              placeholder="预计完成日期（可选）"
-              format="YYYY-MM-DD"
-              value-format="YYYY-MM-DD"
-              style="width: 100%"
-            />
+        <!-- 事件时间范围（事件预算） -->
+        <template v-if="form.uiType === 'event'">
+          <el-form-item label="事件时间" prop="eventDateRange">
+            <div class="event-date-row">
+              <el-date-picker
+                v-model="form.start_date"
+                type="date"
+                placeholder="开始日期（可选）"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                class="event-date-picker"
+              />
+              <span class="date-separator">至</span>
+              <el-date-picker
+                v-model="form.end_date"
+                type="date"
+                placeholder="结束日期（可选）"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                class="event-date-picker"
+              />
+            </div>
+            <p class="form-tip">
+              事件预算不限制交易日期和分类，关联的交易会全部计入预算进度。
+            </p>
           </el-form-item>
         </template>
 
@@ -201,9 +176,7 @@
           <el-switch
             v-model="form.is_active"
             active-text="启用"
-            inactive-text="禁用"
-            active-color="#67c23a"
-            inactive-color="#f56c6c"
+            inactive-text="停用"
           />
         </el-form-item>
       </el-form>
@@ -220,25 +193,28 @@
         <div class="preview-item">
           <span class="preview-label">预算类型：</span>
           <span class="preview-value">
-            <span 
-              class="budget-type-badge"
-              :class="form.budget_type"
-            >
-              {{ form.budget_type === 'time' ? '时间预算' : '事件预算' }}
+            <span class="budget-type-badge" :class="form.uiType">
+              {{ typeLabelMap[form.uiType] }}
             </span>
           </span>
         </div>
         <div class="preview-item">
           <span class="preview-label">预算金额：</span>
-          <span class="preview-value amount">¥{{ formatAmount(parseFloat(form.amount) || 0) }}</span>
+          <span class="preview-value amount">
+            ¥{{ formatAmount(parseFloat(form.amount) || 0) }}
+          </span>
         </div>
-        <div class="preview-item" v-if="form.budget_type === 'time' && form.dateRange">
-          <span class="preview-label">有效期限：</span>
-          <span class="preview-value">{{ form.dateRange[0] }} 至 {{ form.dateRange[1] }}</span>
+        <div class="preview-item" v-if="form.uiType === 'category' && selectedCategoryName">
+          <span class="preview-label">关联分类：</span>
+          <span class="preview-value">{{ selectedCategoryName }}</span>
         </div>
-        <div class="preview-item" v-if="form.budget_type === 'event' && form.estimated_date">
-          <span class="preview-label">预计完成：</span>
-          <span class="preview-value">{{ form.estimated_date }}</span>
+        <div class="preview-item" v-if="form.uiType !== 'event' && form.period_type">
+          <span class="preview-label">预算周期：</span>
+          <span class="preview-value">{{ periodLabelMap[form.period_type] }}</span>
+        </div>
+        <div class="preview-item" v-if="form.uiType === 'event' && (form.start_date || form.end_date)">
+          <span class="preview-label">事件时间：</span>
+          <span class="preview-value">{{ eventDatePreview }}</span>
         </div>
       </div>
     </div>
@@ -246,9 +222,9 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="handleClose" size="large">取消</el-button>
-        <el-button 
-          type="primary" 
-          @click="handleSubmit" 
+        <el-button
+          type="primary"
+          @click="handleSubmit"
           :loading="submitting"
           size="large"
         >
@@ -262,9 +238,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { Clock, Flag } from '@element-plus/icons-vue'
 import { useAppStore, type BudgetProgress } from '../stores'
 import dayjs from 'dayjs'
+
+type BudgetUiType = 'total' | 'category' | 'event'
 
 interface Props {
   modelValue: boolean
@@ -282,72 +259,105 @@ const emit = defineEmits<Emits>()
 const store = useAppStore()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+const recentTransactions = ref<any[]>([])
 
-// 表单数据
+const typeLabelMap: Record<BudgetUiType, string> = {
+  total: '总预算',
+  category: '分类预算',
+  event: '事件预算',
+}
+
+const periodLabelMap: Record<string, string> = {
+  daily: '每日',
+  weekly: '每周',
+  monthly: '每月',
+  yearly: '每年',
+}
+
 const form = reactive({
   name: '',
   amount: '',
-  budget_type: 'time' as 'time' | 'event',
-  period_type: 'monthly' as 'daily' | 'weekly' | 'monthly' | 'yearly',
+  uiType: 'category' as BudgetUiType,
+  period_type: 'monthly' as 'daily' | 'weekly' | 'monthly' | 'yearly' | null,
   category_id: null as number | null,
-  dateRange: [] as string[],
-  singleDate: '' as string,
-  description: '',
-  estimated_date: '',
-  is_active: true
+  start_date: '' as string | null,
+  end_date: '' as string | null,
+  is_recurring: true,
+  is_active: true,
 })
 
-// 表单验证规则
+const getUiTypeFromBudget = (budget: BudgetProgress): BudgetUiType => {
+  if (budget.budget_type === 'total') return 'total'
+  if (budget.budget_type === 'event') return 'event'
+  return 'category'
+}
+
 const rules: FormRules = {
   name: [
     { required: true, message: '请输入预算名称', trigger: 'blur' },
-    { min: 2, max: 50, message: '预算名称长度应在2-50个字符之间', trigger: 'blur' }
+    { min: 1, max: 50, message: '预算名称长度应在1-50个字符之间', trigger: 'blur' },
   ],
   amount: [
     { required: true, message: '请输入预算金额', trigger: 'blur' },
-    { pattern: /^\d+(\.\d{1,2})?$/, message: '请输入正确的金额格式', trigger: 'blur' }
-  ],
-  budget_type: [
-    { required: true, message: '请选择预算类型', trigger: 'change' }
-  ],
-  category_id: [
-    { required: true, message: '请选择支出分类', trigger: 'change' }
-  ],
-  period_type: [
-    { required: true, message: '请选择预算周期', trigger: 'change' }
-  ],
-  dateRange: [
-    { 
-      required: true, 
-      message: '请选择时间范围', 
-      trigger: 'change',
+    {
       validator: (_rule: any, value: any, callback: any) => {
-        if (form.budget_type === 'time') {
-          if (form.period_type === 'weekly') {
-            if (!value || value.length === 0) {
-              callback(new Error('请选择完整周'))
-            } else {
-              callback()
-            }
-          } else {
-            if (!form.singleDate) {
-              callback(new Error('请选择时间'))
-            } else {
-              callback()
-            }
-          }
+        const num = parseFloat(value)
+        if (isNaN(num) || num <= 0) {
+          callback(new Error('请输入大于0的金额'))
         } else {
           callback()
         }
-      }
-    }
-  ]
+      },
+      trigger: 'blur',
+    },
+  ],
+  category_id: [
+    {
+      required: true,
+      message: '请选择关联分类',
+      trigger: 'change',
+      validator: (_rule: any, value: any, callback: any) => {
+        if (form.uiType === 'category' && !value) {
+          callback(new Error('请选择关联分类'))
+        } else {
+          callback()
+        }
+      },
+    },
+  ],
+  period_type: [
+    {
+      required: true,
+      message: '请选择预算周期',
+      trigger: 'change',
+      validator: (_rule: any, value: any, callback: any) => {
+        if (form.uiType !== 'event' && !value) {
+          callback(new Error('请选择预算周期'))
+        } else {
+          callback()
+        }
+      },
+    },
+  ],
+  eventDateRange: [
+    {
+      validator: (_rule: any, _value: any, callback: any) => {
+        if (form.uiType === 'event' && form.start_date && form.end_date) {
+          if (dayjs(form.end_date).isBefore(dayjs(form.start_date))) {
+            callback(new Error('结束日期不能早于开始日期'))
+            return
+          }
+        }
+        callback()
+      },
+      trigger: 'change',
+    },
+  ],
 }
 
-// 计算属性
 const dialogVisible = computed({
   get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value)
+  set: (value) => emit('update:modelValue', value),
 })
 
 const isEditing = computed(() => !!props.budget)
@@ -355,34 +365,118 @@ const isEditing = computed(() => !!props.budget)
 const parentExpenseCategories = computed(() => store.parentExpenseCategories)
 const getSubCategories = (parentId: number) => store.getSubCategories(parentId)
 
-// 监听预算变化，填充表单
-watch(() => props.budget, (budget) => {
-  if (budget) {
-    form.name = budget.name
-    form.amount = budget.amount.toString()
-    form.budget_type = budget.budget_type
-    form.period_type = budget.period_type
-    form.category_id = budget.category_id
-    form.is_active = budget.is_active
-    
-    if (budget.budget_type === 'time') {
-      form.dateRange = [budget.start_date, budget.end_date || '']
-      
-      // 根据预算周期类型设置 singleDate
-      if (budget.period_type === 'daily') {
-        form.singleDate = budget.start_date
-      } else if (budget.period_type === 'monthly') {
-        form.singleDate = dayjs(budget.start_date).format('YYYY-MM')
-      } else if (budget.period_type === 'yearly') {
-        form.singleDate = dayjs(budget.start_date).format('YYYY')
+const selectedCategoryName = computed(() => {
+  if (!form.category_id) return ''
+  const cat = store.categories.find((c) => c.id === form.category_id)
+  return cat?.name || ''
+})
+
+const recommendedAmount = computed(() => {
+  if (form.uiType !== 'category' || !form.category_id || recentTransactions.value.length === 0) {
+    return null
+  }
+  const threeMonthsAgo = dayjs().subtract(3, 'month').startOf('day')
+  const categoryTx = recentTransactions.value.filter(
+    (t) =>
+      t.type === 'expense' &&
+      t.category_id === form.category_id &&
+      dayjs(t.date).isAfter(threeMonthsAgo)
+  )
+  if (categoryTx.length === 0) return null
+  const total = categoryTx.reduce((sum, t) => sum + t.amount, 0)
+  // 按近 3 个月总支出平均到每月，再取 90%
+  const avgMonthly = total / 3
+  return Math.round(avgMonthly * 0.9 * 100) / 100
+})
+
+const eventDatePreview = computed(() => {
+  const start = form.start_date || '未设置'
+  const end = form.end_date || '未设置'
+  return `${start} 至 ${end}`
+})
+
+const applyRecommendedAmount = () => {
+  if (recommendedAmount.value !== null) {
+    form.amount = recommendedAmount.value.toString()
+  }
+}
+
+const fetchRecentTransactions = async () => {
+  try {
+    const end = dayjs().format('YYYY-MM-DD')
+    const start = dayjs().subtract(3, 'month').format('YYYY-MM-DD')
+    const list = await store.fetchTransactionsByDateRange(start, end)
+    recentTransactions.value = list || []
+  } catch (e) {
+    recentTransactions.value = []
+  }
+}
+
+const handleCategoryChange = () => {
+  if (form.uiType === 'category' && form.category_id) {
+    fetchRecentTransactions()
+  }
+}
+
+const resetForm = () => {
+  form.name = ''
+  form.amount = ''
+  form.uiType = 'category'
+  form.period_type = 'monthly'
+  form.category_id = null
+  form.start_date = null
+  form.end_date = null
+  form.is_recurring = true
+  form.is_active = true
+  recentTransactions.value = []
+}
+
+const handleTypeChange = (type: BudgetUiType) => {
+  form.uiType = type
+  if (type === 'event') {
+    form.period_type = null
+    form.is_recurring = false
+    form.category_id = null
+  } else {
+    form.period_type = form.period_type || 'monthly'
+    form.is_recurring = true
+  }
+  nextTick(() => {
+    formRef.value?.clearValidate()
+  })
+}
+
+const handleClose = () => {
+  dialogVisible.value = false
+}
+
+const fillFormFromBudget = (budget: BudgetProgress) => {
+  form.name = budget.name
+  form.amount = budget.amount.toString()
+  form.uiType = getUiTypeFromBudget(budget)
+  form.period_type = budget.period_type || 'monthly'
+  form.category_id = budget.category_id ?? null
+  form.start_date = budget.start_date || null
+  form.end_date = budget.end_date || null
+  form.is_recurring = budget.is_recurring
+  form.is_active = budget.is_active
+}
+
+watch(
+  () => props.budget,
+  (budget) => {
+    if (budget) {
+      fillFormFromBudget(budget)
+      if (budget.category_id) {
+        fetchRecentTransactions()
       }
     } else {
-      form.estimated_date = budget.end_date || ''
+      resetForm()
     }
-  }
-}, { immediate: true })
+  },
+  { immediate: true }
+)
 
-// 监听对话框打开
 watch(dialogVisible, (visible) => {
   if (visible) {
     if (!props.budget) {
@@ -394,130 +488,37 @@ watch(dialogVisible, (visible) => {
   }
 })
 
-// 监听预算类型变化
-watch(() => form.budget_type, (newType) => {
-  // 重置相关字段
-  if (newType === 'time') {
-    form.description = ''
-    form.estimated_date = ''
-  } else {
-    form.dateRange = []
-    form.singleDate = ''
-    form.period_type = 'monthly'
-  }
-  
-  // 清除验证
-  nextTick(() => {
-    formRef.value?.clearValidate()
-  })
-})
-
-// 监听预算周期变化
-watch(() => form.period_type, () => {
-  // 清空时间选择
-  form.dateRange = []
-  form.singleDate = ''
-  
-  // 清除验证
-  nextTick(() => {
-    formRef.value?.clearValidate(['dateRange'])
-  })
-})
-
-// 方法
-const resetForm = () => {
-  form.name = ''
-  form.amount = ''
-  form.budget_type = 'time'
-  form.period_type = 'monthly'
-  form.category_id = null
-  form.dateRange = []
-  form.singleDate = ''
-  form.description = ''
-  form.estimated_date = ''
-  form.is_active = true
-}
-
-const handleTypeChange = (type: 'time' | 'event') => {
-  form.budget_type = type
-}
-
-const handleClose = () => {
-  dialogVisible.value = false
-}
-
-// 预算周期变化处理
-const handlePeriodTypeChange = () => {
-  form.dateRange = []
-  form.singleDate = ''
-}
-
-// 单日选择处理
-const handleSingleDateChange = (value: string) => {
-  if (form.period_type === 'daily') {
-    // 对于每日预算，设置单日的开始和结束时间相同
-    form.dateRange = [value, value]
-  }
-}
-
-// 周选择处理
-const handleWeekChange = (value: string) => {
-  if (value && form.period_type === 'weekly') {
-    // Element Plus 的周选择器返回该周第一天的日期
-    const startDate = dayjs(value)
-    const endDate = startDate.add(6, 'day')
-    form.dateRange = [startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD')]
-  }
-}
-
-// 月选择处理
-const handleMonthChange = (value: string) => {
-  if (value && form.period_type === 'monthly') {
-    const monthStart = dayjs(value).startOf('month')
-    const monthEnd = dayjs(value).endOf('month')
-    form.dateRange = [monthStart.format('YYYY-MM-DD'), monthEnd.format('YYYY-MM-DD')]
-  }
-}
-
-// 年选择处理
-const handleYearChange = (value: string) => {
-  if (value && form.period_type === 'yearly') {
-    const yearStart = dayjs(value).startOf('year')
-    const yearEnd = dayjs(value).endOf('year')
-    form.dateRange = [yearStart.format('YYYY-MM-DD'), yearEnd.format('YYYY-MM-DD')]
-  }
-}
-
 const formatAmount = (amount: number) => {
   return amount.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   })
 }
 
 const handleSubmit = async () => {
   if (!formRef.value) return
-  
+
   try {
     const valid = await formRef.value.validate()
     if (!valid) return
-    
+
     submitting.value = true
-    
+
+    const budget_type =
+      form.uiType === 'total' ? 'total' : form.uiType === 'event' ? 'event' : 'time'
+
     const budgetData = {
       name: form.name,
-      category_id: form.category_id!,
+      category_id: form.uiType === 'category' ? form.category_id : null,
       amount: parseFloat(form.amount),
-      budget_type: form.budget_type,
-      period_type: form.period_type,
-      start_date: form.budget_type === 'time' 
-        ? form.dateRange[0] 
-        : dayjs().format('YYYY-MM-DD'),
-      end_date: form.budget_type === 'time' 
-        ? form.dateRange[1] || undefined
-        : form.estimated_date || undefined
+      budget_type: budget_type as 'time' | 'event' | 'total',
+      period_type: form.uiType === 'event' ? null : form.period_type,
+      start_date: form.uiType === 'event' ? form.start_date || null : null,
+      end_date: form.uiType === 'event' ? form.end_date || null : null,
+      is_recurring: form.uiType !== 'event' && form.is_recurring,
+      is_active: form.is_active,
     }
-    
+
     if (isEditing.value && props.budget) {
       await store.updateBudget(props.budget.id, budgetData)
       ElMessage.success('预算更新成功')
@@ -525,7 +526,7 @@ const handleSubmit = async () => {
       await store.createBudget(budgetData)
       ElMessage.success('预算创建成功')
     }
-    
+
     emit('success')
     dialogVisible.value = false
   } catch (error) {
@@ -548,20 +549,22 @@ const handleSubmit = async () => {
 
 .budget-type-selector {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
   margin-bottom: 8px;
 }
 
 .budget-type-card {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 20px;
+  padding: 16px 12px;
   background: var(--ms-bg-secondary);
   border: 2px solid var(--ms-border-default);
   border-radius: 12px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
+  text-align: center;
 }
 
 .budget-type-card:hover {
@@ -570,29 +573,24 @@ const handleSubmit = async () => {
 }
 
 .budget-type-card.active {
-  border-color: var(--ms-info);
-  background: var(--ms-info)10;
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
 
 .type-icon {
-  margin-right: 16px;
-  font-size: 24px;
-  color: var(--ms-info);
-}
-
-.type-content {
-  flex: 1;
+  font-size: 28px;
+  margin-bottom: 8px;
 }
 
 .type-content h4 {
-  margin: 0 0 8px 0;
-  font-size: 16px;
+  margin: 0 0 4px 0;
+  font-size: 14px;
   color: var(--ms-text-primary);
 }
 
 .type-content p {
   margin: 0;
-  font-size: 14px;
+  font-size: 12px;
   color: var(--ms-text-secondary);
 }
 
@@ -606,11 +604,64 @@ const handleSubmit = async () => {
   font-size: 16px;
 }
 
+.recommend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.recommend-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--ms-income);
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.recommend-tag:hover {
+  opacity: 0.8;
+}
+
+.recommend-hint {
+  font-size: 12px;
+  color: var(--ms-text-tertiary);
+}
+
+.event-date-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.event-date-picker {
+  flex: 1;
+}
+
+.date-separator {
+  color: var(--ms-text-secondary);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.form-tip {
+  margin: 8px 0 0 0;
+  font-size: 12px;
+  color: var(--ms-text-tertiary);
+  line-height: 1.5;
+}
+
 .budget-preview {
   margin-top: 24px;
   padding: 20px;
   background: var(--ms-bg-secondary);
-  border-radius: 8px;
+  border-radius: var(--ms-radius-lg);
   border: 1px solid var(--ms-border-default);
 }
 
@@ -656,14 +707,19 @@ const handleSubmit = async () => {
   font-weight: 500;
 }
 
-.budget-type-badge.time {
-  background: var(--ms-info)20;
-  color: var(--ms-info);
+.budget-type-badge.total {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+
+.budget-type-badge.category {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
 }
 
 .budget-type-badge.event {
-  background: var(--ms-income)20;
-  color: var(--ms-income);
+  background: rgba(139, 92, 246, 0.1);
+  color: #8b5cf6;
 }
 
 .dialog-footer {
@@ -672,7 +728,6 @@ const handleSubmit = async () => {
   gap: 12px;
 }
 
-/* 深色主题适配 */
 :deep(.el-dialog) {
   background: var(--ms-surface-primary);
   color: var(--ms-text-primary);
@@ -697,7 +752,7 @@ const handleSubmit = async () => {
 }
 
 :deep(.el-input__inner:focus) {
-  border-color: var(--ms-info);
+  border-color: var(--el-color-primary);
 }
 
 :deep(.el-select) {
@@ -715,12 +770,12 @@ const handleSubmit = async () => {
 }
 
 :deep(.el-option:hover) {
-  background: var(--ms-border-default);
+  background: var(--ms-surface-hover);
 }
 
 :deep(.el-option.selected) {
-  background: var(--ms-info)20;
-  color: var(--ms-info);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
 }
 
 :deep(.el-textarea__inner) {
@@ -730,12 +785,13 @@ const handleSubmit = async () => {
 }
 
 :deep(.el-textarea__inner:focus) {
-  border-color: var(--ms-info);
+  border-color: var(--el-color-primary);
 }
 
 :deep(.el-date-editor) {
   background: var(--ms-bg-secondary);
   border-color: var(--ms-border-default);
+  width: 100%;
 }
 
 :deep(.el-date-editor:hover) {
@@ -743,7 +799,7 @@ const handleSubmit = async () => {
 }
 
 :deep(.el-date-editor.is-focus) {
-  border-color: var(--ms-info);
+  border-color: var(--el-color-primary);
 }
 
 :deep(.el-date-editor input) {
@@ -751,30 +807,18 @@ const handleSubmit = async () => {
   color: var(--ms-text-primary);
 }
 
-:deep(.el-switch.is-checked .el-switch__core) {
-  background: var(--ms-income);
-}
-
-:deep(.el-switch__core) {
-  background: var(--ms-expense);
-}
-
-:deep(.el-switch__action) {
-  background: var(--ms-text-primary);
-}
-
-/* 响应式设计 */
 @media (max-width: 768px) {
   .budget-type-selector {
     grid-template-columns: 1fr;
   }
-  
-  .budget-type-card {
-    padding: 16px;
+
+  .event-date-row {
+    flex-direction: column;
+    align-items: stretch;
   }
-  
-  .type-icon {
-    font-size: 20px;
+
+  .date-separator {
+    text-align: center;
   }
 }
-</style> 
+</style>

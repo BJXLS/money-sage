@@ -328,13 +328,13 @@
                 <div class="budget-header">
                   <div class="budget-info">
                     <div class="budget-icon-wrapper">
-                      <span class="budget-icon" :style="{ color: budget.category_color }">
+                      <span class="budget-icon" :style="{ color: budget.category_color || undefined }">
                         {{ budget.category_icon || getEventIcon(budget.name) }}
                       </span>
                     </div>
                     <div class="budget-details">
                       <div class="budget-name">{{ budget.name }}</div>
-                      <div class="budget-category">目标: {{ budget.category_name }}</div>
+                      <div class="budget-category">目标: {{ budget.category_name || '未分类' }}</div>
                       <div class="budget-date">{{ formatEventDate(budget.start_date, budget.end_date) }}</div>
                     </div>
                   </div>
@@ -877,7 +877,10 @@ const getEventIcon = (name: string) => {
   return '🎯'
 }
 
-const formatEventDate = (startDate: string, endDate?: string) => {
+const formatEventDate = (startDate?: string | null, endDate?: string | null) => {
+  if (!startDate) {
+    return endDate ? `至 ${dayjs(endDate).format('MM-DD')}` : '未设置日期'
+  }
   const start = dayjs(startDate)
   if (endDate) {
     const end = dayjs(endDate)
@@ -904,7 +907,7 @@ const getEventStatusText = (percentage: number) => {
   return '已超支'
 }
 
-const getEventDaysText = (_startDate: string, endDate: string) => {
+const getEventDaysText = (_startDate: string | null | undefined, endDate: string) => {
   const now = dayjs()
   const end = dayjs(endDate)
   const remaining = end.diff(now, 'day')

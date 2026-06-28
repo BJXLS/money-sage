@@ -52,7 +52,7 @@
         </el-select>
       </el-form-item>
 
-      <!-- 事件预算选择 (仅支出时显示) -->
+      <!-- 预算选择 (仅支出时显示) -->
       <el-form-item v-if="form.type === 'expense'" label="预算">
         <el-select
           v-model="form.budget_id"
@@ -61,24 +61,67 @@
           clearable
           filterable
         >
-          <el-option
-            v-for="budget in matchedBudgets"
-            :key="budget.id"
-            :label="budget.name"
-            :value="budget.id"
-          >
-            <div class="budget-option">
-              <div class="budget-info">
-                <span class="budget-name">{{ budget.name }}</span>
-                <span class="budget-category">{{ budget.category_name }}</span>
+          <el-option label="不使用预算" :value="null" />
+          <el-option-group label="分类预算">
+            <el-option
+              v-for="budget in activeCategoryBudgets"
+              :key="budget.id"
+              :label="budget.name"
+              :value="budget.id"
+            >
+              <div class="budget-option">
+                <div class="budget-info">
+                  <span class="budget-name">{{ budget.name }}</span>
+                  <span class="budget-category">{{ budget.category_name }}</span>
+                </div>
+                <div class="budget-amount">
+                  <span class="budget-remaining" :class="{ 'over-budget': budget.remaining < 0 }">
+                    剩余 ¥{{ formatAmount(budget.remaining) }}
+                  </span>
+                </div>
               </div>
-              <div class="budget-amount">
-                <span class="budget-remaining" :class="{ 'over-budget': budget.remaining < 0 }">
-                  剩余 ¥{{ formatAmount(budget.remaining) }}
-                </span>
+            </el-option>
+          </el-option-group>
+          <el-option-group label="总预算">
+            <el-option
+              v-for="budget in activeTotalBudgets"
+              :key="budget.id"
+              :label="budget.name"
+              :value="budget.id"
+            >
+              <div class="budget-option">
+                <div class="budget-info">
+                  <span class="budget-name">{{ budget.name }}</span>
+                  <span class="budget-category">总预算</span>
+                </div>
+                <div class="budget-amount">
+                  <span class="budget-remaining" :class="{ 'over-budget': budget.remaining < 0 }">
+                    剩余 ¥{{ formatAmount(budget.remaining) }}
+                  </span>
+                </div>
               </div>
-            </div>
-          </el-option>
+            </el-option>
+          </el-option-group>
+          <el-option-group label="事件预算">
+            <el-option
+              v-for="budget in activeEventBudgets"
+              :key="budget.id"
+              :label="budget.name"
+              :value="budget.id"
+            >
+              <div class="budget-option">
+                <div class="budget-info">
+                  <span class="budget-name">{{ budget.name }}</span>
+                  <span class="budget-category">事件预算</span>
+                </div>
+                <div class="budget-amount">
+                  <span class="budget-remaining" :class="{ 'over-budget': budget.remaining < 0 }">
+                    剩余 ¥{{ formatAmount(budget.remaining) }}
+                  </span>
+                </div>
+              </div>
+            </el-option>
+          </el-option-group>
         </el-select>
       </el-form-item>
       
@@ -186,12 +229,23 @@ const availableCategories = computed(() => {
   return form.type === 'income' ? store.incomeCategories : store.expenseCategories
 })
 
-// 基于当前选择的小类匹配预算（时间/事件均可），并按剩余额度排序
-const matchedBudgets = computed(() => {
+const activeCategoryBudgets = computed(() => {
   if (!form.category_id) return []
   return store.budgets
-    .filter(b => b.is_active && b.category_id === form.category_id)
-    .sort((a, b) => (b.remaining - a.remaining))
+    .filter(b => b.is_active && b.budget_type === 'time' && b.category_id === form.category_id)
+    .sort((a, b) => a.remaining - b.remaining || dayjs(b.created_at).diff(dayjs(a.created_at)))
+})
+
+const activeTotalBudgets = computed(() => {
+  return store.budgets
+    .filter(b => b.is_active && b.budget_type === 'total')
+    .sort((a, b) => a.remaining - b.remaining || dayjs(b.created_at).diff(dayjs(a.created_at)))
+})
+
+const activeEventBudgets = computed(() => {
+  return store.budgets
+    .filter(b => b.is_active && b.budget_type === 'event')
+    .sort((a, b) => a.remaining - b.remaining || dayjs(b.created_at).diff(dayjs(a.created_at)))
 })
 
 // 监听类型变化，重置分类选择

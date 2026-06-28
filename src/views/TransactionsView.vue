@@ -65,8 +65,30 @@ const selectedCategory = computed(() => {
   return store.categories.find(cat => cat.id === transactionForm.value.categoryId)
 })
 
-const allActiveBudgets = computed(() => {
-  return store.budgets.filter(b => b.is_active).sort((a, b) => (b.remaining - a.remaining))
+const activeCategoryBudgets = computed(() => {
+  if (!transactionForm.value.categoryId) return []
+  return store.budgets
+    .filter(b => b.is_active && b.budget_type === 'time' && b.category_id === transactionForm.value.categoryId)
+    .sort((a, b) => a.remaining - b.remaining || dayjs(b.created_at).diff(dayjs(a.created_at)))
+})
+
+const activeTotalBudgets = computed(() => {
+  return store.budgets
+    .filter(b => b.is_active && b.budget_type === 'total')
+    .sort((a, b) => a.remaining - b.remaining || dayjs(b.created_at).diff(dayjs(a.created_at)))
+})
+
+const activeEventBudgets = computed(() => {
+  return store.budgets
+    .filter(b => b.is_active && b.budget_type === 'event')
+    .sort((a, b) => a.remaining - b.remaining || dayjs(b.created_at).diff(dayjs(a.created_at)))
+})
+
+const autoAssignedBudgetId = computed(() => {
+  if (transactionForm.value.type !== 'expense') return null
+  if (activeCategoryBudgets.value.length > 0) return activeCategoryBudgets.value[0].id
+  if (activeTotalBudgets.value.length > 0) return activeTotalBudgets.value[0].id
+  return null
 })
 
 const hoveredSubCategories = computed(() => {
@@ -340,6 +362,7 @@ onMounted(() => {
   const monthEnd = currentDate.value.endOf('month').format('YYYY-MM-DD')
   store.fetchTransactionsByDateRange(monthStart, monthEnd)
   store.fetchCategories()
+  store.fetchBudgets()
   document.addEventListener('click', handleClickOutside)
 })
 
@@ -347,6 +370,20 @@ watch(currentDate, (newVal) => {
   const monthStart = newVal.startOf('month').format('YYYY-MM-DD')
   const monthEnd = newVal.endOf('month').format('YYYY-MM-DD')
   store.fetchTransactionsByDateRange(monthStart, monthEnd)
+})
+
+watch(() => transactionForm.value.categoryId, () => {
+  if (transactionForm.value.type === 'expense' && !editingTransactionId.value) {
+    transactionForm.value.budgetId = autoAssignedBudgetId.value
+  }
+})
+
+watch(() => transactionForm.value.type, (newType) => {
+  if (newType === 'income') {
+    transactionForm.value.budgetId = null
+  } else if (transactionForm.value.categoryId && !editingTransactionId.value) {
+    transactionForm.value.budgetId = autoAssignedBudgetId.value
+  }
 })
 
 onUnmounted(() => {
@@ -515,12 +552,31 @@ onUnmounted(() => {
               <div class="form-group">
                 <label>预算</label>
                 <el-select v-if="transactionForm.type === 'expense'" v-model="transactionForm.budgetId" placeholder="选择预算（可选）" clearable>
-                  <el-option
-                    v-for="b in allActiveBudgets"
-                    :key="b.id"
-                    :label="`${b.name}（${b.category_name}）`"
-                    :value="b.id"
-                  />
+                  <el-option label="不使用预算" :value="null" />
+                  <el-option-group label="分类预算">
+                    <el-option
+                      v-for="b in activeCategoryBudgets"
+                      :key="b.id"
+                      :label="`${b.name}（${b.category_name || '未分类'}）`"
+                      :value="b.id"
+                    />
+                  </el-option-group>
+                  <el-option-group label="总预算">
+                    <el-option
+                      v-for="b in activeTotalBudgets"
+                      :key="b.id"
+                      :label="b.name"
+                      :value="b.id"
+                    />
+                  </el-option-group>
+                  <el-option-group label="事件预算">
+                    <el-option
+                      v-for="b in activeEventBudgets"
+                      :key="b.id"
+                      :label="b.name"
+                      :value="b.id"
+                    />
+                  </el-option-group>
                 </el-select>
                 <el-input v-else disabled value="-"></el-input>
               </div>
@@ -630,7 +686,31 @@ onUnmounted(() => {
             <el-col :span="12">
               <el-form-item label="预算">
                 <el-select v-if="transactionForm.type === 'expense'" v-model="transactionForm.budgetId" placeholder="选择预算（可选）" clearable style="width:100%">
-                  <el-option v-for="b in allActiveBudgets" :key="b.id" :label="`${b.name}（${b.category_name}）`" :value="b.id" />
+                  <el-option label="不使用预算" :value="null" />
+                  <el-option-group label="分类预算">
+                    <el-option
+                      v-for="b in activeCategoryBudgets"
+                      :key="b.id"
+                      :label="`${b.name}（${b.category_name || '未分类'}）`"
+                      :value="b.id"
+                    />
+                  </el-option-group>
+                  <el-option-group label="总预算">
+                    <el-option
+                      v-for="b in activeTotalBudgets"
+                      :key="b.id"
+                      :label="b.name"
+                      :value="b.id"
+                    />
+                  </el-option-group>
+                  <el-option-group label="事件预算">
+                    <el-option
+                      v-for="b in activeEventBudgets"
+                      :key="b.id"
+                      :label="b.name"
+                      :value="b.id"
+                    />
+                  </el-option-group>
                 </el-select>
                 <el-input v-else disabled value="-"></el-input>
               </el-form-item>

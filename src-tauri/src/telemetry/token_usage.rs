@@ -18,14 +18,26 @@ impl TokenUsageRecorder {
 
     /// 写入一条用量记录·
     pub async fn record(&self, rec: TokenUsageRecord) -> Result<i64> {
+        let created_at = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        println!(
+            "[TokenUsage] record agent={} config_id={:?} model={} prompt={} completion={} total={} success={} created_at={}",
+            rec.agent_name,
+            rec.config_id,
+            rec.model,
+            rec.prompt_tokens,
+            rec.completion_tokens,
+            rec.total_tokens,
+            rec.success,
+            created_at
+        );
         let result = sqlx::query(
             r#"
             INSERT INTO token_usage_logs (
                 agent_name, session_id, request_id, round_index,
                 config_id, config_name_snapshot, provider, model,
                 prompt_tokens, completion_tokens, total_tokens,
-                finish_reason, duration_ms, success, error_message
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                finish_reason, duration_ms, success, error_message, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&rec.agent_name)
@@ -43,9 +55,12 @@ impl TokenUsageRecorder {
         .bind(rec.duration_ms)
         .bind(if rec.success { 1i64 } else { 0i64 })
         .bind(&rec.error_message)
+        .bind(&created_at)
         .execute(&self.pool)
         .await?;
-        Ok(result.last_insert_rowid())
+        let id = result.last_insert_rowid();
+        println!("[TokenUsage] recorded id={}", id);
+        Ok(id)
     }
 
     /// 列表查询（带筛选 + 分页）

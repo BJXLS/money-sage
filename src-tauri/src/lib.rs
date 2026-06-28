@@ -1369,6 +1369,10 @@ async fn send_analysis_message_stream(
                 done: true,
                 error: Some(msg),
                 tool_status: None,
+                prompt_tokens: None,
+                completion_tokens: None,
+                total_tokens: None,
+                duration_ms: None,
             },
         );
     };
@@ -1496,6 +1500,10 @@ async fn send_analysis_message_stream(
     let mut full_content = String::new();
     let request_id = uuid::Uuid::new_v4().to_string();
     let mut round_index: i32 = 0;
+    let mut message_prompt_tokens: i32 = 0;
+    let mut message_completion_tokens: i32 = 0;
+    let mut message_total_tokens: i32 = 0;
+    let mut message_duration_ms: i64 = 0;
 
     for _round in 0..MAX_TOOL_ROUNDS {
         let ai_request = crate::utils::http_client::AIRequest {
@@ -1555,6 +1563,20 @@ async fn send_analysis_message_stream(
         let mut response_model = String::new();
         let mut stream_error: Option<String> = None;
 
+        // 服务端不返回 usage 时的兜底估算：中文字符≈1 token，其他字符≈0.5 token
+        let estimate_tokens = |text: &str| -> i32 {
+            let mut tokens = 0i32;
+            for ch in text.chars() {
+                if ch.is_ascii() {
+                    tokens += 1;
+                } else {
+                    // CJK 等字符粗略按 2 字节 1 token
+                    tokens += 2;
+                }
+            }
+            (tokens as f32 / 4.0).ceil() as i32
+        };
+
         loop {
             match response.chunk().await {
                 Ok(Some(chunk)) => {
@@ -1579,22 +1601,33 @@ async fn send_analysis_message_stream(
                                     response_model = m.to_string();
                                 }
                             }
-                            if let Some(usage) = json["usage"].as_object() {
-                                usage_prompt = usage
-                                    .get("prompt_tokens")
-                                    .and_then(|v| v.as_i64())
-                                    .unwrap_or(0)
-                                    as i32;
-                                usage_completion = usage
-                                    .get("completion_tokens")
-                                    .and_then(|v| v.as_i64())
-                                    .unwrap_or(0)
-                                    as i32;
-                                usage_total = usage
-                                    .get("total_tokens")
-                                    .and_then(|v| v.as_i64())
-                                    .unwrap_or((usage_prompt + usage_completion) as i64)
-                                    as i32;
+                            // 尝试多个常见路径解析 usage（OpenAI / Groq / OpenRouter / 阿里百炼等）
+                            let usage_candidates = [
+                                &json["usage"],
+                                &json["x_groq"]["usage"],
+                                &json["usageMetadata"],
+                            ];
+                            for usage in usage_candidates {
+                                if usage.is_object() {
+                                    let prompt = usage["prompt_tokens"]
+                                        .as_i64()
+                                        .or_else(|| usage["input_tokens"].as_i64())
+                                        .or_else(|| usage["promptTokenCount"].as_i64())
+                                        .unwrap_or(0) as i32;
+                                    let completion = usage["completion_tokens"]
+                                        .as_i64()
+                                        .or_else(|| usage["output_tokens"].as_i64())
+                                        .or_else(|| usage["candidatesTokenCount"].as_i64())
+                                        .unwrap_or(0) as i32;
+                                    let total = usage["total_tokens"]
+                                        .as_i64()
+                                        .or_else(|| usage["totalTokenCount"].as_i64())
+                                        .unwrap_or((prompt + completion) as i64) as i32;
+                                    usage_prompt = prompt;
+                                    usage_completion = completion;
+                                    usage_total = total;
+                                    break;
+                                }
                             }
 
                             // 文本内容 delta
@@ -1610,6 +1643,10 @@ async fn send_analysis_message_stream(
                                             done: false,
                                             error: None,
                                             tool_status: None,
+                                            prompt_tokens: None,
+                                            completion_tokens: None,
+                                            total_tokens: None,
+                                            duration_ms: None,
                                         },
                                     );
                                 }
@@ -1661,6 +1698,24 @@ async fn send_analysis_message_stream(
 
         // 记录本轮 token 用量
         let duration_ms = round_started.elapsed().as_millis() as i64;
+
+        // 若服务端未返回 usage，按字符数兜底估算，避免统计页面全是 0
+        if usage_prompt == 0 && usage_completion == 0 && usage_total == 0 {
+            let prompt_text: String = messages
+                .iter()
+                .filter_map(|m| m.content.as_deref())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let completion_text = format!("{}{}", round_content, round_reasoning);
+            usage_prompt = estimate_tokens(&prompt_text);
+            usage_completion = estimate_tokens(&completion_text);
+            usage_total = usage_prompt + usage_completion;
+            println!(
+                "[Analysis] 服务端未返回 usage，兜底估算 prompt={} completion={} total={}",
+                usage_prompt, usage_completion, usage_total
+            );
+        }
+
         let rec = models::TokenUsageRecord {
             agent_name: "AnalysisAgent".into(),
             session_id: Some(sid.clone()),
@@ -1689,6 +1744,10 @@ async fn send_analysis_message_stream(
         if let Err(re) = db_state.token_recorder.record(rec).await {
             eprintln!("[Analysis] 记录 token 用量失败: {}", re);
         }
+        message_prompt_tokens += usage_prompt;
+        message_completion_tokens += usage_completion;
+        message_total_tokens += usage_total;
+        message_duration_ms += duration_ms;
         round_index += 1;
 
         if let Some(err_msg) = stream_error {
@@ -1768,6 +1827,10 @@ async fn send_analysis_message_stream(
                             tool_input: Some(tc.function.arguments.clone()),
                             tool_output: None,
                         }),
+                        prompt_tokens: None,
+                        completion_tokens: None,
+                        total_tokens: None,
+                        duration_ms: None,
                     },
                 );
 
@@ -1817,6 +1880,10 @@ async fn send_analysis_message_stream(
                             tool_input: None,
                             tool_output: Some(result.clone()),
                         }),
+                        prompt_tokens: None,
+                        completion_tokens: None,
+                        total_tokens: None,
+                        duration_ms: None,
                     },
                 );
 
@@ -1839,6 +1906,10 @@ async fn send_analysis_message_stream(
             done: true,
             error: None,
             tool_status: None,
+            prompt_tokens: Some(message_prompt_tokens),
+            completion_tokens: Some(message_completion_tokens),
+            total_tokens: Some(message_total_tokens),
+            duration_ms: Some(message_duration_ms),
         },
     );
 
@@ -1929,11 +2000,15 @@ async fn list_token_usage(
     state: State<'_, DatabaseState>,
     filter: Option<TokenUsageFilter>,
 ) -> Result<Vec<TokenUsageEntry>, String> {
-    state
+    let f = filter.unwrap_or_default();
+    println!("[TokenUsage] list_token_usage filter={:?}", f);
+    let result = state
         .token_recorder
-        .list(filter.unwrap_or_default())
+        .list(f)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    println!("[TokenUsage] list_token_usage returned {} rows", result.len());
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1942,11 +2017,15 @@ async fn get_token_usage_summary(
     group_by: TokenUsageGroupBy,
     filter: Option<TokenUsageFilter>,
 ) -> Result<Vec<TokenUsageSummary>, String> {
-    state
+    let f = filter.unwrap_or_default();
+    println!("[TokenUsage] get_token_usage_summary group_by={:?} filter={:?}", group_by, f);
+    let result = state
         .token_recorder
-        .summary(group_by, filter.unwrap_or_default())
+        .summary(group_by, f)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    println!("[TokenUsage] get_token_usage_summary returned {} rows", result.len());
+    Ok(result)
 }
 
 #[tauri::command]

@@ -49,6 +49,12 @@ const activeBudgets = computed(() => {
   return store.budgets.slice(0, 5)
 })
 
+const budgetAlertStats = computed(() => {
+  const overBudgetCount = store.budgets.filter(b => b.percentage >= 100).length
+  const warningCount = store.budgets.filter(b => b.percentage >= 80 && b.percentage < 100).length
+  return { overBudgetCount, warningCount }
+})
+
 const formatAmount = (amount: number) => {
   return amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -328,7 +334,18 @@ watch(currentMonth, (month) => {
           <template #header>
             <div class="budget-header">
               <h3>预算告警</h3>
-              <span class="alert-badge">2 个超支</span>
+              <span
+                class="alert-badge"
+                :class="{
+                  warning: budgetAlertStats.overBudgetCount === 0 && budgetAlertStats.warningCount > 0,
+                  healthy: budgetAlertStats.overBudgetCount === 0 && budgetAlertStats.warningCount === 0,
+                }"
+              >
+                <template v-if="budgetAlertStats.overBudgetCount > 0">{{ budgetAlertStats.overBudgetCount }} 个超支</template>
+                <template v-if="budgetAlertStats.overBudgetCount > 0 && budgetAlertStats.warningCount > 0"> · </template>
+                <template v-if="budgetAlertStats.warningCount > 0">{{ budgetAlertStats.warningCount }} 个预警</template>
+                <template v-if="budgetAlertStats.overBudgetCount === 0 && budgetAlertStats.warningCount === 0">预算健康</template>
+              </span>
             </div>
           </template>
           <div class="budget-list">
@@ -616,6 +633,16 @@ watch(currentMonth, (month) => {
   font-weight: 500;
   background-color: rgba(244, 63, 94, 0.1);
   color: var(--ms-expense);
+}
+
+.alert-badge.warning {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: var(--ms-warning);
+}
+
+.alert-badge.healthy {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--ms-income);
 }
 
 .budget-list {

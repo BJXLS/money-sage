@@ -285,6 +285,14 @@ impl QuickNoteAgent {
         println!("   最大Token: {}", request.max_tokens);
         println!("   消息数量: {}", request.messages.len());
         
+        // 预先保存 prompt 文本，用于服务端未返回 usage 时的兜底估算
+        let prompt_text_for_estimate: String = request
+            .messages
+            .iter()
+            .filter_map(|m| m.content.as_deref())
+            .collect::<Vec<_>>()
+            .join("\n");
+
         // 调用AI模型
         println!("⏳ [QuickNote] 正在调用AI模型...");
         let started = std::time::Instant::now();
@@ -319,8 +327,36 @@ impl QuickNoteAgent {
             println!("   AI解释: {}", explanation);
         }
         
+        // 若服务端未返回 usage，按字符数兜底估算
+        let usage = response.usage.clone().or_else(|| {
+            let estimate = |text: &str| -> u32 {
+                let mut tokens = 0u32;
+                for ch in text.chars() {
+                    if ch.is_ascii() {
+                        tokens += 1;
+                    } else {
+                        tokens += 2;
+                    }
+                }
+                ((tokens as f32) / 4.0).ceil() as u32
+            };
+            let prompt_tokens = estimate(&prompt_text_for_estimate);
+            let completion_tokens = estimate(&content);
+            println!(
+                "[QuickNote] 服务端未返回 usage，兜底估算 prompt={} completion={} total={}",
+                prompt_tokens,
+                completion_tokens,
+                prompt_tokens + completion_tokens
+            );
+            Some(AIUsage {
+                prompt_tokens,
+                completion_tokens,
+                total_tokens: prompt_tokens + completion_tokens,
+            })
+        });
+
         let report = AICallReport {
-            usage: response.usage.clone(),
+            usage,
             finish_reason: response.choices.get(0).and_then(|c| c.finish_reason.clone()),
             model: response.model.clone(),
             duration_ms,

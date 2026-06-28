@@ -171,104 +171,118 @@ impl Database {
                 let column_name: String = row.get("name");
                 column_name == "budget_type"
             });
-            
+
+            let has_is_recurring = columns_result.iter().any(|row| {
+                let column_name: String = row.get("name");
+                column_name == "is_recurring"
+            });
+
             let amount_column = columns_result.iter().find(|row| {
                 let column_name: String = row.get("name");
                 column_name == "amount"
             });
-            
-            let needs_migration = !has_name || !has_budget_type || 
+
+            let needs_migration = !has_name || !has_budget_type || !has_is_recurring ||
                                 (amount_column.map(|col| {
                                     let column_type: String = col.get("type");
-                                    column_type.to_uppercase().contains("DECIMAL") || 
+                                    column_type.to_uppercase().contains("DECIMAL") ||
                                     column_type.to_uppercase().contains("INTEGER")
                                 }).unwrap_or(false));
-            
+
             if needs_migration {
                 println!("需要迁移 budgets 表结构，缺少必要字段或数据类型不正确");
-                
+
                 // 备份现有数据
                 sqlx::query("CREATE TABLE budgets_backup AS SELECT * FROM budgets")
                     .execute(pool)
                     .await?;
-                
+
                 // 删除原表
                 sqlx::query("DROP TABLE budgets")
                     .execute(pool)
                     .await?;
-                
-                // 重新创建表
+
+                // 重新创建表（v2.0：支持总预算、事件预算、daily 周期、可空 category_id/start_date）
                 sqlx::query(r#"
                     CREATE TABLE budgets (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         name TEXT NOT NULL,
-                        category_id INTEGER NOT NULL,
+                        category_id INTEGER,
                         amount REAL NOT NULL,
-                        budget_type TEXT NOT NULL DEFAULT 'time' CHECK (budget_type IN ('time', 'event')),
-                        period_type TEXT NOT NULL DEFAULT 'monthly' CHECK (period_type IN ('weekly', 'monthly', 'yearly')),
-                        start_date DATE NOT NULL,
+                        budget_type TEXT NOT NULL DEFAULT 'time' CHECK (budget_type IN ('time', 'event', 'total')),
+                        period_type TEXT DEFAULT 'monthly' CHECK (period_type IN ('daily', 'weekly', 'monthly', 'yearly')),
+                        start_date DATE,
                         end_date DATE,
+                        is_recurring INTEGER DEFAULT 1,
                         is_active INTEGER DEFAULT 1,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (category_id) REFERENCES categories(id)
                     )
                 "#).execute(pool).await?;
-                
+
                 // 恢复数据，处理可能缺失的字段
                 let backup_columns = sqlx::query("PRAGMA table_info(budgets_backup)")
                     .fetch_all(pool)
                     .await?;
-                
+
                 let backup_has_name = backup_columns.iter().any(|row| {
                     let column_name: String = row.get("name");
                     column_name == "name"
                 });
-                
+
                 let backup_has_budget_type = backup_columns.iter().any(|row| {
                     let column_name: String = row.get("name");
                     column_name == "budget_type"
                 });
-                
+
+                let backup_has_period_type = backup_columns.iter().any(|row| {
+                    let column_name: String = row.get("name");
+                    column_name == "period_type"
+                });
+
                 if backup_has_name && backup_has_budget_type {
-                    sqlx::query(r#"
-                        INSERT INTO budgets (id, name, category_id, amount, budget_type, period_type, start_date, end_date, is_active, created_at, updated_at)
-                        SELECT id, name, category_id, CAST(amount AS REAL), budget_type, period_type, start_date, end_date, is_active, created_at, updated_at
+                    let period_type_field = if backup_has_period_type { "period_type" } else { "'monthly'" };
+                    let query = format!(r#"
+                        INSERT INTO budgets (id, name, category_id, amount, budget_type, period_type, start_date, end_date, is_recurring, is_active, created_at, updated_at)
+                        SELECT id, name, category_id, CAST(amount AS REAL), budget_type, {}, start_date, end_date, 1, is_active, created_at, updated_at
                         FROM budgets_backup
-                    "#).execute(pool).await?;
+                    "#, period_type_field);
+                    sqlx::query(&query).execute(pool).await?;
                 } else {
                     // 如果备份表缺少字段，使用默认值
                     let name_field = if backup_has_name { "name" } else { "'预算-' || id" };
                     let budget_type_field = if backup_has_budget_type { "budget_type" } else { "'time'" };
-                    
+
                     let query = format!(r#"
-                        INSERT INTO budgets (id, name, category_id, amount, budget_type, period_type, start_date, end_date, is_active, created_at, updated_at)
-                        SELECT id, {}, category_id, CAST(amount AS REAL), {}, period_type, start_date, end_date, is_active, created_at, updated_at
+                        INSERT INTO budgets (id, name, category_id, amount, budget_type, period_type, start_date, end_date, is_recurring, is_active, created_at, updated_at)
+                        SELECT id, {}, category_id, CAST(amount AS REAL), {}, 'monthly', start_date, end_date, 1, is_active, created_at, updated_at
                         FROM budgets_backup
                     "#, name_field, budget_type_field);
-                    
+
                     sqlx::query(&query).execute(pool).await?;
                 }
-                
+
                 // 删除备份表
                 sqlx::query("DROP TABLE budgets_backup")
                     .execute(pool)
                     .await?;
-                
+
                 println!("budgets 表迁移完成");
             }
         } else {
-            // 创建新的 budgets 表
+            // 创建新的 budgets 表（v2.0）
             sqlx::query(r#"
                 CREATE TABLE budgets (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
-                    category_id INTEGER NOT NULL,
+                    category_id INTEGER,
                     amount REAL NOT NULL,
-                    budget_type TEXT NOT NULL DEFAULT 'time' CHECK (budget_type IN ('time', 'event')),
-                    period_type TEXT NOT NULL DEFAULT 'monthly' CHECK (period_type IN ('weekly', 'monthly', 'yearly')),
-                    start_date DATE NOT NULL,
+                    budget_type TEXT NOT NULL DEFAULT 'time' CHECK (budget_type IN ('time', 'event', 'total')),
+                    period_type TEXT DEFAULT 'monthly' CHECK (period_type IN ('daily', 'weekly', 'monthly', 'yearly')),
+                    start_date DATE,
                     end_date DATE,
+                    is_recurring INTEGER DEFAULT 1,
                     is_active INTEGER DEFAULT 1,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -882,6 +896,20 @@ impl Database {
     }
 
     pub async fn create_transaction(&self, transaction: &NewTransaction) -> Result<i64> {
+        // 自动归属预算：支出交易且未手动指定 budget_id 时，尝试匹配分类预算或总预算
+        let budget_id = if transaction.r#type == "expense" && transaction.budget_id.is_none() {
+            self.auto_assign_budget(transaction.category_id, transaction.date)
+                .await?
+        } else {
+            transaction.budget_id
+        };
+
+        // 校验 budget_id 与预算的兼容性
+        if let Some(bid) = budget_id {
+            self.validate_budget_assignment(bid, transaction.category_id, &transaction.r#type)
+                .await?;
+        }
+
         let result = sqlx::query(
             "INSERT INTO transactions (date, type, amount, category_id, budget_id, description, note, created_at, updated_at) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -890,7 +918,7 @@ impl Database {
         .bind(&transaction.r#type)
         .bind(transaction.amount)
         .bind(transaction.category_id)
-        .bind(transaction.budget_id)
+        .bind(budget_id)
         .bind(&transaction.description)
         .bind(&transaction.note)
         .bind(Utc::now())
@@ -901,7 +929,83 @@ impl Database {
         Ok(result.last_insert_rowid())
     }
 
+    /// 校验交易与预算的兼容性
+    async fn validate_budget_assignment(
+        &self,
+        budget_id: i64,
+        category_id: i64,
+        transaction_type: &str,
+    ) -> Result<()> {
+        if transaction_type != "expense" {
+            return Err(anyhow::anyhow!("只有支出交易可以关联预算"));
+        }
+
+        let budget: Option<(String, Option<i64>, i64)> = sqlx::query_as(
+            "SELECT budget_type, category_id, is_active FROM budgets WHERE id = ?"
+        )
+        .bind(budget_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (budget_type, budget_category_id, is_active) = budget
+            .ok_or_else(|| anyhow::anyhow!("关联的预算不存在"))?;
+
+        if is_active == 0 {
+            return Err(anyhow::anyhow!("关联的预算已停用"));
+        }
+
+        match budget_type.as_str() {
+            "time" => {
+                if budget_category_id != Some(category_id) {
+                    return Err(anyhow::anyhow!("分类预算与交易分类不一致"));
+                }
+            }
+            "total" => {
+                // 总预算不限制分类
+            }
+            "event" => {
+                // 事件预算不限制分类和日期
+            }
+            _ => return Err(anyhow::anyhow!("未知预算类型: {}", budget_type)),
+        }
+
+        Ok(())
+    }
+
     pub async fn update_transaction(&self, id: i64, transaction: &UpdateTransaction) -> Result<()> {
+        // 获取当前交易信息，用于校验和自动归属
+        let current: Option<(String, i64, NaiveDate, Option<i64>)> = sqlx::query_as(
+            "SELECT type, category_id, date, budget_id FROM transactions WHERE id = ?"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (current_type, current_category_id, current_date, current_budget_id) = current
+            .ok_or_else(|| anyhow::anyhow!("交易记录不存在"))?;
+
+        // 确定最终的 type / category_id / date / budget_id
+        let final_type = transaction.r#type.as_ref().unwrap_or(&current_type).clone();
+        let final_category_id = transaction.category_id.unwrap_or(current_category_id);
+        let final_date = transaction.date.unwrap_or(current_date);
+        let final_budget_id = if let Some(budget_id) = &transaction.budget_id {
+            *budget_id
+        } else {
+            current_budget_id
+        };
+
+        // 自动归属：如果用户清空了 budget_id 且是支出交易，尝试重新匹配
+        let final_budget_id = if final_type == "expense" && final_budget_id.is_none() {
+            self.auto_assign_budget(final_category_id, final_date).await?
+        } else {
+            final_budget_id
+        };
+
+        // 校验预算兼容性
+        if let Some(bid) = final_budget_id {
+            self.validate_budget_assignment(bid, final_category_id, &final_type).await?;
+        }
+
         let mut query_parts = vec!["UPDATE transactions SET updated_at = ?"];
         let mut bindings: Vec<String> = vec![Utc::now().to_rfc3339()];
         
@@ -921,13 +1025,11 @@ impl Database {
             query_parts.push(", category_id = ?");
             bindings.push(category_id.to_string());
         }
-        if let Some(budget_id) = &transaction.budget_id {
-            query_parts.push(", budget_id = ?");
-            if let Some(bid) = budget_id {
-                bindings.push(bid.to_string());
-            } else {
-                bindings.push("NULL".to_string());
-            }
+        query_parts.push(", budget_id = ?");
+        if let Some(bid) = final_budget_id {
+            bindings.push(bid.to_string());
+        } else {
+            bindings.push("NULL".to_string());
         }
         if let Some(description) = &transaction.description {
             query_parts.push(", description = ?");
@@ -1045,71 +1147,147 @@ impl Database {
     }
 
     // 预算相关方法
+
+    /// 计算时间预算/总预算的当前自然周期起止日期
+    fn current_period_range(period_type: &str) -> (NaiveDate, NaiveDate) {
+        use chrono::{Datelike, Local, Weekday};
+        let today = Local::now().naive_local().date();
+        let start = match period_type {
+            "daily" => today,
+            "weekly" => {
+                // 本周一
+                let days_from_monday = today.weekday().num_days_from_monday();
+                today - chrono::Duration::days(days_from_monday as i64)
+            }
+            "monthly" => today.with_day(1).unwrap_or(today),
+            "yearly" => today.with_month(1).and_then(|d| d.with_day(1)).unwrap_or(today),
+            _ => today,
+        };
+        let end = match period_type {
+            "daily" => today,
+            "weekly" => start + chrono::Duration::days(6),
+            "monthly" => {
+                let next_month = if start.month() == 12 {
+                    start.with_year(start.year() + 1).and_then(|d| d.with_month(1))
+                } else {
+                    start.with_month(start.month() + 1)
+                };
+                next_month
+                    .and_then(|d| d.with_day(1))
+                    .map(|d| d - chrono::Duration::days(1))
+                    .unwrap_or(start)
+            }
+            "yearly" => start.with_year(start.year() + 1).and_then(|d| d.with_day(1)).map(|d| d - chrono::Duration::days(1)).unwrap_or(start),
+            _ => today,
+        };
+        (start, end)
+    }
+
     pub async fn get_budgets(&self) -> Result<Vec<BudgetProgress>> {
-        let budgets = sqlx::query(
+        // 查询所有活跃预算及其关联的交易（不过滤日期，在 Rust 中按预算类型过滤）
+        let rows = sqlx::query(
             r#"
-            SELECT 
-                b.id, b.name, b.category_id, b.amount, b.budget_type, b.period_type, b.start_date, b.end_date, b.is_active,
-                b.created_at, b.updated_at,
+            SELECT
+                b.id, b.name, b.category_id, b.amount, b.budget_type, b.period_type, b.start_date, b.end_date,
+                b.is_recurring, b.is_active, b.created_at, b.updated_at,
                 c.name as category_name, c.icon as category_icon, c.color as category_color,
-                COALESCE(SUM(t.amount), 0.0) as spent
+                t.date as trans_date, t.amount as trans_amount, t.type as trans_type
             FROM budgets b
-            JOIN categories c ON b.category_id = c.id
-            LEFT JOIN transactions t ON t.budget_id = b.id 
-                AND t.type = 'expense'
-                AND (
-                    (b.budget_type = 'time' AND t.date BETWEEN b.start_date AND COALESCE(b.end_date, date('now')))
-                    OR (b.budget_type = 'event')
-                )
+            LEFT JOIN categories c ON b.category_id = c.id
+            LEFT JOIN transactions t ON t.budget_id = b.id AND t.type = 'expense'
             WHERE b.is_active = 1
-            GROUP BY b.id, b.name, b.category_id, b.amount, b.budget_type, b.period_type, b.start_date, b.end_date, 
-                     b.is_active, b.created_at, b.updated_at, c.name, c.icon, c.color
-            ORDER BY b.created_at DESC
+            ORDER BY b.created_at DESC, t.date ASC
             "#
         )
         .fetch_all(&self.pool)
         .await?;
-        
-        let budget_progress: Vec<BudgetProgress> = budgets
-            .into_iter()
-            .map(|row| {
-                let amount: f64 = row.get("amount");
-                let spent: f64 = row.get("spent");
-                let remaining = amount - spent;
-                let percentage = if amount > 0.0 { spent / amount * 100.0 } else { 0.0 };
-                
-                BudgetProgress {
-                    // Budget fields
-                    id: row.get("id"),
-                    name: row.get("name"),
-                    category_id: row.get("category_id"),
-                    amount,
-                    budget_type: row.get("budget_type"),
-                    period_type: row.get("period_type"),
-                    start_date: row.get("start_date"),
-                    end_date: row.get("end_date"),
-                    is_active: row.get("is_active"),
-                    created_at: row.get("created_at"),
-                    updated_at: row.get("updated_at"),
-                    // Category fields
-                    category_name: row.get("category_name"),
-                    category_icon: row.get("category_icon"),
-                    category_color: row.get("category_color"),
-                    // Progress fields
-                    spent,
-                    remaining,
-                    percentage,
-                }
-            })
-            .collect();
-        
-        Ok(budget_progress)
+
+        // 按 budget_id 聚合
+        let mut budget_map: std::collections::HashMap<i64, BudgetProgress> = std::collections::HashMap::new();
+        let mut tx_by_budget: std::collections::HashMap<i64, Vec<(NaiveDate, f64)>> = std::collections::HashMap::new();
+
+        for row in rows {
+            let id: i64 = row.get("id");
+            let budget_type: String = row.get("budget_type");
+            let period_type: Option<String> = row.get("period_type");
+            let amount: f64 = row.get("amount");
+
+            // 计算周期范围
+            let (period_start, period_end) = if budget_type == "event" {
+                let s: Option<NaiveDate> = row.get("start_date");
+                let e: Option<NaiveDate> = row.get("end_date");
+                (s.map(|d| d.to_string()), e.map(|d| d.to_string()))
+            } else {
+                let pt = period_type.as_deref().unwrap_or("monthly");
+                let (s, e) = Self::current_period_range(pt);
+                (Some(s.to_string()), Some(e.to_string()))
+            };
+
+            budget_map.entry(id).or_insert_with(|| BudgetProgress {
+                id,
+                name: row.get("name"),
+                category_id: row.get("category_id"),
+                amount,
+                budget_type: budget_type.clone(),
+                period_type: period_type.clone(),
+                start_date: row.get("start_date"),
+                end_date: row.get("end_date"),
+                is_recurring: row.get("is_recurring"),
+                is_active: row.get("is_active"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+                category_name: row.get("category_name"),
+                category_icon: row.get("category_icon"),
+                category_color: row.get("category_color"),
+                spent: 0.0,
+                remaining: amount,
+                percentage: 0.0,
+                period_start,
+                period_end,
+            });
+
+            if let Ok(date) = row.try_get::<NaiveDate, _>("trans_date") {
+                let tx_amount: f64 = row.try_get("trans_amount").unwrap_or(0.0);
+                tx_by_budget.entry(id).or_default().push((date, tx_amount));
+            }
+        }
+
+        // 计算每个预算的支出
+        for (id, progress) in budget_map.iter_mut() {
+            let amount = progress.amount;
+            let budget_type = progress.budget_type.clone();
+            let period_type = progress.period_type.clone();
+
+            let spent = if budget_type == "event" {
+                // 事件预算：统计所有关联的 expense 交易，不限制日期
+                tx_by_budget.get(id).map(|txs| txs.iter().map(|(_, a)| a).sum()).unwrap_or(0.0)
+            } else {
+                // 时间预算 / 总预算：只统计当前自然周期内的交易
+                let pt = period_type.as_deref().unwrap_or("monthly");
+                let (start, end) = Self::current_period_range(pt);
+                tx_by_budget
+                    .get(id)
+                    .map(|txs| {
+                        txs.iter()
+                            .filter(|(d, _)| *d >= start && *d <= end)
+                            .map(|(_, a)| a)
+                            .sum()
+                    })
+                    .unwrap_or(0.0)
+            };
+
+            progress.spent = spent;
+            progress.remaining = amount - spent;
+            progress.percentage = if amount > 0.0 { spent / amount * 100.0 } else { 0.0 };
+        }
+
+        Ok(budget_map.into_values().collect())
     }
 
     pub async fn create_budget(&self, budget: &NewBudget) -> Result<i64> {
         let result = sqlx::query(
-            "INSERT INTO budgets (name, category_id, amount, budget_type, period_type, start_date, end_date, created_at, updated_at) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO budgets (name, category_id, amount, budget_type, period_type, start_date, end_date, is_recurring, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&budget.name)
         .bind(budget.category_id)
@@ -1118,18 +1296,19 @@ impl Database {
         .bind(&budget.period_type)
         .bind(&budget.start_date)
         .bind(&budget.end_date)
+        .bind(budget.is_recurring.unwrap_or(true))
         .bind(Utc::now())
         .bind(Utc::now())
         .execute(&self.pool)
         .await?;
-        
+
         Ok(result.last_insert_rowid())
     }
 
     pub async fn update_budget(&self, id: i64, budget: &UpdateBudget) -> Result<()> {
         // 构建动态SQL语句
         let mut updates = Vec::new();
-        
+
         if budget.name.is_some() {
             updates.push("name = ?");
         }
@@ -1151,21 +1330,27 @@ impl Database {
         if budget.end_date.is_some() {
             updates.push("end_date = ?");
         }
-        
+        if budget.is_recurring.is_some() {
+            updates.push("is_recurring = ?");
+        }
+        if budget.is_active.is_some() {
+            updates.push("is_active = ?");
+        }
+
         if updates.is_empty() {
             return Ok(()); // 没有要更新的字段
         }
-        
+
         updates.push("updated_at = ?");
-        
+
         let sql = format!("UPDATE budgets SET {} WHERE id = ?", updates.join(", "));
         let mut query = sqlx::query(&sql);
-        
+
         // 按顺序绑定参数
         if let Some(name) = &budget.name {
             query = query.bind(name);
         }
-        if let Some(category_id) = budget.category_id {
+        if let Some(category_id) = &budget.category_id {
             query = query.bind(category_id);
         }
         if let Some(amount) = budget.amount {
@@ -1177,26 +1362,104 @@ impl Database {
         if let Some(period_type) = &budget.period_type {
             query = query.bind(period_type);
         }
-        if let Some(start_date) = budget.start_date {
+        if let Some(start_date) = &budget.start_date {
             query = query.bind(start_date);
         }
         if let Some(end_date) = &budget.end_date {
             query = query.bind(end_date);
         }
-        
+        if let Some(is_recurring) = budget.is_recurring {
+            query = query.bind(is_recurring);
+        }
+        if let Some(is_active) = budget.is_active {
+            query = query.bind(is_active);
+        }
+
         query = query.bind(Utc::now()).bind(id);
-        
+
         query.execute(&self.pool).await?;
-        
+
         Ok(())
     }
 
     pub async fn delete_budget(&self, id: i64) -> Result<()> {
+        // 删除预算时，关联交易的 budget_id 设为 NULL
+        sqlx::query("UPDATE transactions SET budget_id = NULL WHERE budget_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         sqlx::query("DELETE FROM budgets WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    /// 根据分类自动匹配活跃的分类预算或总预算（事件预算不参与）
+    pub async fn auto_assign_budget(
+        &self,
+        category_id: i64,
+        date: NaiveDate,
+    ) -> Result<Option<i64>> {
+        // 1. 查找与交易分类一致、在当前周期内活跃的分类预算
+        let category_budgets: Vec<(i64, String, f64)> = sqlx::query_as(
+            r#"
+            SELECT id, period_type, amount
+            FROM budgets
+            WHERE budget_type = 'time'
+              AND category_id = ?
+              AND is_active = 1
+            "#
+        )
+        .bind(category_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut candidates: Vec<(i64, f64)> = Vec::new();
+        for (id, period_type, amount) in category_budgets {
+            let pt = period_type.as_str();
+            let (start, end) = Self::current_period_range(pt);
+            if date >= start && date <= end {
+                // 计算该预算当前周期已支出
+                let spent: f64 = sqlx::query_scalar(
+                    "SELECT COALESCE(SUM(amount), 0.0) FROM transactions WHERE budget_id = ? AND type = 'expense' AND date BETWEEN ? AND ?"
+                )
+                .bind(id)
+                .bind(start)
+                .bind(end)
+                .fetch_one(&self.pool)
+                .await?;
+                candidates.push((id, amount - spent));
+            }
+        }
+
+        if !candidates.is_empty() {
+            // 优先选择剩余额度最小的预算
+            candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            return Ok(Some(candidates[0].0));
+        }
+
+        // 2. 兜底：查找活跃的总预算
+        let total_budgets: Vec<(i64, String)> = sqlx::query_as(
+            r#"
+            SELECT id, period_type
+            FROM budgets
+            WHERE budget_type = 'total'
+              AND is_active = 1
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        for (id, period_type) in total_budgets {
+            let pt = period_type.as_str();
+            let (start, end) = Self::current_period_range(pt);
+            if date >= start && date <= end {
+                return Ok(Some(id));
+            }
+        }
+
+        Ok(None)
     }
 
     // CSV导入相关

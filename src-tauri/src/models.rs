@@ -72,12 +72,13 @@ pub struct UpdateTransaction {
 pub struct Budget {
     pub id: i64,
     pub name: String,
-    pub category_id: i64,
+    pub category_id: Option<i64>, // 总预算和事件预算为 NULL
     pub amount: f64,
-    pub budget_type: String, // 'time' or 'event'
-    pub period_type: String, // 'weekly', 'monthly', 'yearly' for time budgets
-    pub start_date: NaiveDate,
+    pub budget_type: String, // 'time', 'event', 'total'
+    pub period_type: Option<String>, // 'daily', 'weekly', 'monthly', 'yearly'; 事件预算为 NULL
+    pub start_date: Option<NaiveDate>, // 时间预算可空（动态计算），事件预算可空（展示）
     pub end_date: Option<NaiveDate>,
+    pub is_recurring: bool, // 仅时间预算有效
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -86,23 +87,26 @@ pub struct Budget {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NewBudget {
     pub name: String,
-    pub category_id: i64,
+    pub category_id: Option<i64>,
     pub amount: f64,
     pub budget_type: String,
-    pub period_type: String,
-    pub start_date: NaiveDate,
+    pub period_type: Option<String>,
+    pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,
+    pub is_recurring: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateBudget {
     pub name: Option<String>,
-    pub category_id: Option<i64>,
+    pub category_id: Option<Option<i64>>,
     pub amount: Option<f64>,
     pub budget_type: Option<String>,
-    pub period_type: Option<String>,
-    pub start_date: Option<NaiveDate>,
+    pub period_type: Option<Option<String>>,
+    pub start_date: Option<Option<NaiveDate>>,
     pub end_date: Option<Option<NaiveDate>>,
+    pub is_recurring: Option<bool>,
+    pub is_active: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -149,23 +153,27 @@ pub struct BudgetProgress {
     // Budget fields
     pub id: i64,
     pub name: String,
-    pub category_id: i64,
+    pub category_id: Option<i64>,
     pub amount: f64,
     pub budget_type: String,
-    pub period_type: String,
-    pub start_date: NaiveDate,
+    pub period_type: Option<String>,
+    pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,
+    pub is_recurring: bool,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     // Category fields
-    pub category_name: String,
+    pub category_name: Option<String>,
     pub category_icon: Option<String>,
     pub category_color: Option<String>,
     // Progress fields
     pub spent: f64,
     pub remaining: f64,
     pub percentage: f64,
+    // v2.0: 当前周期起止（时间预算）/ 事件区间（事件预算）
+    pub period_start: Option<String>,
+    pub period_end: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -465,6 +473,16 @@ pub struct StreamChunkPayload {
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_status: Option<ToolStatusPayload>,
+    /// 本条 assistant 消息的总 token 用量（仅在 done=true 时有效）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tokens: Option<i32>,
+    /// 本条 assistant 消息的总耗时（毫秒，仅在 done=true 时有效）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
 }
 
 /// AI 生成的图表配置（ECharts 数据格式，暂保留供后续使用）

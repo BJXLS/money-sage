@@ -53,6 +53,10 @@ interface StreamChunkPayload {
   done: boolean
   error: string | null
   tool_status?: ToolStatusPayload
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+  duration_ms?: number
 }
 
 interface Message {
@@ -68,6 +72,10 @@ interface Message {
   toolOutput?: string
   collapsed?: boolean
   draft?: QuickNoteDraft
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  durationMs?: number
 }
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
@@ -259,7 +267,15 @@ const sendMessage = async (text?: string) => {
       const targetId = currentTextBubbleId ?? loadingMsgId
       const idx = messages.value.findIndex(m => m.id === targetId)
       if (idx !== -1) {
-        messages.value[idx] = { ...messages.value[idx], loading: false, toolStatus: undefined }
+        messages.value[idx] = {
+          ...messages.value[idx],
+          loading: false,
+          toolStatus: undefined,
+          promptTokens: payload.prompt_tokens,
+          completionTokens: payload.completion_tokens,
+          totalTokens: payload.total_tokens,
+          durationMs: payload.duration_ms,
+        }
       }
       // 移除空的 loading 占位（如果没有任何文本内容）
       if (!currentTextBubbleId) {
@@ -715,6 +731,19 @@ onUnmounted(() => {
                 </div>
                 <div v-if="msg.loading && !msg.toolStatus" class="streaming-cursor" />
               </template>
+              <div
+                v-if="msg.role === 'assistant' && msg.messageType === 'text' && (msg.totalTokens != null || msg.durationMs != null)"
+                class="msg-meta"
+              >
+                <span v-if="msg.totalTokens != null" class="meta-item">
+                  <el-icon><Coin /></el-icon>
+                  {{ msg.totalTokens.toLocaleString() }} tokens
+                </span>
+                <span v-if="msg.durationMs != null" class="meta-item">
+                  <el-icon><Timer /></el-icon>
+                  {{ msg.durationMs >= 1000 ? `${(msg.durationMs / 1000).toFixed(2)}s` : `${msg.durationMs}ms` }}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -1101,6 +1130,22 @@ onUnmounted(() => {
 .tool-status-dots span:nth-child(1) { animation-delay: 0s; }
 .tool-status-dots span:nth-child(2) { animation-delay: 0.2s; }
 .tool-status-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+.msg-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--ms-space-3);
+  margin-top: var(--ms-space-2);
+  padding-top: var(--ms-space-2);
+  border-top: 1px solid var(--ms-border-subtle);
+  font-size: var(--ms-text-xs);
+  color: var(--ms-text-tertiary);
+}
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
 /* 流式光标 */
 .streaming-cursor {

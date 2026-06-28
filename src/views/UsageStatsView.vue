@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import dayjs from 'dayjs'
+import { ElMessage } from 'element-plus'
 import { useAppStore, type TokenUsageFilter, type TokenUsageSummary, type TokenUsageEntry } from '../stores'
 
 const store = useAppStore()
@@ -37,13 +38,16 @@ const refresh = async () => {
     const filter = currentFilter.value
     const [byConfig, byModel, list] = await Promise.all([
       // 直接使用每次调用返回值，避免并发时读取共享 state 导致统计串数据
-      store.getTokenUsageSummary('config', filter).then((res) => structuredClone(res || [])),
-      store.getTokenUsageSummary('model', filter).then((res) => structuredClone(res || [])),
+      store.getTokenUsageSummary('config', filter).then((res) => deepCopy(res || [])),
+      store.getTokenUsageSummary('model', filter).then((res) => deepCopy(res || [])),
       store.listTokenUsage({ ...filter, limit: pageSize, offset: (page.value - 1) * pageSize }),
     ])
     configSummary.value = byConfig as TokenUsageSummary[]
     modelSummary.value = byModel as TokenUsageSummary[]
     entries.value = list
+  } catch (err) {
+    console.error('[UsageStats] 刷新失败:', err)
+    ElMessage.error(`用量统计加载失败：${err}`)
   } finally {
     loading.value = false
   }
@@ -74,6 +78,8 @@ const knownModels = computed(() => {
   }
   return [...set]
 })
+
+const deepCopy = <T>(value: T): T => JSON.parse(JSON.stringify(value))
 
 const formatNumber = (n: number) => {
   if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`

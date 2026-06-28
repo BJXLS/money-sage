@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoneySage — 预算管理 v2.0 原型</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .card { background-color: var(--surface-primary); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: var(--shadow-sm); }
+    .text-primary { color: var(--text-primary); }
+    .text-secondary { color: var(--text-secondary); }
+    .text-tertiary { color: var(--text-tertiary); }
+    .stat-card { background: var(--surface-primary); border: 1px solid var(--border-subtle); border-radius: 16px; padding: 20px; box-shadow: var(--shadow-sm); }
+    .tab-btn { padding: 8px 16px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--text-secondary); background: transparent; border: none; cursor: pointer; }
+    .tab-btn.active { background: var(--surface-secondary); color: var(--text-primary); }
+    .progress-bg { background-color: var(--bg-tertiary); border-radius: 999px; height: 8px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 999px; transition: width 0.4s ease; }
+    .status-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .budget-card { transition: all 0.2s ease; cursor: pointer; }
+    .budget-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--border-default); }
+    .drawer { position: fixed; top: 0; right: 0; width: 520px; max-width: 100%; height: 100%; background: var(--bg-primary); border-left: 1px solid var(--border-subtle); box-shadow: var(--shadow-lg); transform: translateX(100%); transition: transform 0.3s ease; z-index: 50; overflow-y: auto; }
+    .drawer.open { transform: translateX(0); }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 60; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface-primary); border-radius: 20px; width: 560px; max-width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); border: 1px solid var(--border-subtle); }
+    .input-field { width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-default); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; }
+    .input-field:focus { outline: none; border-color: #6366f1; }
+    .type-option { border: 2px solid var(--border-default); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s; }
+    .type-option.active { border-color: #6366f1; background: rgba(99,102,241,0.06); }
+    .recommend-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; font-size: 12px; background: rgba(16,185,129,0.1); color: #10b981; }
+    .chart-bar { display: flex; align-items: flex-end; justify-content: center; gap: 6px; height: 120px; }
+    .bar { width: 28px; border-radius: 6px 6px 0 0; background: var(--gradient-primary); opacity: 0.85; }
+    .bar.over { background: var(--gradient-expense); }
+  </style>
+</head>
+<body class="h-screen overflow-hidden">
+  <div class="flex h-full">
+    <!-- Sidebar -->
+    <aside class="w-[200px] flex-shrink-0 flex flex-col" style="background-color: var(--bg-secondary); border-right: 1px solid var(--border-subtle);">
+      <div class="h-16 flex items-center px-5 gap-3">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--gradient-primary);">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <span class="text-lg font-bold" style="background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">MoneySage</span>
+      </div>
+      <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <a href="dashboard-prototype.html" class="nav-item">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          <span class="text-sm font-medium">仪表盘</span>
+        </a>
+        <a href="transactions-prototype.html" class="nav-item">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+          <span class="text-sm font-medium">收支记录</span>
+        </a>
+        <a href="categories-budget-prototype.html" class="nav-item">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+          <span class="text-sm font-medium">分类与预算</span>
+        </a>
+        <a href="analysis-prototype.html" class="nav-item">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+          <span class="text-sm font-medium">智能分析</span>
+        </a>
+      </nav>
+      <div class="p-4 border-t" style="border-color: var(--border-subtle);">
+        <div class="flex items-center gap-3 px-2 py-2 rounded-xl surface">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: var(--gradient-primary);">
+            <span class="text-white text-sm font-bold">G</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium truncate text-primary">GeHao</div>
+            <div class="text-xs text-tertiary">Pro 用户</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col min-w-0" style="background-color: var(--bg-primary);">
+      <!-- Header -->
+      <header class="h-16 flex items-center justify-between px-8 border-b" style="border-color: var(--border-subtle); background-color: var(--bg-primary);">
+        <div>
+          <h1 class="text-xl font-bold text-primary">预算管理 <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-600 align-middle ml-2">v2.0</span></h1>
+          <p class="text-xs text-tertiary mt-0.5">总预算 · 分类预算 · 事件预算 · 周期自动滚动</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button class="theme-toggle" id="themeToggle" title="切换主题">
+            <svg id="sunIcon" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            <svg id="moonIcon" class="w-5 h-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <div class="flex-1 overflow-y-auto p-8">
+        <div class="max-w-[1440px] mx-auto space-y-6">
+          <!-- Stats -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="stat-card">
+              <div class="text-xs text-tertiary uppercase tracking-wide">本月总预算</div>
+              <div class="text-2xl font-bold text-primary mt-1">¥15,000</div>
+              <div class="text-xs text-secondary mt-1">总预算 + 分类预算</div>
+            </div>
+            <div class="stat-card">
+              <div class="text-xs text-tertiary uppercase tracking-wide">已支出</div>
+              <div class="text-2xl font-bold text-primary mt-1">¥9,240</div>
+              <div class="text-xs text-secondary mt-1">占总额 61.6%</div>
+            </div>
+            <div class="stat-card">
+              <div class="text-xs text-tertiary uppercase tracking-wide">剩余可用</div>
+              <div class="text-2xl font-bold text-primary mt-1">¥5,760</div>
+              <div class="text-xs text-secondary mt-1">本月还可支出</div>
+            </div>
+            <div class="stat-card">
+              <div class="text-xs text-tertiary uppercase tracking-wide">预算状态</div>
+              <div class="text-2xl font-bold mt-1" style="color: #f59e0b;">1 个预警</div>
+              <div class="text-xs text-secondary mt-1">1 个预算已超支</div>
+            </div>
+          </div>
+
+          <!-- Toolbar -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <button class="tab-btn active" data-tab="all" onclick="switchTab('all')">全部</button>
+              <button class="tab-btn" data-tab="total" onclick="switchTab('total')">总预算</button>
+              <button class="tab-btn" data-tab="category" onclick="switchTab('category')">分类预算</button>
+              <button class="tab-btn" data-tab="event" onclick="switchTab('event')">事件预算</button>
+            </div>
+            <button class="btn-primary flex items-center gap-2" onclick="openCreateModal()">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              <span class="text-sm">新建预算</span>
+            </button>
+          </div>
+
+          <!-- Budget Grid -->
+          <div id="budgetGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <!-- Cards rendered by JS -->
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Create Budget Modal -->
+  <div class="modal-overlay" id="createModal">
+    <div class="modal p-6">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-lg font-bold text-primary">新建预算</h2>
+        <button onclick="closeCreateModal()" class="text-tertiary hover:text-primary">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-5">
+        <!-- Type Selection -->
+        <div>
+          <label class="block text-sm font-medium text-secondary mb-2">预算类型</label>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="type-option" data-type="total" onclick="selectType('total')">
+              <div class="text-xl mb-2">🏦</div>
+              <div class="text-sm font-semibold text-primary">总预算</div>
+              <div class="text-xs text-tertiary mt-1">控制整体支出</div>
+            </div>
+            <div class="type-option active" data-type="category" onclick="selectType('category')">
+              <div class="text-xl mb-2">🏷️</div>
+              <div class="text-sm font-semibold text-primary">分类预算</div>
+              <div class="text-xs text-tertiary mt-1">限制某个分类</div>
+            </div>
+            <div class="type-option" data-type="event" onclick="selectType('event')">
+              <div class="text-xl mb-2">🎯</div>
+              <div class="text-sm font-semibold text-primary">事件预算</div>
+              <div class="text-xs text-tertiary mt-1">一次性事件</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Category (category budget only) -->
+        <div id="categoryField">
+          <label class="block text-sm font-medium text-secondary mb-2">关联分类</label>
+          <select class="input-field">
+            <option>🍜 餐饮</option>
+            <option>🛒 购物</option>
+            <option>🚇 交通</option>
+            <option>🎬 娱乐</option>
+            <option>🏠 居住</option>
+          </select>
+          <div class="mt-2 flex items-center gap-2">
+            <span class="recommend-tag">💡 推荐金额 ¥2,700</span>
+            <span class="text-xs text-tertiary">基于近 3 个月平均支出的 90%</span>
+          </div>
+        </div>
+
+        <!-- Amount -->
+        <div>
+          <label class="block text-sm font-medium text-secondary mb-2">预算金额</label>
+          <div class="relative">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary">¥</span>
+            <input type="number" class="input-field pl-8" placeholder="请输入金额" value="3000">
+          </div>
+        </div>
+
+        <!-- Period -->
+        <div id="periodField">
+          <label class="block text-sm font-medium text-secondary mb-2">周期类型</label>
+          <div class="grid grid-cols-4 gap-2">
+            <button class="px-3 py-2 text-sm rounded-lg border border-transparent bg-indigo-50 text-indigo-600 font-medium">每月</button>
+            <button class="px-3 py-2 text-sm rounded-lg border hover:bg-[var(--surface-hover)]" style="border-color: var(--border-default); color: var(--text-secondary);">每周</button>
+            <button class="px-3 py-2 text-sm rounded-lg border hover:bg-[var(--surface-hover)]" style="border-color: var(--border-default); color: var(--text-secondary);">每日</button>
+            <button class="px-3 py-2 text-sm rounded-lg border hover:bg-[var(--surface-hover)]" style="border-color: var(--border-default); color: var(--text-secondary);">每年</button>
+          </div>
+          <div class="mt-2 flex items-center gap-2">
+            <input type="checkbox" id="autoRenew" checked class="rounded border-gray-300">
+            <label for="autoRenew" class="text-sm text-secondary">周期结束后自动滚动续期</label>
+          </div>
+        </div>
+
+        <!-- Event Date -->
+        <div id="eventDateField" class="hidden">
+          <label class="block text-sm font-medium text-secondary mb-2">事件时间范围 <span class="text-xs font-normal text-tertiary">（可选，仅用于展示）</span></label>
+          <div class="flex items-center gap-2">
+            <input type="date" class="input-field" value="2026-07-01">
+            <span class="text-tertiary">至</span>
+            <input type="date" class="input-field" value="2026-07-07">
+          </div>
+          <p class="text-xs text-tertiary mt-2">事件预算不限制交易日期和分类，关联的交易会全部计入预算进度。</p>
+        </div>
+
+        <!-- Preview -->
+        <div class="p-4 rounded-xl" style="background: var(--bg-secondary);">
+          <div class="text-xs text-tertiary mb-2">预算预览</div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm text-secondary">本月餐饮已支出</span>
+            <span class="text-sm font-semibold text-primary">¥1,860</span>
+          </div>
+          <div class="progress-bg">
+            <div class="progress-fill" style="width: 62%; background: var(--gradient-primary);"></div>
+          </div>
+          <div class="text-xs text-tertiary mt-2">按此预算，当前进度为 62%，状态：正常</div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-3 mt-6 pt-4 border-t" style="border-color: var(--border-subtle);">
+        <button onclick="closeCreateModal()" class="px-4 py-2 text-sm font-medium rounded-lg hover:bg-[var(--surface-hover)]" style="color: var(--text-secondary);">取消</button>
+        <button onclick="closeCreateModal()" class="btn-primary px-5 py-2 text-sm">保存预算</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Budget Detail Drawer -->
+  <div class="drawer" id="detailDrawer">
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background: rgba(245,158,11,0.12);">🍜</div>
+          <div>
+            <h2 class="text-lg font-bold text-primary">餐饮预算</h2>
+            <p class="text-xs text-tertiary">分类预算 · 每月自动滚动</p>
+          </div>
+        </div>
+        <button onclick="closeDetailDrawer()" class="text-tertiary hover:text-primary">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="card p-5 mb-6">
+        <div class="flex items-end justify-between mb-4">
+          <div>
+            <div class="text-xs text-tertiary">本月预算</div>
+            <div class="text-3xl font-bold text-primary">¥3,000</div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-tertiary">已支出</div>
+            <div class="text-xl font-bold" style="color: #f59e0b;">¥2,700</div>
+          </div>
+        </div>
+        <div class="progress-bg mb-2">
+          <div class="progress-fill" style="width: 90%; background: linear-gradient(90deg, #6366f1 0%, #f59e0b 100%);"></div>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-secondary">达成率 90%</span>
+          <span class="font-medium" style="color: #f59e0b;">剩余 ¥300</span>
+        </div>
+      </div>
+
+      <div class="mb-6">
+        <h3 class="text-sm font-semibold text-primary mb-3">近 6 个月达成趋势</h3>
+        <div class="card p-4">
+          <div class="chart-bar">
+            <div class="flex flex-col items-center gap-1">
+              <div class="bar" style="height: 45%;"></div>
+              <span class="text-[10px] text-tertiary">1月</span>
+            </div>
+            <div class="flex flex-col items-center gap-1">
+              <div class="bar" style="height: 62%;"></div>
+              <span class="text-[10px] text-tertiary">2月</span>
+            </div>
+            <div class="flex flex-col items-center gap-1">
+              <div class="bar over" style="height: 105%;"></div>
+              <span class="text-[10px] text-tertiary">3月</span>
+            </div>
+            <div class="flex flex-col items-center gap-1">
+              <div class="bar" style="height: 78%;"></div>
+              <span class="text-[10px] text-tertiary">4月</span>
+            </div>
+            <div class="flex flex-col items-center gap-1">
+              <div class="bar" style="height: 55%;"></div>
+              <span class="text-[10px] text-tertiary">5月</span>
+            </div>
+            <div class="flex flex-col items-center gap-1">
+              <div class="bar" style="height: 90%;"></div>
+              <span class="text-[10px] text-tertiary">6月</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-center gap-4 mt-3 text-xs text-tertiary">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm" style="background: var(--gradient-primary);"></span> 未超支</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm" style="background: var(--gradient-expense);"></span> 超支</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4 mb-6" style="background: rgba(16,185,129,0.06); border-color: rgba(16,185,129,0.2);">
+        <div class="flex items-start gap-3">
+          <div class="text-xl">💡</div>
+          <div>
+            <div class="text-sm font-semibold text-primary">智能调整建议</div>
+            <p class="text-xs text-secondary mt-1">近 3 个月平均餐饮支出为 ¥2,980，当前预算 ¥3,000 设置合理。但本月进度已达 90%，建议接下来一周控制外出就餐频次。</p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="text-sm font-semibold text-primary mb-3">本期关联交易</h3>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between p-3 rounded-xl" style="background: var(--surface-secondary);">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(245,158,11,0.12);">🍜</div>
+              <div>
+                <div class="text-sm font-medium text-primary">午餐</div>
+                <div class="text-xs text-tertiary">06-28 · 餐饮-午饭</div>
+              </div>
+            </div>
+            <span class="text-sm font-semibold" style="color: #f43f5e;">-¥28.00</span>
+          </div>
+          <div class="flex items-center justify-between p-3 rounded-xl" style="background: var(--surface-secondary);">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(245,158,11,0.12);">☕</div>
+              <div>
+                <div class="text-sm font-medium text-primary">下午茶</div>
+                <div class="text-xs text-tertiary">06-27 · 餐饮-饮料</div>
+              </div>
+            </div>
+            <span class="text-sm font-semibold" style="color: #f43f5e;">-¥35.00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event Budget Detail Drawer -->
+  <div class="drawer" id="eventDrawer">
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background: rgba(139,92,246,0.12);">✈️</div>
+          <div>
+            <h2 class="text-lg font-bold text-primary">日本旅行</h2>
+            <p class="text-xs text-tertiary">事件预算 · 不限制分类和日期</p>
+          </div>
+        </div>
+        <button onclick="closeEventDrawer()" class="text-tertiary hover:text-primary">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="card p-5 mb-6">
+        <div class="flex items-end justify-between mb-4">
+          <div>
+            <div class="text-xs text-tertiary">事件预算</div>
+            <div class="text-3xl font-bold text-primary">¥12,000</div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-tertiary">已支出</div>
+            <div class="text-xl font-bold text-primary">¥8,600</div>
+          </div>
+        </div>
+        <div class="progress-bg mb-2">
+          <div class="progress-fill" style="width: 72%; background: var(--gradient-primary);"></div>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-secondary">达成率 72%</span>
+          <span class="font-medium text-secondary">剩余 ¥3,400</span>
+        </div>
+      </div>
+
+      <div class="card p-4 mb-6">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-medium text-primary">事件时间</span>
+          <span class="text-xs px-2 py-1 rounded-full" style="background: rgba(99,102,241,0.12); color: #6366f1;">进行中</span>
+        </div>
+        <div class="text-sm text-secondary">2026-07-01 至 2026-07-10</div>
+        <div class="text-xs text-tertiary mt-1">还剩 3 天</div>
+      </div>
+
+      <div class="mb-6">
+        <h3 class="text-sm font-semibold text-primary mb-3">按分类汇总</h3>
+        <div class="card p-4 space-y-3">
+          <div>
+            <div class="flex items-center justify-between text-sm mb-1">
+              <span class="text-secondary">✈️ 交通</span>
+              <span class="font-medium text-primary">¥3,200</span>
+            </div>
+            <div class="progress-bg">
+              <div class="progress-fill" style="width: 37%; background: #3b82f6;"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex items-center justify-between text-sm mb-1">
+              <span class="text-secondary">🏨 住宿</span>
+              <span class="font-medium text-primary">¥2,800</span>
+            </div>
+            <div class="progress-bg">
+              <div class="progress-fill" style="width: 33%; background: #8b5cf6;"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex items-center justify-between text-sm mb-1">
+              <span class="text-secondary">🍜 餐饮</span>
+              <span class="font-medium text-primary">¥1,600</span>
+            </div>
+            <div class="progress-bg">
+              <div class="progress-fill" style="width: 19%; background: #f59e0b;"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex items-center justify-between text-sm mb-1">
+              <span class="text-secondary">🎫 门票</span>
+              <span class="font-medium text-primary">¥1,000</span>
+            </div>
+            <div class="progress-bg">
+              <div class="progress-fill" style="width: 12%; background: #10b981;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="text-sm font-semibold text-primary mb-3">关联交易时间轴</h3>
+        <div class="space-y-3 relative pl-4">
+          <div class="absolute left-[7px] top-2 bottom-2 w-px" style="background: var(--border-default);"></div>
+          <div class="flex gap-3 relative">
+            <div class="w-3 h-3 rounded-full flex-shrink-0 mt-1" style="background: var(--gradient-primary); z-index: 1;"></div>
+            <div class="flex-1 p-3 rounded-xl" style="background: var(--surface-secondary);">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-primary">机票</span>
+                <span class="text-sm font-semibold" style="color: #f43f5e;">-¥2,400</span>
+              </div>
+              <div class="text-xs text-tertiary mt-1">06-15 · 交通 · 手动归入日本旅行</div>
+            </div>
+          </div>
+          <div class="flex gap-3 relative">
+            <div class="w-3 h-3 rounded-full flex-shrink-0 mt-1" style="background: var(--border-default); z-index: 1;"></div>
+            <div class="flex-1 p-3 rounded-xl" style="background: var(--surface-secondary);">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-primary">酒店 3 晚</span>
+                <span class="text-sm font-semibold" style="color: #f43f5e;">-¥2,800</span>
+              </div>
+              <div class="text-xs text-tertiary mt-1">06-20 · 住宿 · 手动归入日本旅行</div>
+            </div>
+          </div>
+          <div class="flex gap-3 relative">
+            <div class="w-3 h-3 rounded-full flex-shrink-0 mt-1" style="background: var(--border-default); z-index: 1;"></div>
+            <div class="flex-1 p-3 rounded-xl" style="background: var(--surface-secondary);">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-primary">环球影城门票</span>
+                <span class="text-sm font-semibold" style="color: #f43f5e;">-¥600</span>
+              </div>
+              <div class="text-xs text-tertiary mt-1">07-02 · 门票 · 手动归入日本旅行</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 pt-4 border-t flex gap-3" style="border-color: var(--border-subtle);">
+        <button class="flex-1 py-2 rounded-xl text-sm font-medium hover:bg-[var(--surface-hover)]" style="color: var(--text-secondary);">编辑</button>
+        <button class="flex-1 py-2 rounded-xl text-sm font-medium hover:bg-[var(--surface-hover)]" style="color: var(--text-secondary);">归档</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overspend Alert Modal -->
+  <div class="modal-overlay" id="alertModal">
+    <div class="modal p-6" style="width: 420px;">
+      <div class="text-center mb-5">
+        <div class="w-14 h-14 rounded-full mx-auto flex items-center justify-center text-2xl mb-3" style="background: rgba(244,63,94,0.12);">⚠️</div>
+        <h2 class="text-lg font-bold text-primary">这笔支出将导致超支</h2>
+        <p class="text-sm text-secondary mt-2">保存后，本月餐饮预算将从 ¥2,970 超支至 ¥3,050</p>
+      </div>
+      <div class="card p-4 mb-5">
+        <div class="flex items-center justify-between text-sm mb-2">
+          <span class="text-secondary">当前预算</span>
+          <span class="font-medium text-primary">¥3,000</span>
+        </div>
+        <div class="flex items-center justify-between text-sm mb-2">
+          <span class="text-secondary">已支出</span>
+          <span class="font-medium text-primary">¥2,970</span>
+        </div>
+        <div class="flex items-center justify-between text-sm mb-2">
+          <span class="text-secondary">本次支出</span>
+          <span class="font-medium" style="color: #f43f5e;">¥80</span>
+        </div>
+        <div class="border-t my-2" style="border-color: var(--border-subtle);"></div>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-secondary">超支金额</span>
+          <span class="font-bold" style="color: #f43f5e;">¥50</span>
+        </div>
+      </div>
+      <div class="space-y-2">
+        <button onclick="closeAlertModal()" class="w-full py-2.5 rounded-xl text-sm font-medium text-white" style="background: var(--gradient-expense);">仍要保存</button>
+        <button onclick="closeAlertModal()" class="w-full py-2.5 rounded-xl text-sm font-medium hover:bg-[var(--surface-hover)]" style="color: var(--text-secondary);">取消，调整金额</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const budgets = [
+      { id: 1, name: '本月总支出', type: 'total', period: '每月', icon: '🏦', amount: 8000, spent: 5240, color: '#6366f1' },
+      { id: 2, name: '餐饮预算', type: 'category', period: '每月', icon: '🍜', category: '餐饮', amount: 3000, spent: 2700, color: '#f59e0b' },
+      { id: 3, name: '交通预算', type: 'category', period: '每月', icon: '🚇', category: '交通', amount: 800, spent: 320, color: '#3b82f6' },
+      { id: 4, name: '购物预算', type: 'category', period: '每月', icon: '🛒', category: '购物', amount: 1500, spent: 1580, color: '#ef4444', alert: 'over' },
+      { id: 5, name: '日本旅行', type: 'event', period: '事件', icon: '✈️', amount: 12000, spent: 8600, color: '#8b5cf6', dateRange: '07.01 - 07.10' },
+      { id: 6, name: '娱乐预算', type: 'category', period: '每月', icon: '🎬', category: '娱乐', amount: 600, spent: 180, color: '#10b981' },
+    ];
+
+    let currentTab = 'all';
+
+    function getStatus(pct) {
+      if (pct >= 100) return { label: '超支', color: '#f43f5e', bg: 'rgba(244,63,94,0.12)' };
+      if (pct >= 80) return { label: '预警', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' };
+      if (pct >= 50) return { label: '正常', color: '#6366f1', bg: 'rgba(99,102,241,0.12)' };
+      return { label: '充足', color: '#10b981', bg: 'rgba(16,185,129,0.12)' };
+    }
+
+    function renderBudgets() {
+      const grid = document.getElementById('budgetGrid');
+      const filtered = currentTab === 'all' ? budgets : budgets.filter(b => b.type === currentTab);
+      grid.innerHTML = filtered.map(b => {
+        const pct = Math.min(100, Math.round(b.spent / b.amount * 100));
+        const status = getStatus(b.spent / b.amount * 100);
+        const remaining = b.amount - b.spent;
+        return `
+          <div class="card p-5 budget-card" onclick="openDetailDrawer('${b.type}')">
+            <div class="flex items-start justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background: ${status.bg};">${b.icon}</div>
+                <div>
+                  <div class="text-sm font-bold text-primary">${b.name}</div>
+                  <div class="text-xs text-tertiary">${b.type === 'total' ? '总预算' : b.type === 'event' ? `事件预算 · ${b.dateRange || '未设置时间范围'}` : `分类预算 · ${b.category}`} · ${b.period}</div>
+                </div>
+              </div>
+              <span class="status-badge" style="color: ${status.color}; background: ${status.bg};">${status.label}</span>
+            </div>
+            <div class="flex items-end justify-between mb-3">
+              <div>
+                <div class="text-xs text-tertiary">已支出</div>
+                <div class="text-lg font-bold text-primary">¥${b.spent.toLocaleString()}</div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs text-tertiary">预算</div>
+                <div class="text-sm font-semibold text-secondary">¥${b.amount.toLocaleString()}</div>
+              </div>
+            </div>
+            <div class="progress-bg mb-2">
+              <div class="progress-fill" style="width: ${pct}%; background: ${b.spent > b.amount ? 'var(--gradient-expense)' : `linear-gradient(90deg, ${b.color} 0%, ${status.color} 100%)`};"></div>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-secondary">达成率 ${Math.round(b.spent / b.amount * 100)}%</span>
+              <span class="font-medium" style="color: ${remaining >= 0 ? 'var(--text-secondary)' : '#f43f5e'};">${remaining >= 0 ? `剩余 ¥${remaining.toLocaleString()}` : `超支 ¥${Math.abs(remaining).toLocaleString()}`}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelector(`.tab-btn[data-tab="${tab}"]`).classList.add('active');
+      renderBudgets();
+    }
+
+    function openCreateModal() {
+      document.getElementById('createModal').classList.add('open');
+    }
+
+    function closeCreateModal() {
+      document.getElementById('createModal').classList.remove('open');
+    }
+
+    function openDetailDrawer(type) {
+      if (type === 'event') {
+        document.getElementById('eventDrawer').classList.add('open');
+      } else {
+        document.getElementById('detailDrawer').classList.add('open');
+      }
+    }
+
+    function closeDetailDrawer() {
+      document.getElementById('detailDrawer').classList.remove('open');
+    }
+
+    function closeEventDrawer() {
+      document.getElementById('eventDrawer').classList.remove('open');
+    }
+
+    function openAlertModal() {
+      document.getElementById('alertModal').classList.add('open');
+    }
+
+    function closeAlertModal() {
+      document.getElementById('alertModal').classList.remove('open');
+    }
+
+    function selectType(type) {
+      document.querySelectorAll('.type-option').forEach(el => el.classList.remove('active'));
+      document.querySelector(`.type-option[data-type="${type}"]`).classList.add('active');
+      document.getElementById('categoryField').classList.toggle('hidden', type === 'total' || type === 'event');
+      document.getElementById('periodField').classList.toggle('hidden', type === 'event');
+      document.getElementById('eventDateField').classList.toggle('hidden', type !== 'event');
+    }
+
+    // Theme toggle
+    const themeToggle = document.getElementById('themeToggle');
+    const html = document.documentElement;
+    themeToggle.addEventListener('click', () => {
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      document.getElementById('sunIcon').classList.toggle('hidden', !isDark);
+      document.getElementById('moonIcon').classList.toggle('hidden', isDark);
+    });
+
+    // Initial render
+    renderBudgets();
+
+    // Demo: show alert after 2 seconds
+    setTimeout(() => {
+      // openAlertModal();
+    }, 2000);
+  </script>
+</body>
+</html>

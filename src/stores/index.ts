@@ -57,24 +57,27 @@ export interface TransactionWithCategory extends Transaction {
 export interface Budget {
   id: number
   name: string
-  category_id: number
+  category_id?: number | null
   amount: number
-  budget_type: 'time' | 'event'
-  period_type: 'daily' | 'weekly' | 'monthly' | 'yearly'
-  start_date: string
-  end_date?: string
+  budget_type: 'time' | 'event' | 'total'
+  period_type?: 'daily' | 'weekly' | 'monthly' | 'yearly' | null
+  start_date?: string | null
+  end_date?: string | null
+  is_recurring: boolean
   is_active: boolean
   created_at: string
   updated_at: string
 }
 
 export interface BudgetProgress extends Budget {
-  category_name: string
-  category_icon?: string
-  category_color?: string
+  category_name?: string | null
+  category_icon?: string | null
+  category_color?: string | null
   spent: number
   remaining: number
   percentage: number
+  period_start?: string | null
+  period_end?: string | null
 }
 
 export interface MonthlyStats {
@@ -488,12 +491,13 @@ export const useAppStore = defineStore('app', () => {
   
   const createBudget = async (budgetData: {
     name: string
-    category_id: number
+    category_id?: number | null
     amount: number
-    budget_type: 'time' | 'event'
-    period_type: 'daily' | 'weekly' | 'monthly' | 'yearly'
-    start_date: string
-    end_date?: string
+    budget_type: 'time' | 'event' | 'total'
+    period_type?: 'daily' | 'weekly' | 'monthly' | 'yearly' | null
+    start_date?: string | null
+    end_date?: string | null
+    is_recurring?: boolean
   }) => {
     try {
       const result = await invoke<number>('create_budget', { budget: budgetData })
@@ -504,15 +508,17 @@ export const useAppStore = defineStore('app', () => {
       throw error
     }
   }
-  
+
   const updateBudget = async (id: number, budgetData: {
     name?: string
-    category_id?: number
+    category_id?: number | null
     amount?: number
-    budget_type?: 'time' | 'event'
-    period_type?: 'daily' | 'weekly' | 'monthly' | 'yearly'
-    start_date?: string
-    end_date?: string
+    budget_type?: 'time' | 'event' | 'total'
+    period_type?: 'daily' | 'weekly' | 'monthly' | 'yearly' | null
+    start_date?: string | null
+    end_date?: string | null
+    is_recurring?: boolean
+    is_active?: boolean
   }) => {
     try {
       await invoke('update_budget', { id, budget: budgetData })
@@ -633,7 +639,7 @@ export const useAppStore = defineStore('app', () => {
     filter?: TokenUsageFilter,
   ) => {
     const result = await safeInvoke<TokenUsageSummary[]>('get_token_usage_summary', {
-      groupBy,
+      group_by: groupBy,
       filter,
     })
     tokenUsageSummary.value = result || []

@@ -1732,6 +1732,15 @@ async fn send_analysis_message_stream(
                     Err(e) => format!("工具执行失败: {}", e),
                 };
 
+                // 分类管理工具执行成功后，通知前端刷新分类数据
+                if tc.function.name == "manage_categories" {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result) {
+                        if parsed.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            let _ = app.emit("categories-changed", serde_json::json!({}));
+                        }
+                    }
+                }
+
                 // 落表：tool result
                 let _ = db_state
                     .db

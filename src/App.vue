@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useAppStore } from './stores'
 import DashboardView from './views/DashboardView.vue'
 import LedgerView from './views/LedgerView.vue'
@@ -14,6 +15,7 @@ const store = useAppStore()
 const activeMenu = ref('dashboard')
 const showQuickBooking = ref(false)
 const isInitializing = ref(true)
+let categoriesChangedUnlisten: UnlistenFn | null = null
 
 const menus = [
   { key: 'dashboard', label: '仪表盘', icon: 'TrendCharts' },
@@ -52,6 +54,16 @@ onMounted(async () => {
     await new Promise(r => setTimeout(r, 300))
   }
   store.initializeData()
+
+  // 监听 AI 分类管理工具导致的分类变化
+  categoriesChangedUnlisten = await listen('categories-changed', () => {
+    store.fetchCategories()
+  })
+})
+
+onUnmounted(() => {
+  categoriesChangedUnlisten?.()
+  categoriesChangedUnlisten = null
 })
 </script>
 

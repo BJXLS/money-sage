@@ -4,6 +4,7 @@ pub mod file_edit;
 pub mod file_read;
 pub mod file_write;
 pub mod get_schema;
+pub mod manage_categories;
 pub mod memory_search;
 pub mod query_database;
 pub mod quick_note_parse;
@@ -57,6 +58,11 @@ impl LocalToolRegistry {
         registry
             .tools
             .push(Box::new(get_schema::GetDatabaseSchemaTool::new(
+                pool.clone(),
+            )));
+        registry
+            .tools
+            .push(Box::new(manage_categories::ManageCategoriesTool::new(
                 pool.clone(),
             )));
         let session_id_for_db = session_id.clone().unwrap_or_else(|| "unknown".to_string());

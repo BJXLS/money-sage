@@ -85,6 +85,10 @@ impl AnalysisAgent {
              1. 先调用 get_database_schema 了解表结构\n\
              2. 然后调用 query_database 执行 SQL 查询获取数据\n\
              3. 基于查询结果给出分析和建议\n\n\
+             当用户要求调整分类结构（新增、修改、删除分类）时：\n\
+             1. 先调用 query_database 查询 categories 表，确认目标分类的 id、名称、类型和层级关系\n\
+             2. 然后调用 manage_categories 执行 create/update/delete\n\
+             3. 操作完成后简要告知用户变更结果\n\n\
              ### 跨工具协作策略\n\
              - 使用 file_edit 修改文件前，建议先调用 file_read 查看当前内容，确保 old_string 精确匹配。\n\
              - file_write 可以完全覆盖已有文件，覆盖前请确认意图。\n\

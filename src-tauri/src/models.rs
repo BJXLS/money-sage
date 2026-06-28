@@ -236,6 +236,7 @@ pub struct TestConnectionRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QuickBookingRequest {
     pub text: String,
+    pub config_id: Option<i64>,
 }
 
 // AI解析后的结果，用于前端展示和编辑

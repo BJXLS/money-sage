@@ -9,9 +9,30 @@
     <div class="quick-booking-content">
       <!-- 输入界面 -->
       <div v-if="!showConfirmation" class="input-section">
-        <div class="input-label">
-          <el-icon class="label-icon"><EditPen /></el-icon>
-          <span>请描述您的收支情况</span>
+        <div class="input-header">
+          <div class="input-label">
+            <el-icon class="label-icon"><EditPen /></el-icon>
+            <span>请描述您的收支情况</span>
+          </div>
+          <el-select
+            v-if="llmConfigs.length > 0"
+            v-model="selectedConfigId"
+            class="model-select"
+            size="small"
+            placeholder="选择模型"
+          >
+            <el-option
+              v-for="cfg in llmConfigs"
+              :key="cfg.id"
+              :label="`${cfg.config_name || cfg.model}`"
+              :value="cfg.id"
+            >
+              <div class="model-option">
+                <span class="model-option-name">{{ cfg.config_name || cfg.model }}</span>
+                <span class="model-option-provider">{{ cfg.provider }}</span>
+              </div>
+            </el-option>
+          </el-select>
         </div>
         <el-input
           v-model="inputText"
@@ -207,6 +228,14 @@ import { invoke } from '@tauri-apps/api/core'
 import { InfoFilled, EditPen, Lightning, CircleCheck, ArrowLeft, Check, Warning } from '@element-plus/icons-vue'
 
 // 类型定义
+interface LLMConfig {
+  id: number
+  config_name: string
+  provider: string
+  model: string
+  is_active: boolean
+}
+
 interface ParsedTransaction {
   original_text: string
   date: string
@@ -260,6 +289,8 @@ const showConfirmation = ref(false)
 const parsedTransactions = ref<ParsedTransaction[]>([])
 const allCategories = ref<Category[]>([])
 const allBudgets = ref<any[]>([])
+const llmConfigs = ref<LLMConfig[]>([])
+const selectedConfigId = ref<number | null>(null)
 
 // 分类选择相关 - 简化实现
 
@@ -274,8 +305,9 @@ watch(
       processing.value = false
       showConfirmation.value = false
       parsedTransactions.value = []
-      // 加载分类数据
+      // 加载分类和模型配置数据
       loadCategories()
+      loadLLMConfigs()
     }
   },
   { immediate: true }
@@ -298,6 +330,22 @@ const loadCategories = async () => {
     ElMessage.error('加载分类失败')
   }
 }
+
+// 加载 LLM 配置
+const loadLLMConfigs = async () => {
+  try {
+    llmConfigs.value = await invoke<LLMConfig[]>('get_llm_configs')
+    const active = llmConfigs.value.find(c => c.is_active)
+    if (active) selectedConfigId.value = active.id
+    else if (llmConfigs.value.length > 0) selectedConfigId.value = llmConfigs.value[0].id
+    else selectedConfigId.value = null
+  } catch (error) {
+    console.error('加载模型配置失败:', error)
+    llmConfigs.value = []
+    selectedConfigId.value = null
+  }
+}
+
 // 根据行数据匹配预算（按小类和事件/时间预算均可）
 const getAllBudgets = () => allBudgets.value.filter(b => b.is_active)
 
@@ -319,7 +367,10 @@ const handleSubmit = async () => {
   try {
     // 调用后端API进行AI文本解析
     const result = await invoke<QuickBookingResult>('process_quick_booking_text', {
-      text: inputText.value.trim()
+      request: {
+        text: inputText.value.trim(),
+        config_id: selectedConfigId.value,
+      }
     })
 
     console.log('AI解析结果:', result)
@@ -453,10 +504,17 @@ const getSubCategories = (parentId: number) => {
   margin-bottom: 16px;
 }
 
+.input-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
 .input-label {
   display: flex;
   align-items: center;
-  margin-bottom: 12px;
   font-size: 16px;
   font-weight: 600;
   color: var(--ms-text-primary);
@@ -466,6 +524,32 @@ const getSubCategories = (parentId: number) => {
   margin-right: 8px;
   color: var(--ms-info);
   font-size: 18px;
+}
+
+.model-select {
+  width: 180px;
+  flex-shrink: 0;
+}
+
+.model-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.model-option-name {
+  font-size: 13px;
+  color: var(--ms-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-option-provider {
+  font-size: 11px;
+  color: var(--ms-text-tertiary);
+  flex-shrink: 0;
 }
 
 .text-input {

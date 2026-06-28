@@ -72,13 +72,6 @@ interface Message {
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
 
-const QUICK_QUESTIONS = [
-  '分析我本月的支出结构',
-  '过去3个月的收支趋势如何',
-  '我的消费有哪些需要注意的地方',
-  '哪个分类支出最多？给我具体数据',
-]
-
 // ─── 状态 ────────────────────────────────────────────────────────────────────
 
 const sessionId = ref<string>(crypto.randomUUID())
@@ -678,18 +671,6 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- 快捷问题 -->
-      <div class="quick-questions">
-        <span class="quick-label">快捷提问：</span>
-        <el-tag
-          v-for="q in QUICK_QUESTIONS"
-          :key="q"
-          class="quick-tag"
-          :class="{ 'disabled': isLoading }"
-          @click="!isLoading && sendMessage(q)"
-        >{{ q }}</el-tag>
-      </div>
-
       <!-- 输入区域 -->
       <div class="input-area">
         <el-input
@@ -1176,24 +1157,6 @@ onUnmounted(() => {
   color: var(--ms-primary-500);
   text-decoration: underline;
 }
-
-/* ── 快捷问题 ── */
-.quick-questions {
-  padding: var(--ms-space-3) var(--ms-space-5);
-  display: flex; flex-wrap: wrap; gap: var(--ms-space-2); align-items: center;
-  border-top: 1px solid var(--ms-border-subtle); flex-shrink: 0;
-}
-.quick-label { font-size: var(--ms-text-xs); color: var(--ms-text-tertiary); flex-shrink: 0; }
-.quick-tag {
-  cursor: pointer;
-  background: var(--ms-surface-secondary) !important; border-color: var(--ms-border-subtle) !important;
-  color: var(--ms-text-secondary) !important; font-size: var(--ms-text-xs); transition: all 0.2s;
-}
-.quick-tag:hover:not(.disabled) {
-  border-color: var(--ms-primary-500) !important; color: var(--ms-primary-500) !important;
-  background: var(--ms-bg-tertiary) !important;
-}
-.quick-tag.disabled { cursor: not-allowed; opacity: 0.5; }
 
 /* ── 输入区域 ── */
 .input-area {

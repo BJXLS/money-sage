@@ -3,31 +3,23 @@ import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from './stores'
 import DashboardView from './views/DashboardView.vue'
-import TransactionsView from './views/TransactionsView.vue'
-import CategoriesBudgetView from './views/CategoriesBudgetView.vue'
+import LedgerView from './views/LedgerView.vue'
 import AnalysisView from './views/AnalysisView.vue'
-import MemoryView from './views/MemoryView.vue'
-import UsageStatsView from './views/UsageStatsView.vue'
+import SystemView from './views/SystemView.vue'
 import QuickBookingDialog from './components/QuickBookingDialog.vue'
-import LLMConfigDialog from './components/LLMConfigDialog.vue'
-import McpConfigDialog from './components/McpConfigDialog.vue'
 import ThemeToggle from './components/ui/ThemeToggle.vue'
 import MoneyButton from './components/ui/MoneyButton.vue'
 
 const store = useAppStore()
 const activeMenu = ref('dashboard')
 const showQuickBooking = ref(false)
-const showLLMConfig = ref(false)
-const showMcpConfig = ref(false)
 const isInitializing = ref(true)
 
 const menus = [
   { key: 'dashboard', label: '仪表盘', icon: 'TrendCharts' },
-  { key: 'transactions', label: '收支记录', icon: 'DocumentAdd' },
-  { key: 'categories-budget', label: '分类与预算', icon: 'Grid' },
+  { key: 'ledger', label: '账本', icon: 'DocumentAdd' },
   { key: 'smart-analysis', label: '智能分析', icon: 'ChatDotRound' },
-  { key: 'memory', label: '记忆管理', icon: 'Files' },
-  { key: 'usage-stats', label: '用量统计', icon: 'DataLine' },
+  { key: 'system', label: '系统', icon: 'Setting' },
 ]
 
 const handleMenuSelect = (key: string) => {
@@ -44,10 +36,6 @@ const handleQuickBookingSuccess = () => {
   store.fetchTransactions()
   store.fetchMonthlyStats()
   store.fetchBudgets()
-}
-
-const handleLLMConfigSaved = () => {
-  showLLMConfig.value = false
 }
 
 onMounted(async () => {
@@ -104,15 +92,6 @@ onMounted(async () => {
           </div>
         </nav>
 
-        <div class="ms-sidebar-footer">
-          <div class="ms-user-card">
-            <div class="ms-user-avatar">G</div>
-            <div class="ms-user-info">
-              <div class="ms-user-name">GeHao</div>
-              <div class="ms-user-role">Pro 用户</div>
-            </div>
-          </div>
-        </div>
       </aside>
 
       <!-- 主内容 -->
@@ -123,20 +102,6 @@ onMounted(async () => {
             <p class="ms-page-date">{{ new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) }}</p>
           </div>
           <div class="ms-header-right">
-            <el-input
-              placeholder="搜索交易记录..."
-              prefix-icon="Search"
-              class="ms-header-search"
-              clearable
-            />
-            <MoneyButton variant="secondary" @click="showMcpConfig = true">
-              <el-icon><Connection /></el-icon>
-              <span class="hidden sm:inline">MCP</span>
-            </MoneyButton>
-            <MoneyButton variant="secondary" @click="showLLMConfig = true">
-              <el-icon><Setting /></el-icon>
-              <span class="hidden sm:inline">设置</span>
-            </MoneyButton>
             <ThemeToggle />
             <MoneyButton @click="showQuickBooking = true">
               <el-icon><Plus /></el-icon>
@@ -147,19 +112,15 @@ onMounted(async () => {
 
         <div class="ms-content">
           <DashboardView v-if="activeMenu === 'dashboard'" />
-          <TransactionsView v-else-if="activeMenu === 'transactions'" />
-          <CategoriesBudgetView v-else-if="activeMenu === 'categories-budget'" />
+          <LedgerView v-else-if="activeMenu === 'ledger'" />
           <AnalysisView v-else-if="activeMenu === 'smart-analysis'" />
-          <MemoryView v-else-if="activeMenu === 'memory'" />
-          <UsageStatsView v-else-if="activeMenu === 'usage-stats'" />
+          <SystemView v-else-if="activeMenu === 'system'" />
         </div>
       </main>
     </div>
 
     <!-- 弹窗 -->
     <QuickBookingDialog v-model="showQuickBooking" @success="handleQuickBookingSuccess" />
-    <LLMConfigDialog v-model="showLLMConfig" @success="handleLLMConfigSaved" />
-    <McpConfigDialog v-model="showMcpConfig" />
   </div>
 </template>
 
@@ -247,53 +208,6 @@ onMounted(async () => {
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
-.ms-sidebar-footer {
-  padding: 12px;
-  border-top: 1px solid var(--ms-border-subtle);
-}
-
-.ms-user-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px;
-  border-radius: var(--ms-radius-lg);
-  background-color: var(--ms-surface-primary);
-  border: 1px solid var(--ms-border-subtle);
-}
-
-.ms-user-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--ms-radius-md);
-  background: var(--ms-gradient-primary);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--ms-text-sm);
-  font-weight: var(--ms-font-bold);
-  flex-shrink: 0;
-}
-
-.ms-user-info {
-  min-width: 0;
-}
-
-.ms-user-name {
-  font-size: var(--ms-text-sm);
-  font-weight: var(--ms-font-medium);
-  color: var(--ms-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ms-user-role {
-  font-size: var(--ms-text-xs);
-  color: var(--ms-text-tertiary);
-}
-
 /* Main */
 .ms-main {
   flex: 1;
@@ -339,10 +253,6 @@ onMounted(async () => {
   gap: 10px;
 }
 
-.ms-header-search {
-  width: 240px;
-}
-
 .ms-content {
   flex: 1;
   overflow-y: auto;
@@ -382,12 +292,6 @@ onMounted(async () => {
 }
 
 /* Responsive */
-@media (max-width: 1024px) {
-  .ms-header-search {
-    display: none;
-  }
-}
-
 @media (max-width: 768px) {
   .ms-sidebar {
     position: fixed;

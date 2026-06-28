@@ -495,9 +495,11 @@ async fn test_llm_connection(config: TestConnectionRequest) -> Result<String, St
 #[tauri::command]
 async fn process_quick_booking_text(
     state: State<'_, DatabaseState>,
-    text: String,
+    request: QuickBookingRequest,
 ) -> Result<QuickBookingResult, String> {
     use crate::ai::agent::QuickNoteAgent;
+
+    let text = request.text;
 
     // 验证输入
     if text.trim().is_empty() {
@@ -509,25 +511,33 @@ async fn process_quick_booking_text(
         });
     }
 
-    // 1. 获取当前活跃的 LLM 配置
-    let llm_config = match state.db.get_active_llm_config().await {
-        Ok(Some(config)) => config,
-        Ok(None) => {
-            return Ok(QuickBookingResult {
-                success: false,
-                message: "请先在设置中配置大模型接口".to_string(),
-                parsed_transactions: vec![],
-                failed_lines: vec![],
-            });
-        }
-        Err(e) => {
-            return Ok(QuickBookingResult {
-                success: false,
-                message: format!("获取大模型配置失败: {}", e),
-                parsed_transactions: vec![],
-                failed_lines: vec![],
-            });
-        }
+    // 1. 获取 LLM 配置（按 config_id 优先，否则 fallback 到 active）
+    let llm_config = match request.config_id {
+        Some(cid) => match state.db.get_llm_config_by_id(cid).await {
+            Ok(Some(c)) => c,
+            _ => match state.db.get_active_llm_config().await {
+                Ok(Some(c)) => c,
+                _ => {
+                    return Ok(QuickBookingResult {
+                        success: false,
+                        message: "请先在设置中配置大模型接口".to_string(),
+                        parsed_transactions: vec![],
+                        failed_lines: vec![],
+                    });
+                }
+            },
+        },
+        None => match state.db.get_active_llm_config().await {
+            Ok(Some(c)) => c,
+            _ => {
+                return Ok(QuickBookingResult {
+                    success: false,
+                    message: "请先在设置中配置大模型接口".to_string(),
+                    parsed_transactions: vec![],
+                    failed_lines: vec![],
+                });
+            }
+        },
     };
 
     if llm_config.base_url.is_empty() || llm_config.model.is_empty() {

@@ -6,6 +6,7 @@ pub mod file_write;
 pub mod get_schema;
 pub mod manage_categories;
 pub mod memory_search;
+pub mod python_exec;
 pub mod query_database;
 pub mod quick_note_parse;
 pub mod quick_note_save;
@@ -53,6 +54,7 @@ impl LocalToolRegistry {
         token_recorder: Option<Arc<TokenUsageRecorder>>,
         workspace_dir: PathBuf,
         memory_dir: Option<PathBuf>,
+        db_path: PathBuf,
     ) -> Self {
         let mut registry = Self { tools: Vec::new() };
         registry
@@ -122,7 +124,14 @@ impl LocalToolRegistry {
         )));
         registry
             .tools
-            .push(Box::new(bash_exec::BashExecTool::new(workspace_dir)));
+            .push(Box::new(bash_exec::BashExecTool::new(workspace_dir.clone())));
+        registry
+            .tools
+            .push(Box::new(python_exec::PythonExecTool::new(
+                workspace_dir,
+                db_path,
+                session_id.clone(),
+            )));
         registry
     }
 

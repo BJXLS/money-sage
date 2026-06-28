@@ -52,6 +52,51 @@ async fn get_categories_by_type(
 }
 
 #[tauri::command]
+async fn read_workspace_image(
+    state: State<'_, DatabaseState>,
+    relative_path: String,
+) -> Result<String, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+
+    let workspace_dir = state.workspace.workspace_dir();
+    let target_path = workspace_dir.join(&relative_path);
+
+    // 校验目标路径必须位于工作区内
+    let canonical_target = target_path
+        .canonicalize()
+        .map_err(|e| format!("无法解析图片路径: {}", e))?;
+    let canonical_workspace = workspace_dir
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_dir.to_path_buf());
+
+    if !canonical_target.starts_with(&canonical_workspace) {
+        return Err("图片路径超出工作区范围，拒绝访问".to_string());
+    }
+
+    // 检查文件扩展名
+    let ext = canonical_target
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let mime_type = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        _ => "application/octet-stream",
+    };
+
+    let bytes = tokio::fs::read(&canonical_target)
+        .await
+        .map_err(|e| format!("读取图片失败: {}", e))?;
+
+    let base64 = STANDARD.encode(&bytes);
+    Ok(format!("data:{};base64,{}", mime_type, base64))
+}
+
+#[tauri::command]
 async fn create_category(
     state: State<'_, DatabaseState>,
     category: NewCategory,
@@ -1407,12 +1452,14 @@ async fn send_analysis_message_stream(
 
     // 6. 创建本地工具注册表
     let memory_dir = Some(db_state.memory_store.memory_dir().to_path_buf());
+    let db_path = db_state.app_data_dir.join("money_note.db");
     let tool_registry = LocalToolRegistry::new(
         db_state.db.pool.clone(),
         Some(sid.clone()),
         Some(db_state.token_recorder.clone()),
         db_state.workspace.workspace_dir().to_path_buf(),
         memory_dir,
+        db_path,
     );
     let tools_json = tool_registry.all_as_openai_tools();
     let tools = if tools_json.is_empty() {
@@ -2245,6 +2292,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_categories,
             get_categories_by_type,
+            read_workspace_image,
             create_category,
             update_category,
             delete_category,

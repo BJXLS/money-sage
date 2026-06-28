@@ -92,7 +92,15 @@ impl AnalysisAgent {
              ### 跨工具协作策略\n\
              - 使用 file_edit 修改文件前，建议先调用 file_read 查看当前内容，确保 old_string 精确匹配。\n\
              - file_write 可以完全覆盖已有文件，覆盖前请确认意图。\n\
-             - bash 命令只能在工作区内操作，禁止访问系统敏感路径。\n"
+             - bash 命令只能在工作区内操作，禁止访问系统敏感路径。\n\
+             - python_exec 适合复杂数据分析、统计计算、生成图表。执行环境已注入环境变量 MONEY_SAGE_DB_PATH（数据库路径）和 MONEY_SAGE_SESSION_ID（当前会话 ID），可通过 sqlite3 连接数据库做只读查询。例如：\n\
+               ```python\n\
+               import os, sqlite3\n\
+               conn = sqlite3.connect(os.environ['MONEY_SAGE_DB_PATH'])\n\
+               rows = conn.execute('SELECT * FROM categories').fetchall()\n\
+               ```\n\
+             - 如果 python_exec 生成了图片，请保存到 `.query_temp/{os.environ['MONEY_SAGE_SESSION_ID']}/images/` 目录下，并在最终回复中用 markdown 图片语法引用相对路径，例如 `![图表](.query_temp/{session_id}/images/chart.png)`。\n\
+             - python_exec 依赖本机 Python 3 环境。如果调用后返回未检测到 Python 的错误，应告知用户自行安装 Python 3，而不是尝试用 bash 安装。\n"
         );
 
         p

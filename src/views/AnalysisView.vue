@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { ElMessageBox } from 'element-plus'
@@ -99,6 +99,9 @@ const isInputComposing = ref(false)
 let currentUnlisten: UnlistenFn | null = null
 let tempFilesUnlisten: UnlistenFn | null = null
 
+// 图片缓存：相对路径 -> base64 data URL
+const imageCache = ref<Record<string, string>>({})
+
 // ─── 加载后端数据 ─────────────────────────────────────────────────────────────
 
 const loadHistory = async () => {
@@ -155,6 +158,52 @@ const renderMarkdown = (text: string) => {
     return text.replace(/\n/g, '<br/>')
   }
 }
+
+// ─── 图片加载 ─────────────────────────────────────────────────────────────────
+
+const IMAGE_PATH_REGEX = /!\[.*?\]\(([^)]+)\)/g
+
+const extractImagePaths = (text: string): string[] => {
+  const paths: string[] = []
+  let match: RegExpExecArray | null
+  while ((match = IMAGE_PATH_REGEX.exec(text)) !== null) {
+    const path = match[1]
+    if (path.startsWith('.query_temp/') && !path.startsWith('data:')) {
+      paths.push(path)
+    }
+  }
+  return [...new Set(paths)]
+}
+
+const loadImages = async (text: string) => {
+  const paths = extractImagePaths(text)
+  for (const path of paths) {
+    if (imageCache.value[path]) continue
+    try {
+      const dataUrl = await invoke<string>('read_workspace_image', { relativePath: path })
+      imageCache.value[path] = dataUrl
+    } catch (e) {
+      console.error('加载图片失败:', path, e)
+    }
+  }
+}
+
+const renderMarkdownWithImages = (text: string) => {
+  let html = renderMarkdown(text)
+  for (const [path, dataUrl] of Object.entries(imageCache.value)) {
+    html = html.replace(new RegExp(`src="${path}"`, 'g'), `src="${dataUrl}"`)
+  }
+  return html
+}
+
+// 监听所有消息内容变化，自动加载其中引用的图片
+watch(
+  () => messages.value.map(m => m.content).join('\n'),
+  (allText) => {
+    loadImages(allText)
+  },
+  { immediate: true }
+)
 
 // ─── 发送消息（流式） ────────────────────────────────────────────────────────
 
@@ -600,7 +649,7 @@ onUnmounted(() => {
           <!-- 系统欢迎消息 -->
           <div v-if="msg.role === 'system'" class="msg-welcome">
             <div class="welcome-icon">🤖</div>
-            <div class="welcome-text" v-html="renderMarkdown(msg.content)" />
+            <div class="welcome-text" v-html="renderMarkdownWithImages(msg.content)" />
           </div>
 
           <!-- 用户消息 -->
@@ -658,7 +707,7 @@ onUnmounted(() => {
                 <span /><span /><span />
               </div>
               <template v-else>
-                <div v-if="msg.content" class="ai-text markdown-body" v-html="renderMarkdown(msg.content)" />
+                <div v-if="msg.content" class="ai-text markdown-body" v-html="renderMarkdownWithImages(msg.content)" />
                 <div v-if="msg.toolStatus" class="tool-status-indicator">
                   <span class="tool-status-icon">&#128269;</span>
                   <span class="tool-status-text">{{ msg.toolStatus }}</span>
@@ -1156,6 +1205,13 @@ onUnmounted(() => {
 .markdown-body :deep(a) {
   color: var(--ms-primary-500);
   text-decoration: underline;
+}
+.markdown-body :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--ms-radius-md);
+  display: block;
+  margin: var(--ms-space-2) 0;
 }
 
 /* ── 输入区域 ── */
